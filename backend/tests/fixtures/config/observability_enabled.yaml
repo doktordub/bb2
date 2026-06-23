@@ -1,0 +1,6 @@
+observability:
+  structured_logging: true
+  trace_enabled: true
+  trace_payloads_enabled: true
+  trace_store_required: true
+  metrics_enabled: true

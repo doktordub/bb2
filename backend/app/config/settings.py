@@ -2,11 +2,35 @@
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE_PATH = BACKEND_ROOT / ".env"
+DEFAULT_APP_CONFIG_PATH = "config/app.yaml"
+DEFAULT_APP_CONFIG_OVERRIDE_PATH = "config/app.local.yaml"
+DEFAULT_APP_DATA_DIR = "data"
+
+
+def _normalize_path_setting(value: object, *, default: str) -> str:
+    if value is None:
+        return default
+
+    if isinstance(value, Path):
+        return value.as_posix()
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped if stripped else default
+
+    return str(value)
+
+
+def _resolve_backend_relative_path(path: str | Path) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = BACKEND_ROOT / candidate
+    return candidate.resolve(strict=False)
 
 
 class Settings(BaseSettings):
@@ -29,7 +53,15 @@ class Settings(BaseSettings):
     reload: bool = Field(default=False, validation_alias="BACKEND_RELOAD")
 
     app_usecase: str | None = Field(default=None, validation_alias="APP_USECASE")
-    app_config_path: str | None = Field(default=None, validation_alias="APP_CONFIG_PATH")
+    app_config_path: str = Field(
+        default=DEFAULT_APP_CONFIG_PATH,
+        validation_alias="APP_CONFIG_PATH",
+    )
+    app_config_override_path: str = Field(
+        default=DEFAULT_APP_CONFIG_OVERRIDE_PATH,
+        validation_alias="APP_CONFIG_OVERRIDE_PATH",
+    )
+    app_data_dir: str = Field(default=DEFAULT_APP_DATA_DIR, validation_alias="APP_DATA_DIR")
     app_config_strict: bool = Field(default=False, validation_alias="APP_CONFIG_STRICT")
 
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
@@ -55,6 +87,33 @@ class Settings(BaseSettings):
         validation_alias="SQLITE_WORKFLOW_STATE_URL",
     )
     sqlite_trace_url: str | None = Field(default=None, validation_alias="SQLITE_TRACE_URL")
+
+    @field_validator("app_config_path", mode="before")
+    @classmethod
+    def normalize_app_config_path(cls, value: object) -> str:
+        return _normalize_path_setting(value, default=DEFAULT_APP_CONFIG_PATH)
+
+    @field_validator("app_config_override_path", mode="before")
+    @classmethod
+    def normalize_app_config_override_path(cls, value: object) -> str:
+        return _normalize_path_setting(value, default=DEFAULT_APP_CONFIG_OVERRIDE_PATH)
+
+    @field_validator("app_data_dir", mode="before")
+    @classmethod
+    def normalize_app_data_dir(cls, value: object) -> str:
+        return _normalize_path_setting(value, default=DEFAULT_APP_DATA_DIR)
+
+    @property
+    def resolved_app_config_path(self) -> Path:
+        return _resolve_backend_relative_path(self.app_config_path)
+
+    @property
+    def resolved_app_config_override_path(self) -> Path:
+        return _resolve_backend_relative_path(self.app_config_override_path)
+
+    @property
+    def resolved_app_data_dir(self) -> Path:
+        return _resolve_backend_relative_path(self.app_data_dir)
 
 
 def load_settings(*, env_file: str | Path | None = ENV_FILE_PATH) -> Settings:

@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 TRACE_ID_HEADER = "x-trace-id"
+TRACE_ID_ALIAS_HEADER = "x-request-id"
 ErrorCode = Literal[
     "CONFIG_LOAD_ERROR",
     "VALIDATION_ERROR",

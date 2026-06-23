@@ -1219,21 +1219,21 @@ This document should be followed by focused architecture documents in this order
 |---:|---|---|
 | 1 | `backend-foundation-architecture.md` | Defines project skeleton, bootstrapping, settings, app startup, dependency wiring, and test foundation. |
 | 2 | `backend-core-contracts-architecture.md` | Locks down shared DTOs, protocols, context objects, result objects, and fake test implementations. |
-| 3 | `configuration-architecture.md` | Establishes YAML schema and provider/use-case wiring before concrete modules depend on it. |
-| 4 | `observability-architecture.md` | Adds trace ID, logs, and trace events early so later modules are debuggable. |
-| 5 | `persistence-architecture.md` | Defines memory/state/trace persistence boundaries and adapter patterns. |
-| 6 | `sqlite-workflow-state-architecture.md` | Implements session state and reset behavior. |
-| 7 | `sqlite-trace-store-architecture.md` | Implements trace event persistence and query/debug patterns. |
+| 3 | `backend-configuration-architecture.md` | Establishes YAML schema and provider/use-case wiring before concrete modules depend on it. |
+| 4 | `backend-observability-architecture.md` | Adds trace ID, logs, and trace events early so later modules are debuggable. |
+| 5 | `backend-persistence-architecture.md` | Defines memory/state/trace persistence boundaries and adapter patterns. |
+| 6 | `backend-sqlite-workflow-state-architecture.md` | Implements session state and reset behavior. |
+| 7 | `backend-sqlite-trace-store-architecture.md` | Implements trace event persistence and query/debug patterns. |
 | 8 | `backend-api-architecture.md` | Implements REST/SSE routes after contracts and session boundaries are known. |
-| 9 | `session-service-architecture.md` | Details session lifecycle, history, reset, and workflow-state handoff. |
-| 10 | `llm-gateway-architecture.md` | Implements provider-neutral model access, profiles, fallback, and tracing. |
-| 11 | `memory-store-adapter-architecture.md` | Integrates `memory_store` and ArcadeDB isolation behind `MemoryGateway`. |
-| 12 | `tooling-mcp-client-architecture.md` | Implements tool gateway, single MCP client adapter, tool specs, and tool policy. |
-| 13 | `orchestration-architecture.md` | Implements runtime coordination, context construction, strategy execution, and result normalization. |
-| 14 | `workflow-strategies-architecture.md` | Details direct, router, sequential, and future workflow strategy plugins. |
-| 15 | `agents-architecture.md` | Details agent plugin interface, registry, capabilities, prompts, and testing. |
-| 16 | `policy-architecture.md` | Hardens LLM/tool/memory access controls and approval gates. |
-| 17 | `deployment-architecture.md` | Defines local runtime topology, environment variables, processes, and deployment layout. |
+| 9 | `backend-session-service-architecture.md` | Details session lifecycle, history, reset, and workflow-state handoff. |
+| 10 | `backend-llm-gateway-architecture.md` | Implements provider-neutral model access, profiles, fallback, and tracing. |
+| 11 | `backend-memory-store-adapter-architecture.md` | Integrates `memory_store` and ArcadeDB isolation behind `MemoryGateway`. |
+| 12 | `backend-tooling-mcp-client-architecture.md` | Implements tool gateway, single MCP client adapter, tool specs, and tool policy. |
+| 13 | `backend-orchestration-architecture.md` | Implements runtime coordination, context construction, strategy execution, and result normalization. |
+| 14 | `backend-workflow-strategies-architecture.md` | Details direct, router, sequential, and future workflow strategy plugins. |
+| 15 | `backend-agents-architecture.md` | Details agent plugin interface, registry, capabilities, prompts, and testing. |
+| 16 | `backend-policy-architecture.md` | Hardens LLM/tool/memory access controls and approval gates. |
+| 17 | `backend-deployment-architecture.md` | Defines local runtime topology, environment variables, processes, and deployment layout. |
 
 ### 25.1 Recommended Immediate Next Document
 

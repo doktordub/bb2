@@ -1,0 +1,1 @@
+"""Shared testing helpers for backend contract and unit tests."""

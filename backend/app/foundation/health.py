@@ -1,132 +1,114 @@
-"""Health primitives for the backend foundation phase."""
+"""Foundation health composition layered on top of reusable observability checks."""
 
 from __future__ import annotations
 
-import inspect
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
-from app.config.settings import Settings
+from app.config.view import get_observability_settings
+from app.contracts.config import ConfigurationView
+from app.contracts.health import (
+    HEALTH_NOT_CHECKED,
+    HEALTH_OK,
+)
+from app.contracts.trace import TraceStore
+from app.observability.health import HealthAggregator, HealthCheckResult
+from app.observability.redaction import Redactor
 
-HealthStatus = Literal["ok", "degraded", "failed", "not_configured", "not_checked"]
-HealthCheck = Callable[[], "HealthCheckResult | Awaitable[HealthCheckResult]"]
-
-
-@dataclass(frozen=True)
-class HealthCheckResult:
-    """Single health-check outcome."""
-
-    status: HealthStatus
-    details: dict[str, Any] = field(default_factory=dict)
-
-
-class HealthRegistry:
-    """Registry that evaluates foundation checks synchronously or asynchronously."""
-
-    def __init__(self) -> None:
-        self._checks: dict[str, HealthCheck] = {}
-
-    def register(self, name: str, check: HealthCheck) -> None:
-        self._checks[name] = check
-
-    async def evaluate(self) -> dict[str, Any]:
-        checks: dict[str, dict[str, Any]] = {}
-        overall_status: HealthStatus = "ok"
-
-        for name, check in self._checks.items():
-            result = await self._run_check(check)
-            check_payload: dict[str, Any] = {"status": result.status}
-            check_payload.update(result.details)
-            checks[name] = check_payload
-            overall_status = _merge_status(overall_status, result.status)
-
-        return {
-            "status": overall_status,
-            "checks": checks,
-        }
-
-    async def _run_check(self, check: HealthCheck) -> HealthCheckResult:
-        outcome = check()
-        if inspect.isawaitable(outcome):
-            return await outcome
-        return outcome
+HealthRegistry = HealthAggregator
 
 
 def build_foundation_health_registry(
     *,
-    settings: Settings,
-    raw_config: dict[str, Any],
+    config: ConfigurationView,
+    config_summary: dict[str, Any],
+    redactor: Redactor,
+    trace_store: TraceStore,
 ) -> HealthRegistry:
     """Build the minimal health registry needed by the foundation app."""
 
-    registry = HealthRegistry()
+    registry = HealthRegistry(redactor=redactor)
+    observability = get_observability_settings(config)
 
-    registry.register("settings", lambda: HealthCheckResult(status="ok"))
-    registry.register("config", lambda: _config_result(raw_config))
-    registry.register("logging", lambda: HealthCheckResult(status="ok"))
-    registry.register("mcp", lambda: _placeholder_result(settings.mcp_main_url is not None))
-    registry.register("llm", lambda: _placeholder_result(_llm_configured(settings)))
+    registry.register("settings", lambda: HealthCheckResult(status=HEALTH_OK))
+    registry.register("config", lambda: _config_result(config_summary))
+    registry.register("logging", lambda: HealthCheckResult(status=HEALTH_OK))
+    registry.register(
+        "observability",
+        lambda: HealthCheckResult(
+            status=HEALTH_OK,
+            details={
+                "trace_enabled": observability.trace_enabled,
+                "trace_payloads_enabled": observability.trace_payloads_enabled,
+                "trace_store_required": observability.trace_store_required,
+                "structured_logging": observability.structured_logging,
+                "metrics_enabled": observability.metrics_enabled,
+                "trace_store_configured": _has_configured_provider(
+                    config,
+                    "persistence.trace.provider",
+                ),
+            },
+        ),
+    )
+    registry.register("mcp", lambda: _placeholder_result(bool(config.get("mcp.main.url"))))
+    registry.register("llm", lambda: _placeholder_result(bool(config.section("llm.profiles"))))
     registry.register(
         "memory",
-        lambda: _placeholder_result(settings.memory_store_config is not None),
+        lambda: _placeholder_result(_has_configured_provider(config, "persistence.memory.provider")),
     )
     registry.register(
         "workflow_state",
-        lambda: _placeholder_result(settings.sqlite_workflow_state_url is not None),
+        lambda: _placeholder_result(
+            _has_configured_provider(config, "persistence.workflow_state.provider")
+        ),
     )
     registry.register(
         "trace",
-        lambda: _placeholder_result(settings.sqlite_trace_url is not None),
+        trace_store,
     )
 
     return registry
 
 
-def _config_result(raw_config: dict[str, Any]) -> HealthCheckResult:
-    source_path = raw_config.get("source_path")
-    if source_path is None:
-        return HealthCheckResult(
-            status="not_configured",
-            details={"configured": False},
+def build_safe_config_summary(config: ConfigurationView) -> dict[str, Any]:
+    """Build a reusable secret-safe summary for logs and health responses."""
+
+    summary: dict[str, Any] = {"configured": True}
+    if not bool(config.get("health.expose_config_summary", True)):
+        return summary
+
+    summary.update(
+        {
+            "environment": config.require("app.environment"),
+            "active_usecase": config.require("app.active_usecase"),
+            "llm_profiles_count": len(config.section("llm.profiles")),
+            "mcp_configured": bool(config.get("mcp.main.url")),
+        }
+    )
+
+    if bool(config.get("health.expose_provider_names", True)):
+        summary.update(
+            {
+                "llm_providers": sorted(config.section("llm.providers").keys()),
+                "workflow_state_provider": config.require("persistence.workflow_state.provider"),
+                "trace_provider": config.require("persistence.trace.provider"),
+                "memory_provider": config.require("persistence.memory.provider"),
+            }
         )
 
-    return HealthCheckResult(
-        status="ok",
-        details={"configured": True},
-    )
+    return summary
+
+
+def _config_result(config_summary: dict[str, Any]) -> HealthCheckResult:
+    return HealthCheckResult(status=HEALTH_OK, details=dict(config_summary))
 
 
 def _placeholder_result(configured: bool) -> HealthCheckResult:
     return HealthCheckResult(
-        status="not_checked",
+        status=HEALTH_NOT_CHECKED,
         details={"configured": configured},
     )
 
 
-def _llm_configured(settings: Settings) -> bool:
-    return any(
-        value is not None
-        for value in (
-            settings.llm_local_qwen_base_url,
-            settings.llm_local_qwen_api_key,
-            settings.openai_api_key,
-            settings.google_api_key,
-        )
-    )
-
-
-def _merge_status(current: HealthStatus, new: HealthStatus) -> HealthStatus:
-    if current == "failed" or new == "failed":
-        return "failed"
-
-    if current == "degraded" or new == "degraded":
-        return "degraded"
-
-    if current == "ok" or new == "ok":
-        return "ok"
-
-    if current == "not_configured" or new == "not_configured":
-        return "not_configured"
-
-    return "not_checked"
+def _has_configured_provider(config: ConfigurationView, path: str) -> bool:
+    value = config.get(path)
+    return isinstance(value, str) and value.strip() != ""

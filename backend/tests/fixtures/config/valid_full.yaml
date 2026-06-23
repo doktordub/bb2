@@ -1,0 +1,180 @@
+app:
+  name: pluggable-agentic-ai-backend
+  environment: local
+  active_usecase: support_chat
+  data_dir: ${env:APP_DATA_DIR:./data}
+
+features:
+  streaming_enabled: true
+  memory_enabled: true
+  tools_enabled: true
+  trace_enabled: true
+
+usecases:
+  support_chat:
+    enabled: true
+    description: Support chat use case.
+    strategy: direct_agent
+    default_agent: support_agent
+    allowed_agents:
+      - support_agent
+    orchestrator_llm_profile: local_reasoning
+    memory:
+      enabled: true
+      include_document_chunks: true
+      default_limit: 8
+    tools:
+      enabled: true
+      allowed_tools:
+        - documents.search
+    policy_profile: default
+  routing_chat:
+    enabled: true
+    description: Routed chat use case.
+    strategy: router
+    default_agent: analyst_agent
+    allowed_agents:
+      - analyst_agent
+    orchestrator_llm_profile: cloud_fast
+    memory:
+      enabled: false
+      include_document_chunks: false
+      default_limit: 4
+    tools:
+      enabled: true
+      allowed_tools:
+        - documents.search
+        - calculator.run
+    policy_profile: permissive
+
+strategies:
+  direct_agent:
+    enabled: true
+    type: direct
+    description: Run the default configured agent.
+  router:
+    enabled: true
+    type: router
+    description: Select the best candidate agent.
+    llm_profile: cloud_fast
+    max_candidate_agents: 3
+
+agents:
+  support_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Support assistant.
+    capabilities:
+      - chat
+      - document_qa
+    llm_profile: local_reasoning
+    allowed_tools:
+      - documents.search
+    memory:
+      search_enabled: true
+      write_enabled: false
+    prompts:
+      system_prompt: prompts/support_agent/system.md
+  analyst_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Analyst assistant.
+    capabilities:
+      - chat
+      - analysis
+    llm_profile: cloud_fast
+    allowed_tools:
+      - documents.search
+      - calculator.run
+    memory:
+      search_enabled: true
+      write_enabled: false
+    prompts:
+      developer_prompt: prompts/analyst_agent/developer.md
+
+llm:
+  default_profile: cloud_fast
+  providers:
+    local_provider:
+      type: openai_compatible
+      base_url: ${env:LOCAL_LLM_BASE_URL:http://localhost:8081/v1}
+      api_key: ${env:LOCAL_LLM_API_KEY:}
+      timeout_seconds: 90
+      default_headers: {}
+    openai:
+      type: openai
+      api_key: ${env:OPENAI_API_KEY:}
+      timeout_seconds: 60
+      default_headers:
+        Authorization: ${env:OPENAI_AUTHORIZATION:}
+  profiles:
+    local_reasoning:
+      provider: local_provider
+      model: local-reasoning-model
+      temperature: 0.7
+      max_tokens: 2048
+      timeout_seconds: 90
+      fallback_profiles: []
+    cloud_fast:
+      provider: openai
+      model: gpt-4.1-mini
+      temperature: 0.2
+      max_tokens: 1024
+      fallback_profiles:
+        - local_reasoning
+
+mcp:
+  main:
+    url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    timeout_seconds: 30
+    tool_discovery_enabled: true
+
+persistence:
+  workflow_state:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/workflow_state.db
+  trace:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/trace.db
+  memory:
+    provider: memory_store
+    config:
+      database_path: ${env:MEMORY_STORE_DB_PATH:./data/memory}
+      default_scope: project
+
+policy:
+  default_profile: default
+  profiles:
+    default:
+      deny_unknown_tools: true
+      deny_unknown_llm_profiles: true
+      require_memory_scope: true
+      allow_memory_writes: false
+    permissive:
+      deny_unknown_tools: false
+      deny_unknown_llm_profiles: true
+      require_memory_scope: false
+      allow_memory_writes: false
+
+observability:
+  log_level: ${env:APP_LOG_LEVEL:INFO}
+  structured_logging: true
+  trace_enabled: true
+  trace_payloads_enabled: true
+  trace_store_required: true
+  redact_secrets: true
+  include_stack_traces_in_logs: false
+  include_stack_traces_in_traces: false
+  max_trace_payload_chars: 12000
+  slow_request_ms: 5000
+  slow_llm_call_ms: 30000
+  slow_tool_call_ms: 10000
+  metrics_enabled: true
+
+health:
+  expose_config_summary: true
+  expose_provider_names: true
+  expose_secret_values: false
+  include_component_details: true

@@ -1,0 +1,5 @@
+health:
+  expose_config_summary: false
+  expose_provider_names: false
+  expose_secret_values: false
+  include_component_details: false

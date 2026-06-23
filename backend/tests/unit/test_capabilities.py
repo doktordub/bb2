@@ -10,6 +10,8 @@ SETTINGS_ENV_VARS = [
     "APP_DEBUG",
     "APP_USECASE",
     "APP_CONFIG_PATH",
+    "APP_CONFIG_OVERRIDE_PATH",
+    "APP_DATA_DIR",
     "APP_CONFIG_STRICT",
     "BACKEND_HOST",
     "BACKEND_PORT",
@@ -34,22 +36,23 @@ def clear_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_capabilities_route(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_settings_env(monkeypatch)
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/valid_full.yaml")
 
     app = create_app(load_settings(env_file=None))
-    client = TestClient(app)
 
-    response = client.get("/capabilities")
+    with TestClient(app) as client:
+        response = client.get("/capabilities")
 
-    assert response.status_code == 200
-    assert response.json() == {
-        "service": "pluggable-agentic-ai-backend",
-        "capabilities": {
-            "chat": False,
-            "streaming": False,
-            "session_reset": False,
-            "mcp_tools": False,
-            "memory": False,
-            "llm_profiles": False,
-            "trace": False,
-        },
-    }
+        assert response.status_code == 200
+        assert response.json() == {
+            "service": "pluggable-agentic-ai-backend",
+            "capabilities": {
+                "chat": True,
+                "streaming": True,
+                "session_reset": True,
+                "mcp_tools": True,
+                "memory": True,
+                "llm_profiles": True,
+                "trace": True,
+            },
+        }

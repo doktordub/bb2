@@ -1,0 +1,2 @@
+observability:
+  trace_payloads_enabled: false

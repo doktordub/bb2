@@ -11,6 +11,8 @@ SETTINGS_ENV_VARS = [
     "APP_DEBUG",
     "APP_USECASE",
     "APP_CONFIG_PATH",
+    "APP_CONFIG_OVERRIDE_PATH",
+    "APP_DATA_DIR",
     "APP_CONFIG_STRICT",
     "BACKEND_HOST",
     "BACKEND_PORT",
@@ -43,9 +45,16 @@ def test_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.debug is False
     assert settings.host == "127.0.0.1"
     assert settings.port == 8000
-    assert settings.app_config_path is None
+    assert settings.app_config_path == "config/app.yaml"
+    assert settings.app_config_override_path == "config/app.local.yaml"
+    assert settings.app_data_dir == "data"
     assert settings.app_config_strict is False
     assert settings.log_json is True
+    assert settings.resolved_app_config_path == (BACKEND_ROOT / "config/app.yaml").resolve()
+    assert settings.resolved_app_config_override_path == (
+        BACKEND_ROOT / "config/app.local.yaml"
+    ).resolve()
+    assert settings.resolved_app_data_dir == (BACKEND_ROOT / "data").resolve()
 
 
 def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,7 +62,9 @@ def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("APP_DEBUG", "true")
     monkeypatch.setenv("APP_USECASE", "customer_support")
-    monkeypatch.setenv("APP_CONFIG_PATH", "../config/usecases/customer_support.yaml")
+    monkeypatch.setenv("APP_CONFIG_PATH", "config/test/base.yaml")
+    monkeypatch.setenv("APP_CONFIG_OVERRIDE_PATH", "config/test/override.yaml")
+    monkeypatch.setenv("APP_DATA_DIR", "var/data")
     monkeypatch.setenv("APP_CONFIG_STRICT", "true")
     monkeypatch.setenv("BACKEND_HOST", "0.0.0.0")
     monkeypatch.setenv("BACKEND_PORT", "9000")
@@ -67,7 +78,9 @@ def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.app_env == "test"
     assert settings.debug is True
     assert settings.app_usecase == "customer_support"
-    assert settings.app_config_path == "../config/usecases/customer_support.yaml"
+    assert settings.app_config_path == "config/test/base.yaml"
+    assert settings.app_config_override_path == "config/test/override.yaml"
+    assert settings.app_data_dir == "var/data"
     assert settings.app_config_strict is True
     assert settings.host == "0.0.0.0"
     assert settings.port == 9000
@@ -75,6 +88,26 @@ def test_settings_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.log_level == "DEBUG"
     assert settings.log_json is False
     assert settings.memory_store_config == "../config/memory_store.yaml"
+    assert settings.resolved_app_config_path == (BACKEND_ROOT / "config/test/base.yaml").resolve()
+    assert settings.resolved_app_config_override_path == (
+        BACKEND_ROOT / "config/test/override.yaml"
+    ).resolve()
+    assert settings.resolved_app_data_dir == (BACKEND_ROOT / "var/data").resolve()
+
+
+def test_settings_path_fields_fall_back_to_defaults_when_blank(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clear_settings_env(monkeypatch)
+    monkeypatch.setenv("APP_CONFIG_PATH", "   ")
+    monkeypatch.setenv("APP_CONFIG_OVERRIDE_PATH", "")
+    monkeypatch.setenv("APP_DATA_DIR", "\t")
+
+    settings = load_settings(env_file=None)
+
+    assert settings.app_config_path == "config/app.yaml"
+    assert settings.app_config_override_path == "config/app.local.yaml"
+    assert settings.app_data_dir == "data"
 
 
 def test_missing_config_allowed_in_foundation_mode(monkeypatch: pytest.MonkeyPatch) -> None:
