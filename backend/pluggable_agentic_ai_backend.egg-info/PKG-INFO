@@ -1,0 +1,56 @@
+Metadata-Version: 2.4
+Name: pluggable-agentic-ai-backend
+Version: 0.1.0
+Summary: Backend application tier for a pluggable agentic AI system
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi
+Requires-Dist: uvicorn[standard]
+Requires-Dist: pydantic
+Requires-Dist: pydantic-settings
+Requires-Dist: PyYAML
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-asyncio; extra == "dev"
+Requires-Dist: httpx; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: types-PyYAML; extra == "dev"
+
+# Backend Foundation
+
+All backend application work lives under `backend/`. Run backend commands from this directory.
+
+## Boundaries
+
+- Application source lives in `app/`.
+- Backend tests live in `tests/`.
+- `frontend/`, `mcp/`, and the repository root are not backend runtime code locations.
+- `.venv/` and `dist/` are local or generated artifacts, not the application source tree.
+
+## Phase Scope
+
+Phase 0 and Phase 1 establish the Python project root plus deterministic settings and raw config loading.
+Application startup through `app.main` arrives in Phase 2.
+
+## Setup
+
+Use the existing virtual environment in `.venv/`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+## Local Configuration
+
+Copy `.env.example` to `.env` before local development.
+
+Relative paths such as `APP_CONFIG_PATH` are always resolved from `backend/`, not from the caller's current working directory.
+
+## Validation
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\test_settings.py
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m mypy app
+```
