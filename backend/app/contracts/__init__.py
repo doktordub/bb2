@@ -39,7 +39,16 @@ from app.contracts.results import (
     StreamEvent,
     StreamEventType,
 )
-from app.contracts.state import WorkflowStateRecord, WorkflowStateStore
+from app.contracts.state import (
+    DEFAULT_WORKFLOW_STATE_VERSION,
+    WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW,
+    WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE,
+    WORKFLOW_STATE_RESET_MODES,
+    WorkflowStateRecord,
+    WorkflowStateResetMode,
+    WorkflowStateStore,
+    default_workflow_state,
+)
 from app.contracts.strategies import OrchestrationStrategy, StrategyMetadata
 from app.contracts.tools import ToolCallRequest, ToolGateway, ToolResult, ToolSpec
 from app.contracts.trace import TraceEvent, TraceStore
@@ -91,7 +100,13 @@ __all__ = [
     "TraceEvent",
     "TraceStore",
     "TraceStoreError",
+    "WorkflowStateResetMode",
     "WorkflowStateRecord",
     "WorkflowStateStore",
     "WorkflowStateError",
+    "WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW",
+    "WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE",
+    "WORKFLOW_STATE_RESET_MODES",
+    "DEFAULT_WORKFLOW_STATE_VERSION",
+    "default_workflow_state",
 ]

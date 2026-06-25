@@ -61,6 +61,9 @@ def test_create_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         assert app.state.container.settings.app_name == settings.app_name
         assert app.state.container.config.require("app.active_usecase") == "default_chat"
         assert app.state.container.config_summary["configured"] is True
+        assert app.state.container.persistence.workflow_state is app.state.container.workflow_state
+        assert app.state.container.persistence.trace_store is app.state.container.trace_store
+        assert app.state.container.persistence.memory is app.state.container.memory
 
 
 def test_trace_id_header(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -90,6 +93,7 @@ def test_request_observability_events_and_metrics(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("APP_DATA_DIR", tmp_path.as_posix())
     app = create_app(load_settings(env_file=None))
     database_path = resolve_trace_store_path(app.state.container.config) if app.state.container else tmp_path / "trace.db"
+    snapshot = None
 
     with TestClient(app) as client:
         response = client.get("/health", headers={"x-trace-id": "trace-test-123"})
@@ -100,6 +104,10 @@ def test_request_observability_events_and_metrics(monkeypatch: pytest.MonkeyPatc
             rows = connection.execute(
                 "SELECT event_type, component, trace_id, payload_json FROM trace_events ORDER BY id"
             ).fetchall()
+
+        metrics = app.state.container.metrics
+        assert isinstance(metrics, InMemoryMetricsRecorder)
+        snapshot = metrics.snapshot()
 
     request_received = [row for row in rows if row[0] == "request_received"]
     response_returned = [row for row in rows if row[0] == "response_returned"]
@@ -124,9 +132,7 @@ def test_request_observability_events_and_metrics(monkeypatch: pytest.MonkeyPatc
     }
     assert json.loads(response_returned[-1][3])["duration_ms"] >= 0
 
-    metrics = app.state.container.metrics
-    assert isinstance(metrics, InMemoryMetricsRecorder)
-    snapshot = metrics.snapshot()
+    assert snapshot is not None
     assert any(sample.name == "backend.requests.total" for sample in snapshot["counters"])
     assert any(sample.name == "backend.requests.duration_ms" for sample in snapshot["timings"])
 

@@ -77,6 +77,13 @@ async def test_contract_slice_runs_without_concrete_infrastructure(
     monkeypatch.setattr(sqlite3, "connect", fail)
     monkeypatch.setattr(subprocess, "Popen", fail)
 
+    forbidden_roots = ("agent_framework", "arcadedb", "mcp", "memory_store")
+    initially_loaded = {
+        name
+        for name in sys.modules
+        if any(name == root or name.startswith(f"{root}.") for root in forbidden_roots)
+    }
+
     context = build_context()
 
     found = await context.memory.search(
@@ -114,11 +121,11 @@ async def test_contract_slice_runs_without_concrete_infrastructure(
     assert context.trace.events[0].component == "tests.contracts"
     assert decision.allowed is True
 
-    forbidden_roots = ("agent_framework", "arcadedb", "mcp", "memory_store")
     loaded_modules = sorted(
         name
         for name in sys.modules
         if any(name == root or name.startswith(f"{root}.") for root in forbidden_roots)
+        and name not in initially_loaded
     )
 
     assert loaded_modules == []
@@ -128,9 +135,12 @@ async def test_fake_dependencies_build_a_complete_orchestration_context() -> Non
     context = build_context()
 
     assert context.request.session_id == "session_1"
-    assert await context.state.health() == {"status": "ok", "provider": "fake"}
-    assert await context.trace.health() == {"status": "ok", "provider": "fake"}
-    assert await context.memory.health() == {"status": "ok", "provider": "fake"}
+    assert (await context.state.health())["status"] == "ok"
+    assert (await context.state.health())["provider"] == "fake"
+    assert (await context.trace.health())["status"] == "ok"
+    assert (await context.trace.health())["provider"] == "fake"
+    assert (await context.memory.health())["status"] == "ok"
+    assert (await context.memory.health())["provider"] == "fake"
     assert context.config.require("agents.fake_agent.enabled") is True
 
 

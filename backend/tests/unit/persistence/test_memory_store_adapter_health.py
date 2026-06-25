@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from app.contracts.health import HEALTH_DEGRADED, HEALTH_FAILED, HEALTH_OK
+from app.persistence.memory_store_adapter import MemoryStoreAdapter
+from app.persistence.settings import MemoryStoreSettings
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_health_reports_missing_config_path_for_optional_store(
+    tmp_path,
+) -> None:
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=tmp_path / "missing-memory-store.yaml",
+            database_path=None,
+            default_scope="project",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+        ),
+        required=False,
+    )
+
+    health = await adapter.health()
+
+    assert health == {
+        "status": HEALTH_DEGRADED,
+        "configured": True,
+        "provider": "memory_store",
+        "required": False,
+        "config_path_configured": True,
+        "database_path_configured": False,
+        "service_initialized": False,
+        "reason": "config_path_missing",
+        "error_type": "FileNotFoundError",
+    }
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_health_reports_missing_dependency_for_optional_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        "app.persistence.memory_store_adapter._load_memory_store_runtime",
+        lambda: (_ for _ in ()).throw(ModuleNotFoundError("memory_store")),
+    )
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=None,
+            database_path=tmp_path / "memory-store",
+            default_scope="user",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+        ),
+        required=False,
+    )
+
+    health = await adapter.health()
+
+    assert health == {
+        "status": HEALTH_DEGRADED,
+        "configured": True,
+        "provider": "memory_store",
+        "required": False,
+        "config_path_configured": False,
+        "database_path_configured": True,
+        "service_initialized": False,
+        "reason": "dependency_unavailable",
+        "error_type": "ModuleNotFoundError",
+    }
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_health_returns_ok_without_exposing_database_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    class FakeMemoryService:
+        @classmethod
+        def from_config(cls, config_path: object = None, **overrides: object) -> FakeMemoryService:
+            return cls()
+
+        def health(self) -> object:
+            return SimpleNamespace(
+                database_path=tmp_path / "should-not-leak",
+                schema_version=3,
+                dependencies={"arcadedb_embedded": True, "fastembed": False},
+            )
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "app.persistence.memory_store_adapter._load_memory_store_runtime",
+        lambda: SimpleNamespace(
+            MemoryCreate=object,
+            MemorySearchQuery=object,
+            MemoryService=FakeMemoryService,
+            Scope=object,
+        ),
+    )
+
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=None,
+            database_path=tmp_path / "memory-store",
+            default_scope="user",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+        ),
+        required=True,
+    )
+    await adapter.initialize()
+
+    health = await adapter.health()
+    await adapter.close()
+
+    assert health == {
+        "status": HEALTH_OK,
+        "configured": True,
+        "provider": "memory_store",
+        "required": True,
+        "config_path_configured": False,
+        "database_path_configured": True,
+        "service_initialized": True,
+        "dependency_available": True,
+        "dependencies": {"arcadedb_embedded": True, "fastembed": False},
+        "schema_version": 3,
+    }
+    assert "database_path" not in health
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_health_marks_required_problem_as_failed(
+    tmp_path,
+) -> None:
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=tmp_path / "missing-memory-store.yaml",
+            database_path=None,
+            default_scope="project",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+        ),
+        required=True,
+    )
+
+    health = await adapter.health()
+
+    assert health["status"] == HEALTH_FAILED
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_health_smoke_uses_installed_package(tmp_path) -> None:
+    pytest.importorskip("memory_store.service")
+
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=None,
+            database_path=tmp_path / "memory-store",
+            default_scope="user",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+        ),
+        required=False,
+    )
+
+    health = await adapter.health()
+
+    assert health["status"] == HEALTH_OK
+    assert health["provider"] == "memory_store"
+    assert health["dependency_available"] is True
+    assert health["service_initialized"] is False

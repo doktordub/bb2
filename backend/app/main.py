@@ -31,6 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         startup_trace_id = new_trace_id()
+        container = None
         startup_token = set_trace_context(
             TraceContext(
                 trace_id=startup_trace_id,
@@ -87,7 +88,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             reset_trace_context(startup_token)
 
-        yield
+        try:
+            yield
+        finally:
+            if container is not None:
+                await container.persistence.close()
+            app.state.container = None
 
     app = FastAPI(
         title=resolved_settings.app_name,

@@ -10,9 +10,14 @@ from app.contracts.health import (
     HEALTH_NOT_CHECKED,
     HEALTH_OK,
 )
-from app.contracts.trace import TraceStore
 from app.observability.health import HealthAggregator, HealthCheckResult
 from app.observability.redaction import Redactor
+from app.persistence.factory import PersistenceBundle
+from app.persistence.health import (
+    build_persistence_health_components,
+    evaluate_persistence_bundle,
+    evaluate_persistence_component,
+)
 
 HealthRegistry = HealthAggregator
 
@@ -22,7 +27,7 @@ def build_foundation_health_registry(
     config: ConfigurationView,
     config_summary: dict[str, Any],
     redactor: Redactor,
-    trace_store: TraceStore,
+    persistence: PersistenceBundle,
 ) -> HealthRegistry:
     """Build the minimal health registry needed by the foundation app."""
 
@@ -32,6 +37,7 @@ def build_foundation_health_registry(
     registry.register("settings", lambda: HealthCheckResult(status=HEALTH_OK))
     registry.register("config", lambda: _config_result(config_summary))
     registry.register("logging", lambda: HealthCheckResult(status=HEALTH_OK))
+    persistence_checks = build_persistence_health_components(persistence)
     registry.register(
         "observability",
         lambda: HealthCheckResult(
@@ -52,18 +58,20 @@ def build_foundation_health_registry(
     registry.register("mcp", lambda: _placeholder_result(bool(config.get("mcp.main.url"))))
     registry.register("llm", lambda: _placeholder_result(bool(config.section("llm.profiles"))))
     registry.register(
+        "persistence",
+        lambda: evaluate_persistence_bundle(persistence_checks),
+    )
+    registry.register(
         "memory",
-        lambda: _placeholder_result(_has_configured_provider(config, "persistence.memory.provider")),
+        lambda: evaluate_persistence_component(persistence_checks["memory"]),
     )
     registry.register(
         "workflow_state",
-        lambda: _placeholder_result(
-            _has_configured_provider(config, "persistence.workflow_state.provider")
-        ),
+        lambda: evaluate_persistence_component(persistence_checks["workflow_state"]),
     )
     registry.register(
         "trace",
-        trace_store,
+        lambda: evaluate_persistence_component(persistence_checks["trace"]),
     )
 
     return registry

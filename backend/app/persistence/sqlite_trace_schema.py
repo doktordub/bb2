@@ -1,6 +1,6 @@
 """SQLite schema bootstrap for append-only trace persistence."""
 
-from typing import Protocol
+from app.persistence.sqlite.migrations import SupportsMigration, ensure_schema
 
 TRACE_EVENTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS trace_events (
@@ -24,14 +24,20 @@ CREATE INDEX IF NOT EXISTS idx_trace_events_session_id
 CREATE INDEX IF NOT EXISTS idx_trace_events_timestamp
     ON trace_events(timestamp);
 """
+TRACE_SCHEMA_NAME = "trace_store"
+TRACE_SCHEMA_VERSION = 1
 
 
-class SupportsExecuteScript(Protocol):
-    def executescript(self, sql_script: str) -> object:
-        ...
-
-
-def ensure_trace_schema(connection: SupportsExecuteScript) -> None:
+def ensure_trace_schema(connection: SupportsMigration) -> None:
     """Create the initial trace schema when it is missing."""
 
+    ensure_schema(
+        connection,
+        name=TRACE_SCHEMA_NAME,
+        target_version=TRACE_SCHEMA_VERSION,
+        apply_schema=_apply_trace_schema,
+    )
+
+
+def _apply_trace_schema(connection: SupportsMigration) -> None:
     connection.executescript(TRACE_EVENTS_SCHEMA)

@@ -191,15 +191,42 @@ def _validate_agent_tool_subset(
 
 
 def _validate_store(errors: list[str], *, store_name: str, store: StoreConfig) -> None:
-    if store.provider == "sqlite" and (store.path is None or store.path.strip() == ""):
+    sqlite_config = store.sqlite
+    has_legacy_path = isinstance(store.path, str) and store.path.strip() != ""
+    has_sqlite_path = sqlite_config is not None and isinstance(sqlite_config.path, str) and sqlite_config.path.strip() != ""
+
+    if store.provider == "sqlite" and not (has_legacy_path or has_sqlite_path or store_name in {"workflow_state", "trace"}):
         errors.append(f"Persistence store '{store_name}' requires a path when provider is 'sqlite'.")
 
     if store.provider == "memory_store":
-        database_path = store.config.get("database_path")
-        if not isinstance(database_path, str) or database_path.strip() == "":
+        memory_store = store.memory_store
+        legacy_database_path = store.config.get("database_path")
+        has_legacy_database_path = isinstance(legacy_database_path, str) and legacy_database_path.strip() != ""
+        has_memory_database_path = (
+            memory_store is not None
+            and isinstance(memory_store.database_path, str)
+            and memory_store.database_path.strip() != ""
+        )
+        has_memory_config_path = (
+            memory_store is not None
+            and isinstance(memory_store.config_path, str)
+            and memory_store.config_path.strip() != ""
+        )
+
+        if not (has_legacy_database_path or has_memory_database_path or has_memory_config_path):
             errors.append(
-                f"Persistence store '{store_name}' requires config.database_path when provider "
-                f"is 'memory_store'."
+                f"Persistence store '{store_name}' requires memory_store.config_path, "
+                f"memory_store.database_path, or config.database_path when provider is "
+                f"'memory_store'."
+            )
+
+        if (
+            memory_store is not None
+            and memory_store.search_limit_default > memory_store.search_limit_max
+        ):
+            errors.append(
+                "Persistence memory_store.search_limit_default must be less than or equal "
+                "to memory_store.search_limit_max."
             )
 
 

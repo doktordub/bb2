@@ -13,10 +13,12 @@ ALLOWED_METRIC_TAG_KEYS = frozenset(
         "status_code",
         "component",
         "provider",
+        "operation",
         "profile",
         "tool_name",
         "event_type",
         "success",
+        "error_type",
     }
 )
 

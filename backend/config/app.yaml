@@ -50,16 +50,61 @@ mcp:
     url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
 
 persistence:
+  base_dir: ${env:APP_DATA_DIR:./data}
   workflow_state:
     provider: sqlite
-    path: ${env:APP_DATA_DIR:./data}/workflow_state.db
+    sqlite:
+      path: workflow_state.db
+      create_parent_dirs: true
+      initialize_schema: true
+      journal_mode: WAL
+      synchronous: NORMAL
+      busy_timeout_ms: 5000
+      foreign_keys: true
+      required: true
+      max_state_bytes: 1048576
+      max_history_messages: 50
+      reset_mode: replace_with_empty_state
+      store_user_id: false
+      store_user_id_hash: true
   trace:
     provider: sqlite
-    path: ${env:APP_DATA_DIR:./data}/trace.db
+    sqlite:
+      path: trace.db
+      create_parent_dirs: true
+      initialize_schema: true
+      journal_mode: WAL
+      synchronous: NORMAL
+      busy_timeout_ms: 5000
+      foreign_keys: true
+      required: true
+      max_event_payload_bytes: 32768
+      max_error_detail_bytes: 4096
+      max_events_per_trace_read: 1000
+      max_search_results: 200
+      store_raw_session_id: false
+      store_session_id_hash: true
+      store_raw_user_id: false
+      store_user_id_hash: true
+      capture_request_body: false
+      capture_response_body: false
+      capture_llm_prompts: false
+      capture_llm_completions: false
+      capture_tool_payloads: summaries_only
+      capture_memory_queries: summaries_only
+      retention:
+        enabled: false
+        keep_days: 30
+        cleanup_batch_size: 1000
   memory:
     provider: memory_store
-    config:
-      database_path: ${env:MEMORY_STORE_DB_PATH:./data/memory}
+    required: false
+    memory_store:
+      database_path: ${env:MEMORY_STORE_DB_PATH:memory}
+      default_scope: project
+      search_limit_default: 10
+      search_limit_max: 30
+      allow_writes: false
 
 policy:
   default_profile: default

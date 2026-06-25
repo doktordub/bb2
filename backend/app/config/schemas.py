@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.contracts.state import (
+    WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE,
+    WORKFLOW_STATE_RESET_MODES,
+)
+
+_ALLOWED_SQLITE_SYNCHRONOUS_MODES = frozenset({"NORMAL", "FULL"})
+_ALLOWED_TRACE_CAPTURE_MODES = frozenset({"none", "summaries_only"})
 
 
 class StrictConfigModel(BaseModel):
@@ -116,15 +124,115 @@ class MCPConfig(StrictConfigModel):
     main: MCPServerConfig
 
 
+class SqliteStoreConfig(StrictConfigModel):
+    path: str | None = None
+    create_parent_dirs: bool = True
+    initialize_schema: bool = True
+    journal_mode: str = "WAL"
+    synchronous: str = "NORMAL"
+    busy_timeout_ms: int = Field(default=5000, ge=0)
+    foreign_keys: bool = True
+    required: bool = True
+
+    @field_validator("journal_mode")
+    @classmethod
+    def normalize_journal_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized == "":
+            raise ValueError("journal_mode must not be empty")
+        return normalized
+
+    @field_validator("synchronous")
+    @classmethod
+    def normalize_synchronous(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in _ALLOWED_SQLITE_SYNCHRONOUS_MODES:
+            supported = ", ".join(sorted(_ALLOWED_SQLITE_SYNCHRONOUS_MODES))
+            raise ValueError(f"synchronous must be one of: {supported}")
+        return normalized
+
+
+class WorkflowStateSqliteConfig(SqliteStoreConfig):
+    max_state_bytes: int = Field(default=1048576, ge=1)
+    max_history_messages: int = Field(default=50, ge=1)
+    reset_mode: str = WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE
+    store_user_id: bool = False
+    store_user_id_hash: bool = True
+
+    @field_validator("reset_mode")
+    @classmethod
+    def normalize_reset_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in WORKFLOW_STATE_RESET_MODES:
+            supported = ", ".join(sorted(WORKFLOW_STATE_RESET_MODES))
+            raise ValueError(f"reset_mode must be one of: {supported}")
+        return normalized
+
+
+class TraceRetentionConfig(StrictConfigModel):
+    enabled: bool = False
+    keep_days: int = Field(default=30, ge=1)
+    cleanup_batch_size: int = Field(default=1000, ge=1)
+
+
+class TraceSqliteConfig(SqliteStoreConfig):
+    max_event_payload_bytes: int | None = Field(default=None, ge=1)
+    payload_max_chars: int | None = Field(default=None, ge=1)
+    max_error_detail_bytes: int = Field(default=4096, ge=1)
+    max_events_per_trace_read: int = Field(default=1000, ge=1)
+    max_search_results: int = Field(default=200, ge=1)
+    store_raw_session_id: bool = False
+    store_session_id_hash: bool = True
+    store_raw_user_id: bool = False
+    store_user_id_hash: bool = True
+    capture_request_body: bool = False
+    capture_response_body: bool = False
+    capture_llm_prompts: bool = False
+    capture_llm_completions: bool = False
+    capture_tool_payloads: str = "summaries_only"
+    capture_memory_queries: str = "summaries_only"
+    retention: TraceRetentionConfig = Field(default_factory=TraceRetentionConfig)
+
+    @field_validator("capture_tool_payloads", "capture_memory_queries")
+    @classmethod
+    def normalize_capture_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in _ALLOWED_TRACE_CAPTURE_MODES:
+            supported = ", ".join(sorted(_ALLOWED_TRACE_CAPTURE_MODES))
+            raise ValueError(f"capture mode must be one of: {supported}")
+        return normalized
+
+
+class MemoryStoreProviderConfig(StrictConfigModel):
+    config_path: str | None = None
+    database_path: str | None = None
+    default_scope: str = "project"
+    search_limit_default: int = Field(default=10, ge=1, le=100)
+    search_limit_max: int = Field(default=30, ge=1, le=100)
+    allow_writes: bool = False
+
+
 class StoreConfig(StrictConfigModel):
     provider: str
     path: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
+    required: bool | None = None
+    sqlite: SqliteStoreConfig | None = None
+    memory_store: MemoryStoreProviderConfig | None = None
+
+
+class WorkflowStateStoreConfig(StoreConfig):
+    sqlite: WorkflowStateSqliteConfig | None = None
+
+
+class TraceStoreConfig(StoreConfig):
+    sqlite: TraceSqliteConfig | None = None
 
 
 class PersistenceConfig(StrictConfigModel):
-    workflow_state: StoreConfig
-    trace: StoreConfig
+    base_dir: str = "./data"
+    workflow_state: WorkflowStateStoreConfig
+    trace: TraceStoreConfig
     memory: StoreConfig
 
 

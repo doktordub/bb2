@@ -20,6 +20,60 @@ class MemoryScope:
     session_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    def normalized(self) -> MemoryScope:
+        """Return a copy with empty strings removed from scope fields."""
+
+        return MemoryScope(
+            user_id=_normalized_scope_text(self.user_id),
+            project_id=_normalized_scope_text(self.project_id),
+            tenant_id=_normalized_scope_text(self.tenant_id),
+            usecase=_normalized_scope_text(self.usecase),
+            session_id=_normalized_scope_text(self.session_id),
+            metadata=dict(self.metadata),
+        )
+
+    def has_explicit_scope(self) -> bool:
+        """Report whether any scope dimension is present."""
+
+        scope = self.normalized()
+        return any(
+            (
+                scope.user_id,
+                scope.project_id,
+                scope.tenant_id,
+                scope.usecase,
+                scope.session_id,
+            )
+        )
+
+    def summary(self) -> dict[str, Any]:
+        """Return a trace-safe scope summary without raw identifiers."""
+
+        scope = self.normalized()
+        if scope.project_id and scope.user_id:
+            scope_type = "project_user"
+        elif scope.project_id:
+            scope_type = "project"
+        elif scope.user_id:
+            scope_type = "user"
+        elif scope.tenant_id:
+            scope_type = "tenant"
+        elif scope.usecase:
+            scope_type = "usecase"
+        elif scope.session_id:
+            scope_type = "session"
+        else:
+            scope_type = "global"
+
+        return {
+            "scope_type": scope_type,
+            "user_id_present": scope.user_id is not None,
+            "project_id_present": scope.project_id is not None,
+            "tenant_id_present": scope.tenant_id is not None,
+            "usecase_present": scope.usecase is not None,
+            "session_id_present": scope.session_id is not None,
+        }
+
 
 @dataclass(slots=True)
 class MemorySearchRequest:
@@ -91,3 +145,10 @@ class MemoryGateway(Protocol):
 
     async def health(self) -> dict[str, Any]:
         ...
+
+
+def _normalized_scope_text(value: str | None) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return None

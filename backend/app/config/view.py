@@ -5,12 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from app.config.redaction import redact_config
 from app.contracts.config import ConfigurationView
 from app.contracts.errors import ConfigurationError
 from app.observability.redaction import Redactor
+from app.persistence.settings import get_persistence_settings
+
+if TYPE_CHECKING:
+    from app.persistence.settings import PersistenceSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +80,9 @@ class ValidatedConfigurationView:
 
     def health_settings(self) -> HealthSettings:
         return get_health_settings(self)
+
+    def persistence_settings(self) -> PersistenceSettings:
+        return get_persistence_settings(self)
 
     def as_redacted_dict(self) -> dict[str, Any]:
         return cast(dict[str, Any], redact_config(_unfreeze(self._values)))

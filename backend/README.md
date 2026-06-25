@@ -13,7 +13,7 @@ All backend application work lives under `backend/`. Run backend commands from t
 
 ## Phase Scope
 
-The backend foundation, core contracts, configuration, and observability slices are complete and frozen for later backend phases:
+The backend foundation, core contracts, configuration, observability, general persistence, and SQLite workflow-state slices are complete and frozen for later backend phases:
 
 - deterministic backend-root-relative settings and config path resolution
 - validated YAML loading, override merging, `${env:...}` interpolation, schema validation, and secret redaction
@@ -23,6 +23,8 @@ The backend foundation, core contracts, configuration, and observability slices 
 - config-driven structured or readable logging plus trace-safe error diagnostics
 - shared redaction across config summaries, logs, traces, health payloads, and error metadata
 - `TraceRecorder`, SQLite-backed trace persistence behind `app/persistence/`, and reusable health/metrics services
+- persistence bundle wiring for workflow-state, trace, and optional memory providers
+- SQLite workflow-state schema, safe reset semantics, observability hooks, and concurrency baseline
 - stable shared contract DTOs, protocols, and in-memory fakes under `backend/app/contracts/` and `backend/app/testing/fakes/`
 - backend-local unit tests plus linting and type checks
 
@@ -151,6 +153,95 @@ The following observability concerns remain intentionally deferred:
 - OpenTelemetry or other distributed tracing integration
 - provider-specific telemetry enrichments
 
+## Persistence Freeze
+
+The following persistence surfaces are now the stable handoff boundary for later backend phases:
+
+- `app/persistence/settings.py`
+- `app/persistence/paths.py`
+- `app/persistence/serialization.py`
+- `app/persistence/errors.py`
+- `app/persistence/factory.py`
+- `app/persistence/health.py`
+- `app/persistence/sqlite/`
+- `app/persistence/sqlite_workflow_state_store.py`
+- `app/persistence/sqlite_workflow_state_schema.py`
+- `app/persistence/sqlite_trace_store.py`
+- `app/persistence/sqlite_trace_schema.py`
+- `app/persistence/memory_store_adapter.py`
+- `app/contracts/memory.py`
+- `tests/unit/persistence/`
+- `tests/integration/test_startup_persistence.py`
+- `tests/integration/test_sqlite_connection_smoke.py`
+- `tests/integration/test_trace_store_sqlite_smoke.py`
+- `tests/integration/test_workflow_state_store_sqlite_smoke.py`
+- `tests/fixtures/config/persistence_*.yaml`
+
+Later backend phases can rely on these guarantees without reopening the persistence composition root:
+
+- workflow-state and trace SQLite paths resolve from `backend/` and default into `backend/data/`
+- memory access is isolated behind `app/persistence/memory_store_adapter.py`
+- only persistence adapters import storage engines such as SQLite or `memory_store`
+- `/health` reports safe required-versus-optional readiness for workflow-state, trace, and memory
+- test fixtures exist for local SQLite startup, optional memory degradation, invalid providers, required-store failure, and fake-provider wiring
+
+The following persistence concerns remain intentionally deferred:
+
+- deeper workflow-state schema tuning and optimistic concurrency
+- trace query and debug APIs
+- document ingestion and chunk lifecycle management beyond the shallow adapter boundary
+- privacy export/delete workflows and retention policies
+- deployment-volume, backup, and restore decisions
+
+When the general persistence boundary froze, the next dependent documents were, in order:
+
+- `../docs/backend-sqlite-workflow-state-architecture.md`
+- `../docs/backend-sqlite-trace-store-architecture.md`
+- `../docs/backend-memory-store-adapter-architecture.md`
+- then the API, session, orchestration, tool, and agent architecture documents that consume the persistence boundaries
+
+## Workflow-State Freeze
+
+The following workflow-state surfaces are now the stable handoff boundary for later backend phases:
+
+- `app/contracts/state.py`
+- `app/persistence/workflow_state_store.py`
+- `app/persistence/sqlite_workflow_state_store.py`
+- `app/persistence/sqlite_workflow_state_schema.py`
+- `tests/unit/persistence/test_sqlite_workflow_state_schema.py`
+- `tests/unit/persistence/test_sqlite_workflow_state_serialization.py`
+- `tests/unit/persistence/test_sqlite_workflow_state_reset.py`
+- `tests/unit/persistence/test_sqlite_workflow_state_health.py`
+- `tests/integration/test_workflow_state_store_sqlite_smoke.py`
+- `tests/integration/test_workflow_state_store_concurrency.py`
+- `tests/integration/test_startup_persistence.py`
+- `tests/fixtures/config/workflow_state_*.yaml`
+
+Later backend phases can rely on these guarantees without reopening workflow-state internals:
+
+- workflow state is consumed only through `WorkflowStateStore` and startup wiring; non-persistence modules do not import SQLite
+- relative workflow-state paths resolve from `backend/` and default to `backend/data/workflow_state.db`
+- `load()` returns the canonical empty state on misses, `save()` enforces JSON-safe size and sensitive-field guardrails, and `reset()` clears short-term workflow state only
+- workflow-state health exposes safe provider, schema, journal, and synchronous readiness details without leaking paths, session IDs, or state payloads
+- shared SQLite conventions now match the trace store: config-driven parent-directory creation, schema-version bootstrap, configured pragmas, and safe health output
+
+The following workflow-state concerns remain intentionally deferred:
+
+- cleanup and retention policies for session-state rows and reset history
+- compare-and-set or stronger optimistic-concurrency behavior beyond the current version and conflict seam
+- stricter conversation-history compaction or summarization policy
+- API and session-service decisions about when to load or save state and how much history to persist
+
+The next persistence-specific document is `../docs/backend-sqlite-trace-store-architecture.md`. The next direct consumers of this boundary are `../docs/backend-api-architecture.md` and the later session-service architecture.
+
+Focused workflow-state validation from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\persistence tests\integration\test_workflow_state_store_sqlite_smoke.py tests\integration\test_workflow_state_store_concurrency.py tests\integration\test_startup_persistence.py
+.\.venv\Scripts\python.exe -m ruff check app\persistence app\config tests\unit\persistence tests\integration\test_workflow_state_store_sqlite_smoke.py tests\integration\test_workflow_state_store_concurrency.py tests\integration\test_startup_persistence.py
+.\.venv\Scripts\python.exe -m mypy app
+```
+
 ## Setup
 
 Use the existing virtual environment in `.venv/`.
@@ -176,12 +267,27 @@ The expected process-level settings for this phase are:
 - `APP_CONFIG_PATH`
 - `APP_CONFIG_OVERRIDE_PATH`
 - `APP_DATA_DIR`
+- `MEMORY_STORE_DB_PATH`
 - `BACKEND_HOST`
 - `BACKEND_PORT`
 - `LOG_LEVEL`
 - `LOG_JSON`
 
-Provider and integration variables such as `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MCP_MAIN_URL`, `MEMORY_STORE_CONFIG`, `SQLITE_WORKFLOW_STATE_URL`, and `SQLITE_TRACE_URL` remain configuration inputs only. They are not exercised by real gateway implementations in this phase.
+Local persistence defaults now resolve to:
+
+- `backend/data/workflow_state.db` for workflow state
+- `backend/data/trace.db` for operational traces
+- `backend/data/memory` for the optional `memory_store` database path when `MEMORY_STORE_DB_PATH` is not overridden
+
+Focused persistence config fixtures live under `backend/tests/fixtures/config/`:
+
+- `persistence_sqlite_local.yaml`
+- `persistence_memory_optional.yaml`
+- `persistence_required_store_failure.yaml`
+- `persistence_invalid_provider.yaml`
+- `persistence_fake.yaml`
+
+Provider and integration variables such as `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MCP_MAIN_URL`, `MEMORY_STORE_CONFIG`, `SQLITE_WORKFLOW_STATE_URL`, and `SQLITE_TRACE_URL` remain configuration inputs. The backend now uses the `memory_store` package only behind `app/persistence/memory_store_adapter.py`.
 
 ## Validation
 
@@ -190,4 +296,10 @@ Provider and integration variables such as `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m mypy app
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Focused persistence validation from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\persistence\test_memory_scope.py tests\unit\persistence\test_memory_store_adapter_health.py tests\unit\test_health.py tests\integration\test_startup_persistence.py
 ```

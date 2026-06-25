@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
+
+from app.contracts.errors import WorkflowStateError
+from app.contracts.state import default_workflow_state, normalize_workflow_state_session_id
 
 
 class FakeWorkflowStateStore:
@@ -15,16 +19,32 @@ class FakeWorkflowStateStore:
         self.reset_requests: list[str] = []
 
     async def load(self, session_id: str) -> dict[str, Any]:
-        self.load_requests.append(session_id)
-        return dict(self.states.get(session_id, {}))
+        normalized_session_id = _normalize_session_id(session_id)
+        self.load_requests.append(normalized_session_id)
+        if normalized_session_id not in self.states:
+            return default_workflow_state(normalized_session_id)
+        return deepcopy(self.states[normalized_session_id])
 
     async def save(self, session_id: str, state: dict[str, Any]) -> None:
-        self.save_requests.append((session_id, dict(state)))
-        self.states[session_id] = dict(state)
+        normalized_session_id = _normalize_session_id(session_id)
+        if not isinstance(state, dict):
+            raise WorkflowStateError("Workflow-state payload must be a JSON object.")
+
+        saved_state = deepcopy(state)
+        self.save_requests.append((normalized_session_id, saved_state))
+        self.states[normalized_session_id] = saved_state
 
     async def reset(self, session_id: str) -> None:
-        self.reset_requests.append(session_id)
-        self.states.pop(session_id, None)
+        normalized_session_id = _normalize_session_id(session_id)
+        self.reset_requests.append(normalized_session_id)
+        self.states.pop(normalized_session_id, None)
 
     async def health(self) -> dict[str, Any]:
-        return {"status": "ok", "provider": "fake"}
+        return {"status": "ok", "configured": True, "provider": "fake"}
+
+
+def _normalize_session_id(session_id: object) -> str:
+    try:
+        return normalize_workflow_state_session_id(session_id)
+    except ValueError as exc:
+        raise WorkflowStateError("Invalid workflow-state session identifier.") from exc
