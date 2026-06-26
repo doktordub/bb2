@@ -102,7 +102,7 @@ def test_request_observability_events_and_metrics(monkeypatch: pytest.MonkeyPatc
 
         with sqlite3.connect(database_path) as connection:
             rows = connection.execute(
-                "SELECT event_type, component, trace_id, payload_json FROM trace_events ORDER BY id"
+                "SELECT event_name, component, trace_id, payload_json FROM trace_events ORDER BY created_at ASC, trace_id ASC, sequence_no ASC"
             ).fetchall()
 
         metrics = app.state.container.metrics
@@ -120,12 +120,12 @@ def test_request_observability_events_and_metrics(monkeypatch: pytest.MonkeyPatc
     assert response_returned[-1][2] == "trace-test-123"
     assert json.loads(request_received[-1][3]) == {
         "method": "GET",
-        "route": "/health",
+        "route_template": "/health",
         "streaming": False,
     }
     assert json.loads(response_returned[-1][3]) == {
         "method": "GET",
-        "route": "/health",
+        "route_template": "/health",
         "status_code": 200,
         "duration_ms": json.loads(response_returned[-1][3])["duration_ms"],
         "streaming": False,
@@ -152,7 +152,7 @@ def test_invalid_trace_id_header_is_replaced(monkeypatch: pytest.MonkeyPatch, tm
 
         with sqlite3.connect(database_path) as connection:
             trace_id = connection.execute(
-                "SELECT trace_id FROM trace_events WHERE event_type = 'request_received' ORDER BY id DESC LIMIT 1"
+                "SELECT trace_id FROM trace_events WHERE event_name = 'request_received' ORDER BY created_at DESC, trace_id DESC, sequence_no DESC LIMIT 1"
             ).fetchone()[0]
 
     assert trace_id == response.headers["x-trace-id"]
@@ -168,12 +168,14 @@ def test_not_found_error_includes_trace_id(monkeypatch: pytest.MonkeyPatch, tmp_
 
         assert response.status_code == 404
         assert response.json() == {
+            "schema_version": "1.0",
+            "trace_id": response.headers["x-trace-id"],
             "error": {
-                "code": "NOT_FOUND",
+                "code": "not_found",
                 "message": "Resource not found.",
-                "trace_id": response.headers["x-trace-id"],
+                "retryable": False,
                 "details": {},
-            }
+            },
         }
 
 
@@ -212,26 +214,28 @@ def test_unhandled_error_returns_stable_json_and_trace_safe_observability(
             assert response.status_code == 500
             assert response.headers["x-trace-id"] == "trace-error-123"
             assert response.json() == {
+                "schema_version": "1.0",
+                "trace_id": "trace-error-123",
                 "error": {
-                    "code": "INTERNAL_ERROR",
+                    "code": "internal_error",
                     "message": "An internal server error occurred.",
-                    "trace_id": "trace-error-123",
+                    "retryable": False,
                     "details": {},
-                }
+                },
             }
 
         with sqlite3.connect(database_path) as connection:
             payload_json = connection.execute(
-                "SELECT payload_json FROM trace_events WHERE event_type = 'error_occurred' ORDER BY id DESC LIMIT 1"
+                "SELECT payload_json FROM trace_events WHERE event_name = 'error_occurred' ORDER BY created_at DESC, trace_id DESC, sequence_no DESC LIMIT 1"
             ).fetchone()[0]
 
     payload = json.loads(payload_json)
     assert payload["error_type"] == "RuntimeError"
     assert payload["details"] == {
         "method": "GET",
-        "route": "/boom",
+        "route_template": "/boom",
         "status_code": 500,
-        "error_code": "INTERNAL_ERROR",
+        "error_code": "internal_error",
     }
     assert "secret-token" not in payload_json
     assert "secret-token" not in caplog.text

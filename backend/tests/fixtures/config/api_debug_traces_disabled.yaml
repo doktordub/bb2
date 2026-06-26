@@ -1,0 +1,6 @@
+api:
+  debug_routes:
+    enabled: false
+    require_localhost: true
+    max_trace_events: 100
+    max_search_results: 25

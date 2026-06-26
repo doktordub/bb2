@@ -1,15 +1,31 @@
-"""Foundation capabilities route."""
+"""Capabilities routes for the backend API boundary."""
 
-from typing import Any, cast
+from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
 
+from app.api.dependencies import (
+    get_api_request_context,
+    get_api_settings as get_api_settings_dependency,
+    get_foundation_container,
+)
+from app.api.request_context import ApiRequestContext
+from app.api.schemas import CapabilitiesResponse, CapabilitiesResponseData
+from app.config.view import ApiSettings
 from app.foundation.container import FoundationContainer
 
-router = APIRouter(tags=["foundation"])
+router = APIRouter(tags=["capabilities"])
 
 
-@router.get("/capabilities")
-async def get_capabilities(request: Request) -> dict[str, Any]:
-    container = cast(FoundationContainer, request.app.state.container)
-    return container.capabilities.describe()
+@router.get("/capabilities", response_model=CapabilitiesResponse)
+async def get_capabilities(
+    context: ApiRequestContext = Depends(get_api_request_context),
+    api_settings: ApiSettings = Depends(get_api_settings_dependency),
+    container: FoundationContainer = Depends(get_foundation_container),
+) -> CapabilitiesResponse:
+    payload = container.capabilities.describe_api(api_settings=api_settings)
+    return CapabilitiesResponse(
+        trace_id=context.trace_id,
+        data=CapabilitiesResponseData.model_validate(payload),
+        metadata={},
+    )

@@ -2,17 +2,20 @@
 
 from dataclasses import dataclass
 
+from app.config.settings import Settings
+from app.config.view import ApiSettings
 from app.contracts.config import ConfigurationView
 from app.contracts.memory import MemoryGateway
 from app.contracts.state import WorkflowStateStore
 from app.contracts.trace import TraceStore
-from app.config.settings import Settings
 from app.foundation.capabilities import CapabilitiesService
 from app.foundation.health import HealthRegistry
+from app.observability.debug_trace_service import DebugTraceService
 from app.observability.metrics import MetricsRecorder
 from app.observability.redaction import Redactor
 from app.observability.tracing import TraceRecorder
 from app.persistence.factory import PersistenceBundle
+from app.session.service import SessionService
 
 
 @dataclass(frozen=True)
@@ -31,3 +34,6 @@ class FoundationContainer:
     metrics: MetricsRecorder
     health: HealthRegistry
     capabilities: CapabilitiesService
+    api_settings: ApiSettings | None = None
+    session_service: SessionService | None = None
+    debug_trace_service: DebugTraceService | None = None

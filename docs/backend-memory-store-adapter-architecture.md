@@ -81,9 +81,11 @@ Phase 9: Session Service Deepening
 Phase 10: LLM Gateway
 Phase 11: Memory Gateway and Memory Store Adapter
 Phase 12: Tool Gateway and MCP Client Adapter
-Phase 13: Orchestration Runtime and Strategies
-Phase 14: Agent Plugins
-Phase 15: Hardening and Deployment Readiness
+Phase 13: Orchestration Runtime and Strategy Contract
+Phase 14: Workflow Strategy Implementations
+Phase 15: Agent Plugins
+Phase 16: Policy Hardening
+Phase 17: Deployment Readiness
 ```
 
 This document expands Phase 11.

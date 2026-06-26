@@ -45,14 +45,34 @@ def test_capabilities_route(monkeypatch: pytest.MonkeyPatch) -> None:
 
         assert response.status_code == 200
         assert response.json() == {
-            "service": "pluggable-agentic-ai-backend",
-            "capabilities": {
-                "chat": True,
-                "streaming": True,
-                "session_reset": True,
-                "mcp_tools": True,
-                "memory": True,
-                "llm_profiles": True,
-                "trace": True,
+            "schema_version": "1.0",
+            "trace_id": response.headers["x-trace-id"],
+            "data": {
+                "chat": {
+                    "enabled": True,
+                    "streaming_enabled": True,
+                    "max_message_chars": 20000,
+                },
+                "sessions": {
+                    "reset_enabled": True,
+                    "history_enabled": False,
+                    "client_session_id_enabled": True,
+                },
+                "usecases": [
+                    {
+                        "name": "routing_chat",
+                        "display_name": "Routing Chat",
+                        "description": "Routed chat use case.",
+                    },
+                    {
+                        "name": "support_chat",
+                        "display_name": "Support Chat",
+                        "description": "Support chat use case.",
+                    },
+                ],
+                "debug": {
+                    "trace_routes_enabled": False,
+                },
             },
+            "metadata": {},
         }

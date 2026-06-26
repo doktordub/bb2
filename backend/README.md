@@ -13,7 +13,7 @@ All backend application work lives under `backend/`. Run backend commands from t
 
 ## Phase Scope
 
-The backend foundation, core contracts, configuration, observability, general persistence, and SQLite workflow-state slices are complete and frozen for later backend phases:
+The backend foundation, core contracts, configuration, observability, general persistence, SQLite workflow-state, and SQLite trace-store slices are complete and frozen for later backend phases:
 
 - deterministic backend-root-relative settings and config path resolution
 - validated YAML loading, override merging, `${env:...}` interpolation, schema validation, and secret redaction
@@ -25,6 +25,7 @@ The backend foundation, core contracts, configuration, observability, general pe
 - `TraceRecorder`, SQLite-backed trace persistence behind `app/persistence/`, and reusable health/metrics services
 - persistence bundle wiring for workflow-state, trace, and optional memory providers
 - SQLite workflow-state schema, safe reset semantics, observability hooks, and concurrency baseline
+- SQLite trace-store schema, bounded read/search and retention behavior, plus concurrent write coverage
 - stable shared contract DTOs, protocols, and in-memory fakes under `backend/app/contracts/` and `backend/app/testing/fakes/`
 - backend-local unit tests plus linting and type checks
 
@@ -146,8 +147,8 @@ Later backend phases can rely on these guarantees without reopening the observab
 
 The following observability concerns remain intentionally deferred:
 
-- trace query APIs
-- trace retention, archival, and compression
+- protected trace debug routes and access policy
+- retention scheduling, archival, and compression policy
 - per-token streaming trace events
 - centralized log shipping
 - OpenTelemetry or other distributed tracing integration
@@ -188,7 +189,7 @@ Later backend phases can rely on these guarantees without reopening the persiste
 The following persistence concerns remain intentionally deferred:
 
 - deeper workflow-state schema tuning and optimistic concurrency
-- trace query and debug APIs
+- protected trace debug APIs and trace delete/export policy
 - document ingestion and chunk lifecycle management beyond the shallow adapter boundary
 - privacy export/delete workflows and retention policies
 - deployment-volume, backup, and restore decisions
@@ -239,6 +240,58 @@ Focused workflow-state validation from `backend/`:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests\unit\persistence tests\integration\test_workflow_state_store_sqlite_smoke.py tests\integration\test_workflow_state_store_concurrency.py tests\integration\test_startup_persistence.py
 .\.venv\Scripts\python.exe -m ruff check app\persistence app\config tests\unit\persistence tests\integration\test_workflow_state_store_sqlite_smoke.py tests\integration\test_workflow_state_store_concurrency.py tests\integration\test_startup_persistence.py
+.\.venv\Scripts\python.exe -m mypy app
+```
+
+## Trace-Store Freeze
+
+The following trace-store surfaces are now the stable handoff boundary for later backend phases:
+
+- `app/contracts/trace.py`
+- `app/persistence/trace_store.py`
+- `app/persistence/sqlite_trace_store.py`
+- `app/persistence/sqlite_trace_schema.py`
+- `app/persistence/sqlite_trace_queries.py`
+- `tests/unit/persistence/test_fake_trace_store.py`
+- `tests/unit/persistence/test_sqlite_trace_schema.py`
+- `tests/unit/persistence/test_sqlite_trace_query_builder.py`
+- `tests/unit/persistence/test_sqlite_trace_redaction.py`
+- `tests/unit/persistence/test_sqlite_trace_serialization.py`
+- `tests/unit/persistence/test_sqlite_trace_health.py`
+- `tests/integration/test_trace_store_sqlite_smoke.py`
+- `tests/integration/test_sqlite_trace_store_recording.py`
+- `tests/integration/test_sqlite_trace_store_batch.py`
+- `tests/integration/test_sqlite_trace_store_read_trace.py`
+- `tests/integration/test_sqlite_trace_store_search.py`
+- `tests/integration/test_sqlite_trace_store_retention.py`
+- `tests/integration/test_sqlite_trace_store_concurrency.py`
+- `tests/integration/test_startup_persistence.py`
+- `tests/fixtures/config/trace_*.yaml`
+
+Later backend phases can rely on these guarantees without reopening trace-store internals:
+
+- trace storage is consumed only through `TraceStore`, `TraceRecorder`, and startup wiring; non-persistence modules do not import SQLite
+- relative trace-store paths resolve from `backend/` and default to `backend/data/trace.db`
+- validated trace configuration keys under `persistence.trace.sqlite` cover `path`, `create_parent_dirs`, `initialize_schema`, `journal_mode`, `synchronous`, `busy_timeout_ms`, `foreign_keys`, `max_event_payload_bytes`, `max_error_detail_bytes`, `max_events_per_trace_read`, `max_search_results`, raw-versus-hashed session and user ID policy, capture toggles, and retention settings
+- `record_event()`, `record_events()`, `read_trace()`, `search_traces()`, `health()`, and retention cleanup are available behind the contract with bounded, redacted behavior
+- trace search returns summaries only, trace reads preserve per-trace `sequence_no` ordering, and retention is disabled by default unless `retention.enabled` is set
+- shared SQLite conventions match workflow-state: config-driven parent-directory creation, schema-version bootstrap, configured pragmas, safe health output, and concurrent local writes validated under WAL plus busy-timeout settings
+
+The following trace-store concerns remain intentionally deferred:
+
+- protected or role-gated trace debug routes
+- session or user trace delete/export policy
+- prompt or completion capture outside explicit local-debug policy decisions
+- outbox, retry, or stronger write-reliability patterns beyond local SQLite guarantees
+- cross-service trace correlation beyond the single backend process
+
+The next direct consumers of this boundary are `../docs/backend-api-architecture.md`, the later session-service architecture, and the later orchestration architecture. Those phases decide when trace reads are exposed and which runtime modules emit which event families.
+
+Focused trace-store validation from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\persistence tests\unit\observability\test_trace_recorder.py tests\integration\test_trace_store_sqlite_smoke.py tests\integration\test_sqlite_trace_store_recording.py tests\integration\test_sqlite_trace_store_batch.py tests\integration\test_sqlite_trace_store_read_trace.py tests\integration\test_sqlite_trace_store_search.py tests\integration\test_sqlite_trace_store_retention.py tests\integration\test_sqlite_trace_store_concurrency.py tests\integration\test_startup_persistence.py
+.\.venv\Scripts\python.exe -m ruff check app tests
 .\.venv\Scripts\python.exe -m mypy app
 ```
 

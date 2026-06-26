@@ -50,11 +50,17 @@ async def test_sqlite_workflow_state_store_emits_safe_success_events_and_metrics
 
     assert missing["metadata"]["loaded_empty"] is True
     assert loaded == state
-    assert [event.event_type for event in trace_store.events] == [
+    assert [event.resolved_event_name for event in trace_store.events] == [
         WORKFLOW_STATE_LOADED,
         WORKFLOW_STATE_SAVED,
         WORKFLOW_STATE_LOADED,
         WORKFLOW_STATE_RESET,
+    ]
+    assert [event.event_type for event in trace_store.events] == [
+        "workflow_state",
+        "workflow_state",
+        "workflow_state",
+        "workflow_state",
     ]
 
     load_miss_payload = trace_store.events[0].payload
@@ -126,7 +132,10 @@ async def test_sqlite_workflow_state_store_emits_failure_events_and_metrics(tmp_
 
     assert len(trace_store.events) == 1
     event = trace_store.events[0]
-    assert event.event_type == ERROR_OCCURRED
+    assert event.resolved_event_name == ERROR_OCCURRED
+    assert event.event_type == "error"
+    assert event.status == "failed"
+    assert event.severity == "error"
     assert event.payload == {
         "provider": "sqlite",
         "operation": "save",
@@ -170,7 +179,10 @@ async def test_workflow_state_observer_records_conflict_metrics() -> None:
 
     assert len(trace_store.events) == 1
     event = trace_store.events[0]
-    assert event.event_type == WORKFLOW_STATE_CONFLICT
+    assert event.resolved_event_name == WORKFLOW_STATE_CONFLICT
+    assert event.event_type == "workflow_state"
+    assert event.status == "failed"
+    assert event.severity == "warning"
     assert event.payload == {
         "provider": "sqlite",
         "operation": "save",

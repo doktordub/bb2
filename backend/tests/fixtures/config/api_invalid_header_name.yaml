@@ -1,0 +1,3 @@
+api:
+  sessions:
+    session_id_header: X Session Id

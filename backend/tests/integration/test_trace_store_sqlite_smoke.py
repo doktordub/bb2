@@ -20,6 +20,7 @@ async def test_sqlite_trace_store_records_event(tmp_path) -> None:
     store = SqliteTraceStore(database_path)
 
     await store.initialize()
+    await store.initialize()
     await store.record_event(
         TraceEvent(
             trace_id=f"trace_{uuid4().hex}",
@@ -32,14 +33,21 @@ async def test_sqlite_trace_store_records_event(tmp_path) -> None:
     )
 
     with sqlite3.connect(database_path) as connection:
-        row = connection.execute(
-            "SELECT trace_id, event_type, component, payload_json FROM trace_events"
+        run_row = connection.execute(
+            "SELECT trace_id, status, event_count, error_count FROM trace_runs"
+        ).fetchone()
+        event_row = connection.execute(
+            "SELECT trace_id, sequence_no, event_name, event_type, component, payload_json FROM trace_events"
         ).fetchone()
 
-    assert row is not None
-    assert row[1] == "request_received"
-    assert row[2] == "api.health"
-    assert json.loads(row[3]) == {"status_code": 200}
+    assert run_row is not None
+    assert run_row[1:] == ("completed", 1, 0)
+    assert event_row is not None
+    assert event_row[1] == 1
+    assert event_row[2] == "request_received"
+    assert event_row[3] == "request_received"
+    assert event_row[4] == "api.health"
+    assert json.loads(event_row[5]) == {"status_code": 200}
 
 
 def test_trace_schema_bootstrap_runs_during_lifespan_startup(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

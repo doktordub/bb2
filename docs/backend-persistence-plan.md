@@ -428,7 +428,7 @@ Close the general persistence-boundary phase cleanly so the next focused backend
   - `docs/backend-sqlite-trace-store-architecture.md`
   - `docs/backend-memory-store-adapter-architecture.md`
   - then the API, session, orchestration, tool, and agent documents that consume the persistence boundaries
-- [DONE] Record the follow-on status: `docs/backend-sqlite-workflow-state-plan.md` now freezes the workflow-state slice, so the next persistence-specific deepening document is `docs/backend-sqlite-trace-store-architecture.md`.
+- [DONE] Record the follow-on status: `docs/backend-sqlite-workflow-state-plan.md` now freezes the workflow-state slice, and `docs/backend-sqlite-trace-store-plan.md` now freezes the trace-store slice, so the remaining persistence-specific deepening document is `docs/backend-memory-store-adapter-architecture.md` while the next direct consumers are `docs/backend-api-architecture.md`, the later session-service document, and the later orchestration document.
 
 **Validation**
 
@@ -471,7 +471,7 @@ This plan should be considered complete when the backend can do all of the follo
 - Expose safe health status for workflow-state, trace, and memory providers.
 - Keep `memory_store` isolated behind a backend-local adapter boundary.
 - Run focused unit and integration tests without depending on real production data files.
-- Hand off cleanly to the next workflow-state and memory-specific architecture documents.
+- Hand off cleanly to the next API, session-service, orchestration, and remaining memory-specific architecture documents.
 
 The key constraint remains unchanged throughout implementation:
 

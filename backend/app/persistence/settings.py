@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from app.contracts.config import ConfigurationView
 from app.contracts.errors import ConfigurationError
@@ -643,7 +643,7 @@ def _read_reset_mode(
         raise ConfigurationError(
             f"Invalid config value at {path}: expected one of {supported}."
         )
-    return cast(WorkflowStateResetMode, value)
+    return value
 
 
 def _read_trace_capture_mode(

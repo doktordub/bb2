@@ -7,9 +7,17 @@ from app.config.loader import load_validated_config
 from app.config.settings import BACKEND_ROOT
 from app.config.redaction import REDACTED_VALUE
 from app.config.view import (
+    ApiDebugRoutesSettings,
+    ApiRequestLimitSettings,
+    ApiSessionSettings,
+    ApiSettings,
+    ApiSseSettings,
+    ApiTracingSettings,
+    CorsSettings,
     HealthSettings,
     ObservabilitySettings,
     ValidatedConfigurationView,
+    get_api_settings,
     get_health_settings,
     get_observability_settings,
 )
@@ -18,7 +26,6 @@ from app.persistence.settings import (
     MemoryPersistenceSettings,
     MemoryStoreSettings,
     PersistenceSettings,
-    SqliteStoreSettings,
     SqliteTraceStoreSettings,
     SqliteWorkflowStateSettings,
     TracePersistenceSettings,
@@ -27,6 +34,7 @@ from app.persistence.settings import (
 from app.persistence.paths import resolve_backend_path, resolve_data_path
 
 TRACE_FIXTURE_PATH = "tests/fixtures/config/trace_sqlite.yaml"
+CONFIG_FIXTURES_DIR = BACKEND_ROOT / "tests" / "fixtures" / "config"
 
 
 def build_view() -> ValidatedConfigurationView:
@@ -35,6 +43,57 @@ def build_view() -> ValidatedConfigurationView:
             "app": {
                 "environment": "local",
                 "active_usecase": "support_chat",
+            },
+            "api": {
+                "enabled": True,
+                "base_path": "/api/v1",
+                "docs_enabled": False,
+                "openapi_enabled": False,
+                "cors": {
+                    "enabled": True,
+                    "allow_origins": [
+                        "http://localhost:5000",
+                        "https://frontend.example.local",
+                    ],
+                    "allow_credentials": True,
+                    "allow_methods": ["GET", "POST", "OPTIONS"],
+                    "allow_headers": [
+                        "Authorization",
+                        "Content-Type",
+                        "X-Request-Id",
+                        "X-Trace-Id",
+                    ],
+                },
+                "request_limits": {
+                    "max_body_bytes": 8192,
+                    "max_message_chars": 4096,
+                    "max_metadata_bytes": 1024,
+                    "request_timeout_seconds": 30,
+                    "stream_timeout_seconds": 45,
+                },
+                "sessions": {
+                    "accept_client_session_id": True,
+                    "create_session_when_missing": False,
+                    "session_id_header": "X-Session-Id",
+                },
+                "tracing": {
+                    "accept_client_trace_id": True,
+                    "response_trace_header": "X-Trace-Id",
+                    "record_request_received": True,
+                    "record_response_returned": False,
+                    "record_validation_errors": True,
+                },
+                "debug_routes": {
+                    "enabled": True,
+                    "require_localhost": True,
+                    "max_trace_events": 25,
+                    "max_search_results": 10,
+                },
+                "sse": {
+                    "heartbeat_seconds": 5,
+                    "send_trace_id_event": False,
+                    "send_metadata_events": True,
+                },
             },
             "llm": {
                 "providers": {
@@ -183,6 +242,57 @@ def test_validated_config_view_redacted_dump_masks_secrets() -> None:
             "environment": "local",
             "active_usecase": "support_chat",
         },
+        "api": {
+            "enabled": True,
+            "base_path": "/api/v1",
+            "docs_enabled": False,
+            "openapi_enabled": False,
+            "cors": {
+                "enabled": True,
+                "allow_origins": [
+                    "http://localhost:5000",
+                    "https://frontend.example.local",
+                ],
+                "allow_credentials": REDACTED_VALUE,
+                "allow_methods": ["GET", "POST", "OPTIONS"],
+                "allow_headers": [
+                    "Authorization",
+                    "Content-Type",
+                    "X-Request-Id",
+                    "X-Trace-Id",
+                ],
+            },
+            "request_limits": {
+                "max_body_bytes": 8192,
+                "max_message_chars": 4096,
+                "max_metadata_bytes": 1024,
+                "request_timeout_seconds": 30,
+                "stream_timeout_seconds": 45,
+            },
+            "sessions": {
+                "accept_client_session_id": True,
+                "create_session_when_missing": False,
+                "session_id_header": "X-Session-Id",
+            },
+            "tracing": {
+                "accept_client_trace_id": True,
+                "response_trace_header": "X-Trace-Id",
+                "record_request_received": True,
+                "record_response_returned": False,
+                "record_validation_errors": True,
+            },
+            "debug_routes": {
+                "enabled": True,
+                "require_localhost": True,
+                "max_trace_events": 25,
+                "max_search_results": 10,
+            },
+            "sse": {
+                "heartbeat_seconds": 5,
+                "send_trace_id_event": False,
+                "send_metadata_events": True,
+            },
+        },
         "llm": {
             "providers": {
                 "openai": {
@@ -318,6 +428,122 @@ def test_validated_config_view_health_helpers_return_typed_settings() -> None:
 
     assert get_health_settings(view) == expected
     assert view.health_settings() == expected
+
+
+def test_validated_config_view_api_helpers_return_typed_settings() -> None:
+    view = build_view()
+
+    expected = ApiSettings(
+        enabled=True,
+        base_path="/api/v1",
+        docs_enabled=False,
+        openapi_enabled=False,
+        cors=CorsSettings(
+            enabled=True,
+            allow_origins=(
+                "http://localhost:5000",
+                "https://frontend.example.local",
+            ),
+            allow_credentials=True,
+            allow_methods=("GET", "POST", "OPTIONS"),
+            allow_headers=(
+                "Authorization",
+                "Content-Type",
+                "X-Request-Id",
+                "X-Trace-Id",
+            ),
+        ),
+        request_limits=ApiRequestLimitSettings(
+            max_body_bytes=8192,
+            max_message_chars=4096,
+            max_metadata_bytes=1024,
+            request_timeout_seconds=30,
+            stream_timeout_seconds=45,
+        ),
+        sessions=ApiSessionSettings(
+            accept_client_session_id=True,
+            create_session_when_missing=False,
+            session_id_header="X-Session-Id",
+        ),
+        tracing=ApiTracingSettings(
+            accept_client_trace_id=True,
+            response_trace_header="X-Trace-Id",
+            record_request_received=True,
+            record_response_returned=False,
+            record_validation_errors=True,
+        ),
+        debug_routes=ApiDebugRoutesSettings(
+            enabled=True,
+            require_localhost=True,
+            max_trace_events=25,
+            max_search_results=10,
+        ),
+        sse=ApiSseSettings(
+            heartbeat_seconds=5,
+            send_trace_id_event=False,
+            send_metadata_events=True,
+        ),
+    )
+
+    assert get_api_settings(view) == expected
+    assert view.api_settings() == expected
+
+
+@pytest.mark.parametrize(
+    (
+        "override_name",
+        "expected_base_path",
+        "expected_cors_enabled",
+        "expected_max_message_chars",
+        "expected_debug_enabled",
+        "expected_heartbeat_seconds",
+    ),
+    [
+        ("api_basic.yaml", "", False, 20000, False, 15),
+        ("api_streaming_enabled.yaml", "/api/v1", True, 20000, False, 5),
+        ("api_debug_traces_enabled.yaml", "", False, 20000, True, 15),
+        ("api_small_request_limits.yaml", "", False, 128, False, 15),
+        ("api_cors_localhost.yaml", "", True, 20000, False, 15),
+    ],
+)
+def test_api_settings_load_from_fixture_overrides(
+    override_name: str,
+    expected_base_path: str,
+    expected_cors_enabled: bool,
+    expected_max_message_chars: int,
+    expected_debug_enabled: bool,
+    expected_heartbeat_seconds: int,
+) -> None:
+    parsed = load_validated_config(
+        CONFIG_FIXTURES_DIR / "valid_minimal.yaml",
+        override_path=CONFIG_FIXTURES_DIR / override_name,
+        env={},
+    )
+    view = ValidatedConfigurationView(parsed.model_dump(mode="python"))
+    settings = view.api_settings()
+
+    assert settings.enabled is True
+    assert settings.base_path == expected_base_path
+    assert settings.cors.enabled is expected_cors_enabled
+    assert settings.request_limits.max_message_chars == expected_max_message_chars
+    assert settings.debug_routes.enabled is expected_debug_enabled
+    assert settings.sse.heartbeat_seconds == expected_heartbeat_seconds
+
+
+def test_api_settings_fixture_normalizes_base_path_and_origins() -> None:
+    parsed = load_validated_config(
+        CONFIG_FIXTURES_DIR / "valid_minimal.yaml",
+        override_path=CONFIG_FIXTURES_DIR / "api_streaming_enabled.yaml",
+        env={},
+    )
+    view = ValidatedConfigurationView(parsed.model_dump(mode="python"))
+    settings = view.api_settings()
+
+    assert settings.base_path == "/api/v1"
+    assert settings.cors.allow_origins == (
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+    )
 
 
 def test_validated_config_view_persistence_helpers_return_typed_settings() -> None:

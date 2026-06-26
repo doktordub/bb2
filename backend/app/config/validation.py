@@ -49,6 +49,8 @@ def validate_backend_config(config: BackendConfig) -> None:
 
     errors: list[str] = []
 
+    _validate_api_config(errors, config=config)
+
     active_usecase = config.usecases.get(config.app.active_usecase)
     if active_usecase is None:
         errors.append(
@@ -168,6 +170,25 @@ def validate_backend_config(config: BackendConfig) -> None:
 
     if errors:
         raise ConfigurationError("; ".join(errors))
+
+
+def _validate_api_config(errors: list[str], *, config: BackendConfig) -> None:
+    api = config.api
+
+    if api.request_limits.max_metadata_bytes > api.request_limits.max_body_bytes:
+        errors.append(
+            "api.request_limits.max_metadata_bytes must be less than or equal to "
+            "api.request_limits.max_body_bytes."
+        )
+
+    if api.sessions.session_id_header.lower() == api.tracing.response_trace_header.lower():
+        errors.append(
+            "api.sessions.session_id_header and api.tracing.response_trace_header "
+            "must be different."
+        )
+
+    if api.debug_routes.enabled and not config.features.trace_enabled:
+        errors.append("api.debug_routes.enabled requires features.trace_enabled to be true.")
 
 
 def _validate_agent_tool_subset(

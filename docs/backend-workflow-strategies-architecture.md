@@ -86,7 +86,8 @@ Phase 12: Tool Gateway and MCP Client Adapter
 Phase 13: Orchestration Runtime and Strategy Contract
 Phase 14: Workflow Strategy Implementations
 Phase 15: Agent Plugins
-Phase 16: Hardening and Deployment Readiness
+Phase 16: Policy Hardening
+Phase 17: Deployment Readiness
 ```
 
 This document expands Phase 14.

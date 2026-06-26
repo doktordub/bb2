@@ -67,12 +67,12 @@ def test_observability_enabled_override_records_request_payloads(
         database_path = resolve_trace_store_path(app.state.container.config)
         with sqlite3.connect(database_path) as connection:
             payload_json = connection.execute(
-                "SELECT payload_json FROM trace_events WHERE event_type = 'request_received' ORDER BY id DESC LIMIT 1"
+                "SELECT payload_json FROM trace_events WHERE event_name = 'request_received' ORDER BY created_at DESC, trace_id DESC, sequence_no DESC LIMIT 1"
             ).fetchone()[0]
 
     assert json.loads(payload_json) == {
         "method": "GET",
-        "route": "/health",
+        "route_template": "/health",
         "streaming": False,
     }
 
@@ -95,7 +95,7 @@ def test_trace_payloads_disabled_override_omits_request_payloads(
         database_path = resolve_trace_store_path(app.state.container.config)
         with sqlite3.connect(database_path) as connection:
             payload_json = connection.execute(
-                "SELECT payload_json FROM trace_events WHERE event_type = 'request_received' ORDER BY id DESC LIMIT 1"
+                "SELECT payload_json FROM trace_events WHERE event_name = 'request_received' ORDER BY created_at DESC, trace_id DESC, sequence_no DESC LIMIT 1"
             ).fetchone()[0]
 
     assert json.loads(payload_json) == {}

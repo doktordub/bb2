@@ -83,9 +83,11 @@ Phase 9: Session Service Deepening
 Phase 10: LLM Gateway
 Phase 11: Memory Gateway and Memory Store Adapter
 Phase 12: Tool Gateway and MCP Client Adapter
-Phase 13: Orchestration Runtime and Strategies
-Phase 14: Agent Plugins
-Phase 15: Hardening and Deployment Readiness
+Phase 13: Orchestration Runtime and Strategy Contract
+Phase 14: Workflow Strategy Implementations
+Phase 15: Agent Plugins
+Phase 16: Policy Hardening
+Phase 17: Deployment Readiness
 ```
 
 This document expands Phase 12.
@@ -113,7 +115,7 @@ MCPClientAdapter.health(...)
 The next document should be:
 
 ```text
-backend-orchestration-runtime-architecture.md
+backend-orchestration-architecture.md
 ```
 
 ---
@@ -2492,7 +2494,7 @@ This architecture is complete when:
 - Health checks report safe MCP/tool readiness.
 - Fake MCP adapter tests can run without external services.
 - Optional local MCP tests are isolated from CI.
-- The backend is ready for the next document: `backend-orchestration-runtime-architecture.md`.
+- The backend is ready for the next document: `backend-orchestration-architecture.md`.
 
 ---
 
@@ -2531,7 +2533,7 @@ Avoid these during implementation:
 
 | Future Document | Dependency |
 |---|---|
-| `backend-orchestration-runtime-architecture.md` | Runtime coordinates LLM, memory, and tool calls through provider-neutral gateways. |
+| `backend-orchestration-architecture.md` | Runtime coordinates LLM, memory, and tool calls through provider-neutral gateways. |
 | `backend-workflow-strategies-architecture.md` | Strategies can parse tool intents, call tools, and handle tool results without MCP protocol details. |
 | `backend-agents-architecture.md` | Agents declare tool needs and call logical tools while remaining MCP-neutral. |
 | `backend-policy-architecture.md` | Defines final tool permissions, side-effect policy, approval requirements, trace capture rules, and data exposure rules. |

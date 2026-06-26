@@ -1,0 +1,5 @@
+api:
+  cors:
+    enabled: true
+    allow_origins:
+      - ftp://localhost:5000

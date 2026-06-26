@@ -59,10 +59,52 @@ async def test_trace_recorder_records_redacted_event() -> None:
     event = store.events[0]
     assert event.trace_id == "trace_123"
     assert event.session_id == "session_123"
+    assert event.resolved_event_name == "request_received"
+    assert event.event_type == "request"
     assert event.payload == {
         "api_key": REDACTED_VALUE,
         "message": f"abcdefghijkl{TRUNCATED_VALUE}",
     }
+
+
+@pytest.mark.asyncio
+async def test_trace_recorder_records_explicit_richer_trace_fields() -> None:
+    store = FakeTraceStore()
+    recorder = TraceRecorder(
+        store=store,
+        settings=build_settings(),
+        redactor=Redactor(redact_secrets=True, max_chars=24),
+    )
+
+    await recorder.record(
+        trace_id="trace_456",
+        session_id="session_456",
+        event_type="tool",
+        event_name="tool_call_failed",
+        component="tools.documents",
+        status="failed",
+        severity="error",
+        tool_name="documents.search",
+        llm_profile="local_reasoning",
+        duration_ms=321.0,
+        error_type="ToolTimeoutError",
+        error_code="timeout",
+        retryable=True,
+        payload={"api_key": "secret", "attempt": 1},
+    )
+
+    event = store.events[0]
+    assert event.event_type == "tool"
+    assert event.resolved_event_name == "tool_call_failed"
+    assert event.status == "failed"
+    assert event.severity == "error"
+    assert event.tool_name == "documents.search"
+    assert event.llm_profile == "local_reasoning"
+    assert event.duration_ms == 321.0
+    assert event.error_type == "ToolTimeoutError"
+    assert event.error_code == "timeout"
+    assert event.retryable is True
+    assert event.payload == {"api_key": REDACTED_VALUE, "attempt": 1}
 
 
 @pytest.mark.asyncio

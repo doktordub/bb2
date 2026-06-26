@@ -104,12 +104,12 @@ The main implementation concerns to resolve explicitly during execution are:
 |---|---|---|
 | 0 | [DONE] Current Trace Baseline | The repository already has a trace contract, SQLite trace adapter, startup wiring, fake store, and smoke coverage under `backend/`. |
 | 1 | [DONE] Trace Settings and Contract Expansion | Trace-specific runtime settings and contract models become explicit without leaving the existing `backend/` module layout. |
-| 2 | Schema and Query Surface Expansion | The SQLite trace schema grows from a single event table into the architecture-aligned run/event/retention model while keeping SQL isolated under `backend/app/persistence/`. |
-| 3 | Write Path Hardening | `record_event` and `record_events` validate, redact, bound, hash, order, and summarize trace events safely. |
-| 4 | Read, Search, Health, and Retention | Safe debug-read and summary-search APIs, richer health, and optional cleanup behavior become available through the trace-store contract. |
-| 5 | Startup, Observability, and Error Integration | Startup wiring, recorder behavior, metrics/logging, and backend-specific trace errors line up with the richer store contract without recursive trace writes. |
-| 6 | Tests, Fixtures, and Quality Gates | Backend-local unit, integration, lint, and type-check coverage proves the architecture acceptance criteria. |
-| 7 | Freeze and Handoff | The trace-store boundary is documented as stable for later API, session, and orchestration consumers. |
+| 2 | [DONE] Schema and Query Surface Expansion | The SQLite trace schema grows from a single event table into the architecture-aligned run/event/retention model while keeping SQL isolated under `backend/app/persistence/`. |
+| 3 | [DONE] Write Path Hardening | `record_event` and `record_events` validate, redact, bound, hash, order, and summarize trace events safely. |
+| 4 | [DONE] Read, Search, Health, and Retention | Safe debug-read and summary-search APIs, richer health, and optional cleanup behavior become available through the trace-store contract. |
+| 5 | [DONE] Startup, Observability, and Error Integration | Startup wiring, recorder behavior, metrics/logging, and backend-specific trace errors line up with the richer store contract without recursive trace writes. |
+| 6 | [DONE] Tests, Fixtures, and Quality Gates | Backend-local unit, integration, lint, and type-check coverage proves the architecture acceptance criteria. |
+| 7 | [DONE] Freeze and Handoff | The trace-store boundary is documented as stable for later API, session, and orchestration consumers. |
 
 ---
 
@@ -225,7 +225,7 @@ Extend the existing backend configuration and trace contract surfaces so the sto
 - [DONE] The trace contract can express write, read, search, and health use cases without leaking SQLite internals.
 - [DONE] Backend-root-relative defaults remain deterministic.
 
-### Phase 2. Schema and Query Surface Expansion
+### [DONE] Phase 2. Schema and Query Surface Expansion
 
 **Goal**
 
@@ -246,46 +246,46 @@ Upgrade the narrow current SQLite schema into the architecture-aligned trace-run
 
 **Implementation tasks**
 
-- Expand the current single-table schema into the architecture-aligned model using backend-local tables for:
-  - `schema_version`
-  - `trace_runs`
-  - `trace_events`
-  - `trace_retention_runs`
-- Keep all DDL, schema constants, and schema-version ownership in `backend/app/persistence/sqlite_trace_schema.py`.
-- Add only the minimal summary and event columns needed for V1 debug access patterns, including:
-  - `trace_id`
-  - `sequence_no`
-  - `event_name`
-  - `event_type`
-  - `status`
-  - `severity`
-  - timestamps
-  - duration
-  - hashed/raw identity fields as permitted by settings
-  - agent/strategy/llm/tool/error summary fields
-  - payload size and redaction version
-- Add only the indexes needed for known access patterns such as trace read order, recent traces, status, use case, error type, and event-name filters.
-- Introduce `backend/app/persistence/sqlite_trace_queries.py` only to keep read/search SQL and filter normalization out of `sqlite_trace_store.py`. Keep it persistence-local and parameterized.
-- Reuse the shared SQLite bootstrap helpers under `backend/app/persistence/sqlite/`; do not create a second SQLite initialization path.
-- Decide and document the migration strategy from the current `trace_events`-only schema. If migration is needed, make it explicit, versioned, and one-way. Do not silently discard existing `backend/data/trace.db` content.
-- Keep schema initialization idempotent and validate the expected schema version during startup and health.
-- Prefer hashed identifiers in summary tables by default; raw user/session identifiers should remain opt-in and local-debug only.
+- [DONE] Expand the current single-table schema into the architecture-aligned model using backend-local tables for:
+   - [DONE] `schema_version`
+   - [DONE] `trace_runs`
+   - [DONE] `trace_events`
+   - [DONE] `trace_retention_runs`
+- [DONE] Keep all DDL, schema constants, and schema-version ownership in `backend/app/persistence/sqlite_trace_schema.py`.
+- [DONE] Add only the minimal summary and event columns needed for V1 debug access patterns, including:
+   - [DONE] `trace_id`
+   - [DONE] `sequence_no`
+   - [DONE] `event_name`
+   - [DONE] `event_type`
+   - [DONE] `status`
+   - [DONE] `severity`
+   - [DONE] timestamps
+   - [DONE] duration
+   - [DONE] hashed/raw identity fields as permitted by settings
+   - [DONE] agent/strategy/llm/tool/error summary fields
+   - [DONE] payload size and redaction version
+- [DONE] Add only the indexes needed for known access patterns such as trace read order, recent traces, status, use case, error type, and event-name filters.
+- [DONE] Introduce `backend/app/persistence/sqlite_trace_queries.py` only to keep read/search SQL and filter normalization out of `sqlite_trace_store.py`. Keep it persistence-local and parameterized.
+- [DONE] Reuse the shared SQLite bootstrap helpers under `backend/app/persistence/sqlite/`; do not create a second SQLite initialization path.
+- [DONE] Decide and document the migration strategy from the current `trace_events`-only schema. If migration is needed, make it explicit, versioned, and one-way. Do not silently discard existing `backend/data/trace.db` content.
+- [DONE] Keep schema initialization idempotent and validate the expected schema version during startup and health.
+- [DONE] Prefer hashed identifiers in summary tables by default; raw user/session identifiers should remain opt-in and local-debug only.
 
 **Validation**
 
-- Add and pass unit tests proving schema initialization is idempotent and the expected tables and indexes exist.
-- Add and pass query-builder tests proving read/search SQL stays parameterized and bounded.
-- Add and pass integration coverage for fresh database creation and re-opening an existing database.
-- Add and pass a migration-focused integration test if the legacy one-table schema needs an upgrade path.
-- Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_schema.py tests/unit/persistence/test_sqlite_trace_query_builder.py tests/integration/test_trace_store_sqlite_smoke.py tests/integration/test_startup_persistence.py` from `backend/`.
+- [DONE] Add and pass unit tests proving schema initialization is idempotent and the expected tables and indexes exist.
+- [DONE] Add and pass query-builder tests proving read/search SQL stays parameterized and bounded.
+- [DONE] Add and pass integration coverage for fresh database creation and re-opening an existing database.
+- [DONE] Add and pass a migration-focused integration test if the legacy one-table schema needs an upgrade path.
+- [DONE] Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_schema.py tests/unit/persistence/test_sqlite_trace_query_builder.py tests/integration/test_trace_store_sqlite_smoke.py tests/integration/test_startup_persistence.py` from `backend/`.
 
 **Exit criteria**
 
-- The trace schema supports both ordered event reads and query-friendly trace summaries.
-- Schema initialization and version validation remain idempotent and backend-local.
-- No module outside `backend/app/persistence/` learns table names, row shapes, or index names.
+- [DONE] The trace schema supports both ordered event reads and query-friendly trace summaries.
+- [DONE] Schema initialization and version validation remain idempotent and backend-local.
+- [DONE] No module outside `backend/app/persistence/` learns table names, row shapes, or index names.
 
-### Phase 3. Write Path Hardening
+### [DONE] Phase 3. Write Path Hardening
 
 **Goal**
 
@@ -305,39 +305,39 @@ Bring the SQLite write behavior up to the architecture contract while preserving
 
 **Implementation tasks**
 
-- Validate `trace_id`, `event_id`, `event_name`, `event_type`, `status`, `severity`, and bounded string metadata before persistence.
-- Normalize timestamps to UTC ISO strings at the adapter boundary.
-- Generate `event_id` when callers do not provide one.
-- Apply raw-versus-hashed identity policy consistently for session and user identifiers.
-- Reuse the existing observability redaction rules as the common source of truth, but keep final payload byte enforcement and storage-safe summarization inside the trace adapter.
-- Enforce `max_event_payload_bytes` and `max_error_detail_bytes` before commit. If a payload is too large, replace it with a bounded summary instead of persisting the original oversized content.
-- Use `BEGIN IMMEDIATE` and parameterized SQL to:
-  - upsert `trace_runs`
-  - allocate `sequence_no`
-  - insert `trace_events`
-  - update summary counters and last-seen fields
-- Implement `record_events` with bounded batch size, atomic rollback semantics, and per-trace sequence allocation inside one transaction.
-- Keep trace write failure behavior safe: the store should raise known backend trace-store errors, while the higher-level recorder decides whether request handling continues for optional/degraded paths.
-- Do not recursively trace trace-store write success. Trace-store write failures should surface through logs and metrics, with trace emission only if explicit recursion protection exists.
+- [DONE] Validate `trace_id`, `event_id`, `event_name`, `event_type`, `status`, `severity`, and bounded string metadata before persistence.
+- [DONE] Normalize timestamps to UTC ISO strings at the adapter boundary.
+- [DONE] Generate `event_id` when callers do not provide one.
+- [DONE] Apply raw-versus-hashed identity policy consistently for session and user identifiers.
+- [DONE] Reuse the existing observability redaction rules as the common source of truth, but keep final payload byte enforcement and storage-safe summarization inside the trace adapter.
+- [DONE] Enforce `max_event_payload_bytes` and `max_error_detail_bytes` before commit. If a payload is too large, replace it with a bounded summary instead of persisting the original oversized content.
+- [DONE] Use `BEGIN IMMEDIATE` and parameterized SQL to:
+   - [DONE] upsert `trace_runs`
+   - [DONE] allocate `sequence_no`
+   - [DONE] insert `trace_events`
+   - [DONE] update summary counters and last-seen fields
+- [DONE] Implement `record_events` with bounded batch size, atomic rollback semantics, and per-trace sequence allocation inside one transaction.
+- [DONE] Keep trace write failure behavior safe: the store should raise known backend trace-store errors, while the higher-level recorder decides whether request handling continues for optional/degraded paths.
+- [DONE] Do not recursively trace trace-store write success. Trace-store write failures should surface through logs and metrics, with trace emission only if explicit recursion protection exists.
 
 **Validation**
 
-- Add and pass unit tests for identifier validation, bounded string normalization, redaction behavior, payload truncation, and JSON-safe serialization.
-- Add and pass integration tests for:
-  - single-event persistence
-  - ordered multi-event persistence
-  - batch commit success
-  - batch rollback on invalid event
-  - run-summary counter updates
-- Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_redaction.py tests/unit/persistence/test_sqlite_trace_serialization.py tests/integration/test_sqlite_trace_store_recording.py tests/integration/test_sqlite_trace_store_batch.py` from `backend/`.
+- [DONE] Add and pass unit tests for identifier validation, bounded string normalization, redaction behavior, payload truncation, and JSON-safe serialization.
+- [DONE] Add and pass integration tests for:
+   - [DONE] single-event persistence
+   - [DONE] ordered multi-event persistence
+   - [DONE] batch commit success
+   - [DONE] batch rollback on invalid event
+   - [DONE] run-summary counter updates
+- [DONE] Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_redaction.py tests/unit/persistence/test_sqlite_trace_serialization.py tests/integration/test_sqlite_trace_store_recording.py tests/integration/test_sqlite_trace_store_batch.py` from `backend/`.
 
 **Exit criteria**
 
-- Trace events are persisted redacted, bounded, ordered, and correlated by `trace_id`.
-- Batch writes are atomic for the batch.
-- The write path updates safe trace-run summaries without exposing raw payloads.
+- [DONE] Trace events are persisted redacted, bounded, ordered, and correlated by `trace_id`.
+- [DONE] Batch writes are atomic for the batch.
+- [DONE] The write path updates safe trace-run summaries without exposing raw payloads.
 
-### Phase 4. Read, Search, Health, and Retention
+### [DONE] Phase 4. Read, Search, Health, and Retention
 
 **Goal**
 
@@ -345,47 +345,47 @@ Expose the architecture's bounded debug-read and safe search behavior, plus rich
 
 **Files to create or update**
 
-- `backend/app/persistence/sqlite_trace_store.py`
-- `backend/app/persistence/sqlite_trace_queries.py`
-- `backend/app/persistence/errors.py`
-- `backend/app/testing/fakes/fake_trace.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_health.py`
-- `backend/tests/unit/persistence/test_fake_trace_store.py`
-- `backend/tests/integration/test_sqlite_trace_store_read_trace.py`
-- `backend/tests/integration/test_sqlite_trace_store_search.py`
-- `backend/tests/integration/test_sqlite_trace_store_retention.py`
+- [DONE] `backend/app/persistence/sqlite_trace_store.py`
+- [DONE] `backend/app/persistence/sqlite_trace_queries.py`
+- [DONE] `backend/app/persistence/errors.py`
+- [DONE] `backend/app/testing/fakes/fake_trace.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_health.py`
+- [DONE] `backend/tests/unit/persistence/test_fake_trace_store.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_read_trace.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_search.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_retention.py`
 
 **Implementation tasks**
 
-- Implement `read_trace(trace_id, limit)` with identifier validation, limit clamping, summary lookup, ordered event selection, JSON decode, and known not-found behavior.
-- Implement `search_traces(filters)` as a bounded summary query. Use `trace_runs` for summary filtering and `EXISTS` clauses only where event-specific filters are needed.
-- Add `TraceSearchFilters` normalization so search remains bounded by default and does not permit arbitrary SQL behavior.
-- Ensure search results return summaries only. Do not include full event payloads in search responses.
-- Extend the fake trace store so higher-level tests can exercise read/search behavior without SQLite.
-- Enrich `health()` output with safe readiness details such as schema initialization, schema version, provider, required flag, selected pragma mode, and retention-enabled state when those fields can be exposed safely.
-- Keep full database paths, payloads, raw IDs, SQL text, and stack traces out of health output.
-- Add optional retention cleanup support, disabled by default, using `trace_retention_runs` plus bounded deletion from `trace_runs` only. Rely on cascade delete for trace events.
-- Add known backend error wrappers for query, not-found, retention, migration, and availability paths.
-- Preserve the privacy rule that session reset does not delete traces.
+- [DONE] Implement `read_trace(trace_id, limit)` with identifier validation, limit clamping, summary lookup, ordered event selection, JSON decode, and known not-found behavior.
+- [DONE] Implement `search_traces(filters)` as a bounded summary query. Use `trace_runs` for summary filtering and `EXISTS` clauses only where event-specific filters are needed.
+- [DONE] Add `TraceSearchFilters` normalization so search remains bounded by default and does not permit arbitrary SQL behavior.
+- [DONE] Ensure search results return summaries only. Do not include full event payloads in search responses.
+- [DONE] Extend the fake trace store so higher-level tests can exercise read/search behavior without SQLite.
+- [DONE] Enrich `health()` output with safe readiness details such as schema initialization, schema version, provider, required flag, selected pragma mode, and retention-enabled state when those fields can be exposed safely.
+- [DONE] Keep full database paths, payloads, raw IDs, SQL text, and stack traces out of health output.
+- [DONE] Add optional retention cleanup support, disabled by default, using `trace_retention_runs` plus bounded deletion from `trace_runs` only. Rely on cascade delete for trace events.
+- [DONE] Add known backend error wrappers for query, not-found, retention, migration, and availability paths.
+- [DONE] Preserve the privacy rule that session reset does not delete traces.
 
 **Validation**
 
-- Add and pass unit tests for fake-store limit behavior, safe health output shaping, and query-filter normalization.
-- Add and pass integration tests for:
-  - `read_trace` with ordered event return
-  - missing-trace behavior
-  - summary search by status, use case, event name, tool, LLM profile, and error type
-  - safe health output
-  - retention cleanup deleting trace rows only
-- Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_health.py tests/unit/persistence/test_fake_trace_store.py tests/integration/test_sqlite_trace_store_read_trace.py tests/integration/test_sqlite_trace_store_search.py tests/integration/test_sqlite_trace_store_retention.py` from `backend/`.
+- [DONE] Add and pass unit tests for fake-store limit behavior, safe health output shaping, and query-filter normalization.
+- [DONE] Add and pass integration tests for:
+   - [DONE] `read_trace` with ordered event return
+   - [DONE] missing-trace behavior
+   - [DONE] summary search by status, use case, event name, tool, LLM profile, and error type
+   - [DONE] safe health output
+   - [DONE] retention cleanup deleting trace rows only
+- [DONE] Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence/test_sqlite_trace_health.py tests/unit/persistence/test_fake_trace_store.py tests/integration/test_sqlite_trace_store_read_trace.py tests/integration/test_sqlite_trace_store_search.py tests/integration/test_sqlite_trace_store_retention.py` from `backend/`.
 
 **Exit criteria**
 
-- `read_trace`, `search_traces`, and `health` behave according to the architecture.
-- Debug-query behavior is bounded and safe.
-- Retention cleanup, when enabled, affects trace rows only.
+- [DONE] `read_trace`, `search_traces`, and `health` behave according to the architecture.
+- [DONE] Debug-query behavior is bounded and safe.
+- [DONE] Retention cleanup, when enabled, affects trace rows only.
 
-### Phase 5. Startup, Observability, and Error Integration
+### [DONE] Phase 5. Startup, Observability, and Error Integration
 
 **Goal**
 
@@ -393,44 +393,45 @@ Wire the richer trace store cleanly into backend startup, observability, and agg
 
 **Files to create or update**
 
-- `backend/app/persistence/trace_store.py`
-- `backend/app/persistence/factory.py`
-- `backend/app/persistence/health.py`
-- `backend/app/persistence/errors.py`
-- `backend/app/config/bootstrap.py`
-- `backend/app/foundation/container.py`
-- `backend/app/observability/tracing.py`
-- `backend/app/observability/events.py`
-- `backend/app/observability/metrics.py`
-- `backend/tests/unit/observability/test_trace_recorder.py`
-- `backend/tests/integration/test_startup_persistence.py`
-- `backend/tests/unit/test_health.py`
+- [DONE] `backend/app/persistence/trace_store.py`
+- [DONE] `backend/app/persistence/factory.py`
+- [DONE] `backend/app/persistence/health.py`
+- [DONE] `backend/app/persistence/errors.py`
+- [DONE] `backend/app/config/bootstrap.py`
+- [DONE] `backend/app/foundation/container.py`
+- [DONE] `backend/app/observability/tracing.py`
+- [DONE] `backend/app/observability/events.py`
+- [DONE] `backend/app/observability/metrics.py`
+- [DONE] `backend/tests/unit/observability/test_trace_recorder.py`
+- [DONE] `backend/tests/integration/test_startup_persistence.py`
+- [DONE] `backend/tests/unit/test_health.py`
+- [DONE] `backend/tests/fixtures/config/persistence_trace_optional.yaml`
 
 **Implementation tasks**
 
-- Decide whether `backend/app/persistence/trace_store.py` remains the explicit trace-store build boundary or whether `backend/app/persistence/factory.py` becomes the only construction seam. Keep one clear backend-owned path.
-- Build the richer SQLite trace store from typed settings resolved under `backend/`; the adapter must not read environment variables directly.
-- Keep all SQLite setup in lifespan startup. Do not move database initialization into import-time code.
-- Update `TraceRecorder` so it can emit the richer trace-event shape, including event name, status, severity, and summary fields such as agent/strategy/llm/tool metadata where available.
-- Preserve the existing backend rule that trace-store failures should not recursively generate more trace-store writes.
-- Add low-cardinality metrics and structured-log coverage for trace record/read/search/retention success/failure paths.
-- Preserve required-versus-optional trace behavior in aggregate persistence health and startup failure handling.
-- Wrap SQLite and query failures in backend-specific trace errors without exposing SQL text, payload content, or sensitive filesystem details.
-- Keep future API debug routes as later consumers of the contract only; do not add route-level SQLite access in this phase.
+- [DONE] Decide whether `backend/app/persistence/trace_store.py` remains the explicit trace-store build boundary or whether `backend/app/persistence/factory.py` becomes the only construction seam. Keep one clear backend-owned path.
+- [DONE] Build the richer SQLite trace store from typed settings resolved under `backend/`; the adapter must not read environment variables directly.
+- [DONE] Keep all SQLite setup in lifespan startup. Do not move database initialization into import-time code.
+- [DONE] Update `TraceRecorder` so it can emit the richer trace-event shape, including event name, status, severity, and summary fields such as agent/strategy/llm/tool metadata where available.
+- [DONE] Preserve the existing backend rule that trace-store failures should not recursively generate more trace-store writes.
+- [DONE] Add low-cardinality metrics and structured-log coverage for trace record/read/search/retention success/failure paths.
+- [DONE] Preserve required-versus-optional trace behavior in aggregate persistence health and startup failure handling.
+- [DONE] Wrap SQLite and query failures in backend-specific trace errors without exposing SQL text, payload content, or sensitive filesystem details.
+- [DONE] Keep future API debug routes as later consumers of the contract only; do not add route-level SQLite access in this phase.
 
 **Validation**
 
-- Add and pass unit tests proving `TraceRecorder` maps runtime inputs into the richer trace-event surface without recursive failure behavior.
-- Add and pass startup tests for required trace-store failure, optional trace-store degradation, and aggregate health semantics.
-- Run `.venv\Scripts\python.exe -m pytest tests/unit/observability/test_trace_recorder.py tests/integration/test_startup_persistence.py tests/unit/test_health.py` from `backend/`.
+- [DONE] Add and pass unit tests proving `TraceRecorder` maps runtime inputs into the richer trace-event surface without recursive failure behavior.
+- [DONE] Add and pass startup tests for required trace-store failure, optional trace-store degradation, and aggregate health semantics.
+- [DONE] Run `.venv\Scripts\python.exe -m pytest tests/unit/observability/test_trace_recorder.py tests/integration/test_startup_persistence.py tests/unit/test_health.py` from `backend/`.
 
 **Exit criteria**
 
-- Startup and observability layers consume the trace store only through backend-owned contracts and typed settings.
-- Trace-store failures are diagnosable without recursive trace writes or sensitive leakage.
-- Aggregate health remains consistent with the backend's required/optional persistence model.
+- [DONE] Startup and observability layers consume the trace store only through backend-owned contracts and typed settings.
+- [DONE] Trace-store failures are diagnosable without recursive trace writes or sensitive leakage.
+- [DONE] Aggregate health remains consistent with the backend's required/optional persistence model.
 
-### Phase 6. Tests, Fixtures, and Quality Gates
+### [DONE] Phase 6. Tests, Fixtures, and Quality Gates
 
 **Goal**
 
@@ -438,56 +439,56 @@ Close the gap between the current smoke coverage and the architecture acceptance
 
 **Files to create or update**
 
-- `backend/tests/fixtures/config/trace_sqlite.yaml`
-- `backend/tests/fixtures/config/trace_sqlite_no_schema_init.yaml`
-- `backend/tests/fixtures/config/trace_sqlite_small_payload.yaml`
-- `backend/tests/fixtures/config/trace_sqlite_retention_enabled.yaml`
-- `backend/tests/fixtures/config/trace_fake.yaml`
-- `backend/tests/unit/persistence/test_fake_trace_store.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_schema.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_query_builder.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_redaction.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_serialization.py`
-- `backend/tests/unit/persistence/test_sqlite_trace_health.py`
-- `backend/tests/integration/test_trace_store_sqlite_smoke.py`
-- `backend/tests/integration/test_sqlite_trace_store_recording.py`
-- `backend/tests/integration/test_sqlite_trace_store_batch.py`
-- `backend/tests/integration/test_sqlite_trace_store_read_trace.py`
-- `backend/tests/integration/test_sqlite_trace_store_search.py`
-- `backend/tests/integration/test_sqlite_trace_store_retention.py`
-- `backend/tests/integration/test_sqlite_trace_store_concurrency.py`
-- `backend/tests/integration/test_startup_persistence.py`
+- [DONE] `backend/tests/fixtures/config/trace_sqlite.yaml`
+- [DONE] `backend/tests/fixtures/config/trace_sqlite_no_schema_init.yaml`
+- [DONE] `backend/tests/fixtures/config/trace_sqlite_small_payload.yaml`
+- [DONE] `backend/tests/fixtures/config/trace_sqlite_retention_enabled.yaml`
+- [DONE] `backend/tests/fixtures/config/trace_fake.yaml`
+- [DONE] `backend/tests/unit/persistence/test_fake_trace_store.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_schema.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_query_builder.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_redaction.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_serialization.py`
+- [DONE] `backend/tests/unit/persistence/test_sqlite_trace_health.py`
+- [DONE] `backend/tests/integration/test_trace_store_sqlite_smoke.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_recording.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_batch.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_read_trace.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_search.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_retention.py`
+- [DONE] `backend/tests/integration/test_sqlite_trace_store_concurrency.py`
+- [DONE] `backend/tests/integration/test_startup_persistence.py`
 
 **Implementation tasks**
 
-- Add focused unit coverage for settings parsing, schema idempotence, query parameterization, identifier validation, redaction, payload size limits, fake-store behavior, and health output safety.
-- Add integration coverage for:
-  - fresh database bootstrap
-  - re-opening an initialized database
-  - single-event write
-  - ordered multi-event write
-  - batch rollback
-  - `read_trace`
-  - `search_traces`
-  - retention cleanup
-  - safe startup behavior
-  - concurrent writes against a temporary SQLite database
-- Keep all adapter tests rooted in `tmp_path` or equivalent temporary directories. No test should depend on real `backend/data/trace.db`.
-- Keep the fake trace store as the default choice for higher-level API, session, orchestration, and gateway unit tests. Reserve SQLite integration tests for the adapter and startup wiring.
-- Re-run startup and health tests after any schema, settings, or error-model change so the backend lifespan path stays stable.
+- [DONE] Add focused unit coverage for settings parsing, schema idempotence, query parameterization, identifier validation, redaction, payload size limits, fake-store behavior, and health output safety.
+- [DONE] Add integration coverage for:
+   - [DONE] fresh database bootstrap
+   - [DONE] re-opening an initialized database
+   - [DONE] single-event write
+   - [DONE] ordered multi-event write
+   - [DONE] batch rollback
+   - [DONE] `read_trace`
+   - [DONE] `search_traces`
+   - [DONE] retention cleanup
+   - [DONE] safe startup behavior
+   - [DONE] concurrent writes against a temporary SQLite database
+- [DONE] Keep all adapter tests rooted in `tmp_path` or equivalent temporary directories. No test should depend on real `backend/data/trace.db`.
+- [DONE] Keep the fake trace store as the default choice for higher-level API, session, orchestration, and gateway unit tests. Reserve SQLite integration tests for the adapter and startup wiring.
+- [DONE] Re-run startup and health tests after any schema, settings, or error-model change so the backend lifespan path stays stable.
 
 **Validation**
 
-- Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence tests/unit/observability/test_trace_recorder.py tests/integration/test_trace_store_sqlite_smoke.py tests/integration/test_sqlite_trace_store_recording.py tests/integration/test_sqlite_trace_store_batch.py tests/integration/test_sqlite_trace_store_read_trace.py tests/integration/test_sqlite_trace_store_search.py tests/integration/test_sqlite_trace_store_retention.py tests/integration/test_sqlite_trace_store_concurrency.py tests/integration/test_startup_persistence.py` from `backend/`.
-- Run `.venv\Scripts\python.exe -m ruff check app tests` from `backend/`.
-- Run `.venv\Scripts\python.exe -m mypy app` from `backend/`.
+- [DONE] Run `.venv\Scripts\python.exe -m pytest tests/unit/persistence tests/unit/observability/test_trace_recorder.py tests/integration/test_trace_store_sqlite_smoke.py tests/integration/test_sqlite_trace_store_recording.py tests/integration/test_sqlite_trace_store_batch.py tests/integration/test_sqlite_trace_store_read_trace.py tests/integration/test_sqlite_trace_store_search.py tests/integration/test_sqlite_trace_store_retention.py tests/integration/test_sqlite_trace_store_concurrency.py tests/integration/test_startup_persistence.py` from `backend/`.
+- [DONE] Run `.venv\Scripts\python.exe -m ruff check app tests` from `backend/`.
+- [DONE] Run `.venv\Scripts\python.exe -m mypy app` from `backend/`.
 
 **Exit criteria**
 
-- Trace-store behavior is covered by backend-local unit, integration, lint, and type-check gates.
-- The architecture acceptance criteria have executable coverage or an explicit deferred note.
+- [DONE] Trace-store behavior is covered by backend-local unit, integration, lint, and type-check gates.
+- [DONE] The architecture acceptance criteria have executable coverage or an explicit deferred note.
 
-### Phase 7. Freeze and Handoff
+### [DONE] Phase 7. Freeze and Handoff
 
 **Goal**
 
@@ -495,26 +496,26 @@ Document the trace-store boundary as stable and make the next backend consumers 
 
 **Files to create or update**
 
-- `backend/README.md`
-- `docs/backend-persistence-plan.md`
-- `docs/backend-sqlite-trace-store-plan.md`
+- [DONE] `backend/README.md`
+- [DONE] `docs/backend-persistence-plan.md`
+- [DONE] `docs/backend-sqlite-trace-store-plan.md`
 
 **Implementation tasks**
 
-- Update `backend/README.md` with the stable trace-store boundary, backend-local configuration keys, default database file location under `backend/data/trace.db`, read/search availability, retention defaults, and validation commands.
-- Record shared SQLite conventions that now apply to both workflow-state and trace adapters.
-- Note intentionally deferred items such as protected trace debug routes, session/user trace-delete policy, prompt/completion capture in local debug mode, or future outbox/reliability patterns.
-- Hand off to the next backend consumers under `docs/backend-api-architecture.md`, the future session-service document, and the future orchestration document. Those later phases decide when trace reads are exposed and which runtime modules emit which event families.
-- Keep the handoff consistent with the existing backend observability and persistence baselines rather than reopening finished foundation work.
+- [DONE] Update `backend/README.md` with the stable trace-store boundary, backend-local configuration keys, default database file location under `backend/data/trace.db`, read/search availability, retention defaults, and validation commands.
+- [DONE] Record shared SQLite conventions that now apply to both workflow-state and trace adapters.
+- [DONE] Note intentionally deferred items such as protected trace debug routes, session/user trace-delete policy, prompt/completion capture in local debug mode, or future outbox/reliability patterns.
+- [DONE] Hand off to the next backend consumers under `docs/backend-api-architecture.md`, the future session-service document, and the future orchestration document. Those later phases decide when trace reads are exposed and which runtime modules emit which event families.
+- [DONE] Keep the handoff consistent with the existing backend observability and persistence baselines rather than reopening finished foundation work.
 
 **Validation**
 
-- Re-run the full backend quality gate from `backend/` with `.venv\Scripts\python.exe -m pytest`, `.venv\Scripts\python.exe -m ruff check .`, and `.venv\Scripts\python.exe -m mypy app`.
+- [DONE] Re-run the full backend quality gate from `backend/` with `.venv\Scripts\python.exe -m pytest`, `.venv\Scripts\python.exe -m ruff check .`, and `.venv\Scripts\python.exe -m mypy app`.
 
 **Exit criteria**
 
-- The trace-store slice is documented as a stable backend boundary.
-- The next backend phases can consume trace storage through contracts and startup wiring without knowing SQLite internals.
+- [DONE] The trace-store slice is documented as a stable backend boundary.
+- [DONE] The next backend phases can consume trace storage through contracts and startup wiring without knowing SQLite internals.
 
 ---
 
@@ -538,6 +539,6 @@ This plan is complete when the backend trace-store implementation satisfies the 
 
 ## 7. Summary
 
-The repository already has a backend-local SQLite trace baseline, but it is intentionally smaller than the architecture-defined target. This plan extends that baseline in-place under `backend/` rather than creating a second trace stack.
+The repository already had a backend-local SQLite trace baseline, and this plan extended that baseline to the architecture-defined bar for bounded queries, redaction, retention behavior, concurrency coverage, and startup-safe health integration.
 
-The implementation sequence starts by expanding trace settings and contracts, then deepens the schema and write behavior, then adds read/search/retention capabilities, and finally closes with startup integration, quality gates, and handoff. Throughout the plan, backend code stays under `backend/app/`, backend tests stay under `backend/tests/`, backend config stays under `backend/config/`, and backend-local trace data stays under `backend/data/`.
+This work did not create a second trace stack. It extended the existing modules under `backend/app/persistence/`, kept contracts under `backend/app/contracts/`, kept tests under `backend/tests/`, and froze the trace-store slice as a stable backend boundary for the upcoming API, session-service, and orchestration consumers.

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.contracts.state import (
     WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE,
@@ -13,6 +15,9 @@ from app.contracts.state import (
 
 _ALLOWED_SQLITE_SYNCHRONOUS_MODES = frozenset({"NORMAL", "FULL"})
 _ALLOWED_TRACE_CAPTURE_MODES = frozenset({"none", "summaries_only"})
+_ALLOWED_CORS_ORIGIN_SCHEMES = frozenset({"http", "https"})
+_HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
+_HTTP_METHOD_PATTERN = re.compile(r"^[A-Z]+$")
 
 
 class StrictConfigModel(BaseModel):
@@ -271,8 +276,148 @@ class HealthConfig(StrictConfigModel):
     include_component_details: bool = True
 
 
+class ApiCorsConfig(StrictConfigModel):
+    enabled: bool = False
+    allow_origins: list[str] = Field(default_factory=list)
+    allow_credentials: bool = True
+    allow_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "OPTIONS"]
+    )
+    allow_headers: list[str] = Field(
+        default_factory=lambda: [
+            "Authorization",
+            "Content-Type",
+            "X-Request-Id",
+            "X-Trace-Id",
+        ]
+    )
+
+    @field_validator("allow_origins")
+    @classmethod
+    def normalize_allow_origins(cls, value: list[str]) -> list[str]:
+        return [_normalize_cors_origin(item) for item in value]
+
+    @field_validator("allow_methods")
+    @classmethod
+    def normalize_allow_methods(cls, value: list[str]) -> list[str]:
+        return [_normalize_http_method(item) for item in value]
+
+    @field_validator("allow_headers")
+    @classmethod
+    def normalize_allow_headers(cls, value: list[str]) -> list[str]:
+        return [_normalize_header_name(item, field_name="allow_headers") for item in value]
+
+    @model_validator(mode="after")
+    def validate_enabled_cors(self) -> ApiCorsConfig:
+        if not self.enabled:
+            return self
+
+        if not self.allow_origins:
+            raise ValueError("allow_origins must not be empty when CORS is enabled")
+
+        if not self.allow_methods:
+            raise ValueError("allow_methods must not be empty when CORS is enabled")
+
+        if not self.allow_headers:
+            raise ValueError("allow_headers must not be empty when CORS is enabled")
+
+        return self
+
+
+class ApiRequestLimitsConfig(StrictConfigModel):
+    max_body_bytes: int = Field(default=1048576, ge=1)
+    max_message_chars: int = Field(default=20000, ge=1)
+    max_metadata_bytes: int = Field(default=65536, ge=1)
+    request_timeout_seconds: int = Field(default=120, ge=1)
+    stream_timeout_seconds: int = Field(default=300, ge=1)
+
+    @model_validator(mode="after")
+    def validate_timeout_order(self) -> ApiRequestLimitsConfig:
+        if self.stream_timeout_seconds < self.request_timeout_seconds:
+            raise ValueError(
+                "stream_timeout_seconds must be greater than or equal to "
+                "request_timeout_seconds"
+            )
+        return self
+
+
+class ApiSessionsConfig(StrictConfigModel):
+    accept_client_session_id: bool = True
+    create_session_when_missing: bool = True
+    session_id_header: str = "X-Session-Id"
+
+    @field_validator("session_id_header")
+    @classmethod
+    def normalize_session_id_header(cls, value: str) -> str:
+        return _normalize_header_name(value, field_name="session_id_header")
+
+
+class ApiTracingConfig(StrictConfigModel):
+    accept_client_trace_id: bool = True
+    response_trace_header: str = "X-Trace-Id"
+    record_request_received: bool = True
+    record_response_returned: bool = True
+    record_validation_errors: bool = True
+
+    @field_validator("response_trace_header")
+    @classmethod
+    def normalize_response_trace_header(cls, value: str) -> str:
+        return _normalize_header_name(value, field_name="response_trace_header")
+
+
+class ApiDebugRoutesConfig(StrictConfigModel):
+    enabled: bool = False
+    require_localhost: bool = True
+    max_trace_events: int = Field(default=500, ge=1)
+    max_search_results: int = Field(default=50, ge=1)
+
+
+class ApiSseConfig(StrictConfigModel):
+    heartbeat_seconds: int = Field(default=15, ge=1)
+    send_trace_id_event: bool = True
+    send_metadata_events: bool = True
+
+
+class ApiConfig(StrictConfigModel):
+    enabled: bool = True
+    base_path: str = ""
+    docs_enabled: bool = True
+    openapi_enabled: bool = True
+    cors: ApiCorsConfig = Field(default_factory=ApiCorsConfig)
+    request_limits: ApiRequestLimitsConfig = Field(default_factory=ApiRequestLimitsConfig)
+    sessions: ApiSessionsConfig = Field(default_factory=ApiSessionsConfig)
+    tracing: ApiTracingConfig = Field(default_factory=ApiTracingConfig)
+    debug_routes: ApiDebugRoutesConfig = Field(default_factory=ApiDebugRoutesConfig)
+    sse: ApiSseConfig = Field(default_factory=ApiSseConfig)
+
+    @field_validator("base_path")
+    @classmethod
+    def normalize_base_path(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized in {"", "/"}:
+            return ""
+
+        if not normalized.startswith("/"):
+            raise ValueError("base_path must start with '/' or be empty")
+
+        if normalized.endswith("/"):
+            normalized = normalized[:-1]
+
+        if "//" in normalized:
+            raise ValueError("base_path must not contain empty path segments")
+
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_docs_settings(self) -> ApiConfig:
+        if self.docs_enabled and not self.openapi_enabled:
+            raise ValueError("docs_enabled requires openapi_enabled to be true")
+        return self
+
+
 class BackendConfig(StrictConfigModel):
     app: AppConfig
+    api: ApiConfig = Field(default_factory=ApiConfig)
     features: FeatureConfig = Field(default_factory=FeatureConfig)
     usecases: dict[str, UseCaseConfig]
     strategies: dict[str, StrategyConfig]
@@ -283,3 +428,39 @@ class BackendConfig(StrictConfigModel):
     policy: PolicyConfig
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     health: HealthConfig = Field(default_factory=HealthConfig)
+
+
+def _normalize_cors_origin(value: str) -> str:
+    normalized = value.strip()
+    if normalized == "*":
+        return normalized
+
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in _ALLOWED_CORS_ORIGIN_SCHEMES or parsed.netloc == "":
+        raise ValueError("allow_origins entries must be http(s) origins or '*'")
+
+    if parsed.query or parsed.fragment:
+        raise ValueError("allow_origins entries must not include query or fragment components")
+
+    if parsed.path not in {"", "/"}:
+        raise ValueError("allow_origins entries must not include a path component")
+
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _normalize_http_method(value: str) -> str:
+    normalized = value.strip().upper()
+    if not _HTTP_METHOD_PATTERN.fullmatch(normalized):
+        raise ValueError("allow_methods entries must be valid uppercase HTTP methods")
+    return normalized
+
+
+def _normalize_header_name(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if normalized == "*":
+        return normalized
+
+    if not _HEADER_NAME_PATTERN.fullmatch(normalized):
+        raise ValueError(f"{field_name} must be a valid HTTP header name")
+
+    return normalized

@@ -1,0 +1,24 @@
+features:
+  streaming_enabled: true
+
+api:
+  base_path: /api/v1/
+  cors:
+    enabled: true
+    allow_origins:
+      - http://localhost:5000/
+      - http://127.0.0.1:5000
+    allow_credentials: true
+    allow_methods:
+      - get
+      - post
+      - options
+    allow_headers:
+      - Authorization
+      - Content-Type
+      - X-Request-Id
+      - X-Trace-Id
+  sse:
+    heartbeat_seconds: 5
+    send_trace_id_event: false
+    send_metadata_events: false

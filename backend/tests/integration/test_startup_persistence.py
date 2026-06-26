@@ -10,6 +10,7 @@ from app.main import create_app
 from app.persistence.errors import (
     MemoryGatewayError,
     PersistenceConfigurationError,
+    TraceStoreUnavailableError,
     WorkflowStateMigrationError,
     WorkflowStateUnavailableError,
 )
@@ -50,6 +51,15 @@ def test_persistence_wiring_runs_during_lifespan_startup(
         ).fetchone()
 
     with sqlite3.connect(trace_database_path) as connection:
+        trace_runs_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'trace_runs'"
+        ).fetchone()
+        trace_events_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'trace_events'"
+        ).fetchone()
+        trace_retention_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'trace_retention_runs'"
+        ).fetchone()
         trace_schema = connection.execute(
             "SELECT version FROM schema_version WHERE name = 'trace_store'"
         ).fetchone()
@@ -58,7 +68,10 @@ def test_persistence_wiring_runs_during_lifespan_startup(
     assert workflow_state_current_table == ("workflow_state_current",)
     assert workflow_state_resets_table == ("workflow_state_resets",)
     assert workflow_schema == (2,)
-    assert trace_schema == (1,)
+    assert trace_runs_table == ("trace_runs",)
+    assert trace_events_table == ("trace_events",)
+    assert trace_retention_table == ("trace_retention_runs",)
+    assert trace_schema == (2,)
 
 
 def test_optional_memory_store_failure_degrades_health(
@@ -166,6 +179,63 @@ def test_unavailable_workflow_state_store_blocks_startup(
     with pytest.raises(WorkflowStateUnavailableError, match="initialization failed"):
         with TestClient(app):
             pass
+
+
+def test_required_trace_store_failure_blocks_startup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "trace.db").mkdir()
+
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/persistence_sqlite_local.yaml")
+    monkeypatch.setenv("APP_DATA_DIR", runtime_dir.as_posix())
+
+    app = create_app(load_settings(env_file=None))
+
+    with pytest.raises(TraceStoreUnavailableError, match="initialization failed"):
+        with TestClient(app):
+            pass
+
+
+def test_optional_trace_store_failure_degrades_health(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    (runtime_dir / "trace.db").mkdir()
+
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/persistence_trace_optional.yaml")
+    monkeypatch.setenv("APP_DATA_DIR", runtime_dir.as_posix())
+
+    app = create_app(load_settings(env_file=None))
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["persistence"] == {
+        "status": "degraded",
+        "configured": True,
+        "required_components": 1,
+        "optional_components": 2,
+        "components": {
+            "workflow_state": "ok",
+            "trace": "degraded",
+            "memory": "ok",
+        },
+    }
+    assert payload["checks"]["trace"] == {
+        "status": "degraded",
+        "configured": False,
+        "provider": "sqlite",
+        "required": False,
+        "reason": "initialization_failed",
+    }
 
 
 def test_workflow_state_schema_mismatch_blocks_startup(

@@ -4,6 +4,50 @@ app:
   active_usecase: default_chat
   data_dir: ${env:APP_DATA_DIR:./data}
 
+api:
+  enabled: true
+  base_path: ""
+  docs_enabled: true
+  openapi_enabled: true
+  cors:
+    enabled: false
+    allow_origins: []
+    allow_credentials: true
+    allow_methods:
+      - GET
+      - POST
+      - OPTIONS
+    allow_headers:
+      - Authorization
+      - Content-Type
+      - X-Request-Id
+      - X-Trace-Id
+  request_limits:
+    max_body_bytes: 1048576
+    max_message_chars: 20000
+    max_metadata_bytes: 65536
+    request_timeout_seconds: 120
+    stream_timeout_seconds: 300
+  sessions:
+    accept_client_session_id: true
+    create_session_when_missing: true
+    session_id_header: X-Session-Id
+  tracing:
+    accept_client_trace_id: true
+    response_trace_header: X-Trace-Id
+    record_request_received: true
+    record_response_returned: true
+    record_validation_errors: true
+  debug_routes:
+    enabled: false
+    require_localhost: true
+    max_trace_events: 500
+    max_search_results: 50
+  sse:
+    heartbeat_seconds: 15
+    send_trace_id_event: true
+    send_metadata_events: true
+
 features:
   streaming_enabled: false
   memory_enabled: false

@@ -27,7 +27,7 @@ def test_observability_wiring_runs_during_lifespan_startup(monkeypatch: pytest.M
 
     with sqlite3.connect(database_path) as connection:
         row = connection.execute(
-            "SELECT trace_id, event_type, component, payload_json FROM trace_events WHERE event_type = 'startup_completed' ORDER BY id DESC LIMIT 1"
+            "SELECT trace_id, event_name, component, payload_json FROM trace_events WHERE event_name = 'startup_completed' ORDER BY created_at DESC, trace_id DESC, sequence_no DESC LIMIT 1"
         ).fetchone()
 
     assert row is not None

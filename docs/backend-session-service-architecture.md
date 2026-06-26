@@ -1,7 +1,7 @@
 # Backend Session Service Architecture
 
 **Document:** `backend-session-service-architecture.md`  
-**Generated file:** `backend-session-service-architecture.md.md`  
+**Generated file:** `backend-session-service-architecture.md`  
 **Version:** 1.0  
 **Source alignment:** `backend-application-architecture.md`, `backend-foundation-architecture.md`, `backend-core-contracts-architecture.md`, `backend-configuration-architecture.md`, `backend-observability-architecture.md`, `backend-persistence-architecture.md`, `backend-sqlite-workflow-state-architecture.md`, `backend-sqlite-trace-store-architecture.md`, and `backend-api-architecture.md`  
 **Scope:** Session lifecycle, session identity, chat request handoff, workflow-state load/save/reset, streaming finalization, safe history shaping, session concurrency, request-to-orchestration context mapping, trace correlation, API integration, testing strategy, and acceptance criteria for the V1 `SessionService` layer.
@@ -72,9 +72,11 @@ Phase 9: Session Service Deepening
 Phase 10: LLM Gateway
 Phase 11: Memory Gateway
 Phase 12: Tool Gateway and MCP Client Adapter
-Phase 13: Orchestration Runtime and Strategies
-Phase 14: Agent Plugins
-Phase 15: Hardening and Deployment Readiness
+Phase 13: Orchestration Runtime and Strategy Contract
+Phase 14: Workflow Strategy Implementations
+Phase 15: Agent Plugins
+Phase 16: Policy Hardening
+Phase 17: Deployment Readiness
 ```
 
 This document expands Phase 9.

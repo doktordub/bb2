@@ -80,79 +80,100 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
         assert response.status_code == 200
         assert GENERATED_TRACE_ID_PATTERN.fullmatch(response.headers["x-trace-id"])
+        payload = response.json()
 
-        assert response.json() == {
-            "status": "ok",
+        assert payload["status"] == "ok"
+        assert payload["trace_id"] == response.headers["x-trace-id"]
+        assert payload["service"] == "pluggable-agentic-ai-backend"
+        assert payload["version"] == "0.1.0"
+        assert payload["environment"] == "local"
+        assert payload["backend"] == {
+            "configured": True,
             "service": "pluggable-agentic-ai-backend",
             "version": "0.1.0",
             "environment": "local",
-            "checks": {
-                "settings": {"status": "ok"},
-                "config": {
-                    "status": "ok",
-                    "configured": True,
-                    "environment": "local",
-                    "active_usecase": "support_chat",
-                    "llm_profiles_count": 2,
-                    "llm_providers": ["local_provider", "openai"],
-                    "mcp_configured": True,
-                    "workflow_state_provider": "sqlite",
-                    "trace_provider": "sqlite",
-                    "memory_provider": "memory_store",
-                },
-                "logging": {"status": "ok"},
-                "observability": {
-                    "status": "ok",
-                    "trace_enabled": True,
-                    "trace_payloads_enabled": True,
-                    "trace_store_required": True,
-                    "structured_logging": True,
-                    "metrics_enabled": True,
-                    "trace_store_configured": True,
-                },
-                "mcp": {"status": "not_checked", "configured": True},
-                "llm": {"status": "not_checked", "configured": True},
-                "persistence": {
-                    "status": "ok",
-                    "configured": True,
-                    "required_components": 2,
-                    "optional_components": 1,
-                    "components": {
-                        "workflow_state": "ok",
-                        "trace": "ok",
-                        "memory": "ok",
-                    },
-                },
-                "memory": {
-                    "status": "ok",
-                    "configured": True,
-                    "provider": "memory_store",
-                    "required": False,
-                    "config_path_configured": False,
-                    "database_path_configured": True,
-                    "service_initialized": False,
-                    "dependency_available": True,
-                },
-                "workflow_state": {
-                    "status": "ok",
-                    "configured": True,
-                    "provider": "sqlite",
-                    "required": True,
-                    "database_exists": True,
-                    "schema_initialized": True,
-                    "schema_version": 2,
-                    "journal_mode": "wal",
-                    "synchronous": "normal",
-                },
-                "trace": {
-                    "status": "ok",
-                    "configured": True,
-                    "provider": "sqlite",
-                    "required": True,
-                    "database_exists": True,
+        }
+        assert payload["api"] == {
+            "configured": True,
+            "docs_enabled": True,
+            "streaming_enabled": True,
+        }
+        assert payload["checks"] == {
+            "settings": {"status": "ok"},
+            "config": {
+                "status": "ok",
+                "configured": True,
+                "environment": "local",
+                "active_usecase": "support_chat",
+                "llm_profiles_count": 2,
+                "llm_providers": ["local_provider", "openai"],
+                "mcp_configured": True,
+                "workflow_state_provider": "sqlite",
+                "trace_provider": "sqlite",
+                "memory_provider": "memory_store",
+            },
+            "logging": {"status": "ok"},
+            "observability": {
+                "status": "ok",
+                "trace_enabled": True,
+                "trace_payloads_enabled": True,
+                "trace_store_required": True,
+                "structured_logging": True,
+                "metrics_enabled": True,
+                "trace_store_configured": True,
+            },
+            "mcp": {"status": "not_checked", "configured": True},
+            "llm": {"status": "not_checked", "configured": True},
+            "persistence": {
+                "status": "ok",
+                "configured": True,
+                "required_components": 2,
+                "optional_components": 1,
+                "components": {
+                    "workflow_state": "ok",
+                    "trace": "ok",
+                    "memory": "ok",
                 },
             },
+            "memory": {
+                "status": "ok",
+                "configured": True,
+                "provider": "memory_store",
+                "required": False,
+                "config_path_configured": False,
+                "database_path_configured": True,
+                "service_initialized": False,
+                "dependency_available": True,
+            },
+            "workflow_state": {
+                "status": "ok",
+                "configured": True,
+                "provider": "sqlite",
+                "required": True,
+                "database_exists": True,
+                "schema_initialized": True,
+                "schema_version": 2,
+                "journal_mode": "wal",
+                "synchronous": "normal",
+            },
+            "trace": {
+                "status": "ok",
+                "configured": True,
+                "provider": "sqlite",
+                "required": True,
+                "database_exists": True,
+                "journal_mode": "wal",
+                "synchronous": "normal",
+                "retention_enabled": False,
+                "schema_initialized": True,
+                "schema_version": 2,
+            },
         }
+        assert payload["memory"] == payload["checks"]["memory"]
+        assert payload["workflow_state"] == payload["checks"]["workflow_state"]
+        assert payload["trace"] == payload["checks"]["trace"]
+        assert payload["llm"] == payload["checks"]["llm"]
+        assert payload["mcp"] == payload["checks"]["mcp"]
 
         response_body = response.text
         assert "https://mcp.example.local" not in response_body

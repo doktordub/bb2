@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config.view import ApiSettings
 from app.config.view import get_observability_settings
 from app.contracts.config import ConfigurationView
 from app.contracts.health import (
@@ -106,6 +107,45 @@ def build_safe_config_summary(config: ConfigurationView) -> dict[str, Any]:
     return summary
 
 
+def build_api_health_payload(
+    *,
+    health_payload: dict[str, Any],
+    service_name: str,
+    version: str,
+    environment: str,
+    trace_id: str | None,
+    api_settings: ApiSettings | None,
+    streaming_enabled: bool,
+) -> dict[str, Any]:
+    """Map composed foundation health data to the API-facing shape."""
+
+    checks = dict(_coerce_checks(health_payload.get("checks")))
+    return {
+        "status": health_payload.get("status", HEALTH_NOT_CHECKED),
+        "trace_id": trace_id,
+        "service": service_name,
+        "version": version,
+        "environment": environment,
+        "backend": {
+            "configured": True,
+            "service": service_name,
+            "version": version,
+            "environment": environment,
+        },
+        "api": {
+            "configured": bool(api_settings is not None and api_settings.enabled),
+            "docs_enabled": bool(api_settings is not None and api_settings.docs_enabled),
+            "streaming_enabled": streaming_enabled,
+        },
+        "workflow_state": _component_payload(checks, "workflow_state"),
+        "trace": _component_payload(checks, "trace"),
+        "memory": _component_payload(checks, "memory"),
+        "llm": _component_payload(checks, "llm"),
+        "mcp": _component_payload(checks, "mcp"),
+        "checks": checks,
+    }
+
+
 def _config_result(config_summary: dict[str, Any]) -> HealthCheckResult:
     return HealthCheckResult(status=HEALTH_OK, details=dict(config_summary))
 
@@ -120,3 +160,16 @@ def _placeholder_result(configured: bool) -> HealthCheckResult:
 def _has_configured_provider(config: ConfigurationView, path: str) -> bool:
     value = config.get(path)
     return isinstance(value, str) and value.strip() != ""
+
+
+def _coerce_checks(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    return {}
+
+
+def _component_payload(checks: dict[str, Any], name: str) -> dict[str, Any]:
+    component = checks.get(name)
+    if isinstance(component, dict):
+        return dict(component)
+    return {"status": HEALTH_NOT_CHECKED}

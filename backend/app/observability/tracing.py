@@ -42,14 +42,32 @@ class TraceRecorder:
         *,
         event_type: str,
         component: str,
+        event_name: str | None = None,
+        status: str = "completed",
+        severity: str = "info",
         trace_id: str | None = None,
         session_id: str | None = None,
         user_id: str | None = None,
         usecase: str | None = None,
+        agent_name: str | None = None,
+        strategy_name: str | None = None,
+        llm_profile: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        tool_name: str | None = None,
+        duration_ms: float | None = None,
+        error_type: str | None = None,
+        error_code: str | None = None,
+        retryable: bool | None = None,
         payload: Mapping[str, Any] | None = None,
     ) -> None:
         if not self.settings.trace_enabled:
             return
+
+        resolved_event_name = event_name or event_type
+        resolved_event_type = (
+            event_type if event_name is not None else _infer_trace_event_type(resolved_event_name)
+        )
 
         (
             resolved_trace_id,
@@ -66,11 +84,24 @@ class TraceRecorder:
         event = TraceEvent(
             trace_id=resolved_trace_id,
             session_id=resolved_session_id,
-            event_type=event_type,
+            event_type=resolved_event_type,
             component=component,
             timestamp=datetime.now(UTC),
+            event_name=resolved_event_name,
+            status=status,
+            severity=severity,
             user_id=resolved_user_id,
             usecase=resolved_usecase,
+            agent_name=agent_name,
+            strategy_name=strategy_name,
+            llm_profile=llm_profile,
+            provider=provider,
+            model=model,
+            tool_name=tool_name,
+            duration_ms=duration_ms,
+            error_type=error_type,
+            error_code=error_code,
+            retryable=retryable,
             payload=self._build_payload(payload),
         )
 
@@ -84,9 +115,12 @@ class TraceRecorder:
                 "Trace event persistence failed",
                 extra={
                     "component": component,
-                    "event_type": event_type,
+                    "event_type": resolved_event_name,
                     "error_type": type(exc).__name__,
-                    "details": {"trace_id": resolved_trace_id},
+                    "details": {
+                        "trace_id": resolved_trace_id,
+                        "trace_event_type": resolved_event_type,
+                    },
                 },
             )
 
@@ -130,8 +164,12 @@ class WorkflowStateObserver:
             }
         )
         await self._record_trace(
-            event_type=WORKFLOW_STATE_LOADED,
+            event_type="workflow_state",
+            event_name=WORKFLOW_STATE_LOADED,
             session_id=session_id,
+            status="completed",
+            duration_ms=float(duration_ms),
+            provider=WORKFLOW_STATE_PROVIDER,
             payload=payload,
         )
 
@@ -160,8 +198,12 @@ class WorkflowStateObserver:
             "success": True,
         }
         await self._record_trace(
-            event_type=WORKFLOW_STATE_SAVED,
+            event_type="workflow_state",
+            event_name=WORKFLOW_STATE_SAVED,
             session_id=session_id,
+            status="completed",
+            duration_ms=float(duration_ms),
+            provider=WORKFLOW_STATE_PROVIDER,
             payload=payload,
         )
 
@@ -189,8 +231,12 @@ class WorkflowStateObserver:
             }
         )
         await self._record_trace(
-            event_type=WORKFLOW_STATE_RESET,
+            event_type="workflow_state",
+            event_name=WORKFLOW_STATE_RESET,
             session_id=session_id,
+            status="completed",
+            duration_ms=float(duration_ms),
+            provider=WORKFLOW_STATE_PROVIDER,
             payload=payload,
         )
 
@@ -215,8 +261,14 @@ class WorkflowStateObserver:
             "error_type": error_type,
         }
         await self._record_trace(
-            event_type=ERROR_OCCURRED,
+            event_type="error",
+            event_name=ERROR_OCCURRED,
             session_id=session_id,
+            status="failed",
+            severity="error",
+            duration_ms=float(duration_ms),
+            provider=WORKFLOW_STATE_PROVIDER,
+            error_type=error_type,
             payload=payload,
         )
 
@@ -246,8 +298,14 @@ class WorkflowStateObserver:
             "error_type": error_type,
         }
         await self._record_trace(
-            event_type=WORKFLOW_STATE_CONFLICT,
+            event_type="workflow_state",
+            event_name=WORKFLOW_STATE_CONFLICT,
             session_id=session_id,
+            status="failed",
+            severity="warning",
+            duration_ms=float(duration_ms),
+            provider=WORKFLOW_STATE_PROVIDER,
+            error_type=error_type,
             payload=payload,
         )
 
@@ -264,7 +322,13 @@ class WorkflowStateObserver:
         self,
         *,
         event_type: str,
+        event_name: str,
         session_id: str | None,
+        status: str,
+        severity: str = "info",
+        duration_ms: float | None = None,
+        provider: str | None = None,
+        error_type: str | None = None,
         payload: Mapping[str, Any],
     ) -> None:
         if not self.trace_enabled:
@@ -280,10 +344,16 @@ class WorkflowStateObserver:
             trace_id=resolved_trace_id,
             session_id=resolved_session_id,
             event_type=event_type,
+            event_name=event_name,
             component=WORKFLOW_STATE_COMPONENT,
             timestamp=datetime.now(UTC),
+            status=status,
+            severity=severity,
             user_id=resolved_user_id,
             usecase=resolved_usecase,
+            provider=provider,
+            duration_ms=duration_ms,
+            error_type=error_type,
             payload=dict(payload),
         )
 
@@ -299,6 +369,42 @@ class WorkflowStateObserver:
                     "details": {"trace_id": resolved_trace_id},
                 },
             )
+
+
+def _infer_trace_event_type(event_name: str) -> str:
+    if event_name.startswith(("request_", "response_")):
+        return "request"
+    if event_name.startswith("context_"):
+        return "context"
+    if event_name.startswith("workflow_state_"):
+        return "workflow_state"
+    if event_name.startswith("memory_"):
+        return "memory"
+    if event_name.startswith("llm_"):
+        return "llm"
+    if event_name.startswith("strategy_"):
+        return "strategy"
+    if event_name.startswith("agent_"):
+        return "agent"
+    if event_name.startswith("tool_"):
+        return "tool"
+    if event_name.startswith("mcp_"):
+        return "mcp"
+    if event_name.startswith("policy_"):
+        return "policy"
+    if event_name.startswith("stream_"):
+        return "stream"
+    if event_name.startswith("session_"):
+        return "session"
+    if event_name.startswith(("startup_", "config_")):
+        return "startup"
+    if event_name.startswith("health_"):
+        return "health"
+    if event_name.startswith("error_"):
+        return "error"
+    if event_name.startswith("trace_retention_"):
+        return "trace"
+    return event_name
 
 
 def _resolve_event_context(

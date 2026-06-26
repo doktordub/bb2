@@ -17,6 +17,7 @@ ALLOWED_METRIC_TAG_KEYS = frozenset(
         "profile",
         "tool_name",
         "event_type",
+        "event_name",
         "success",
         "error_type",
     }

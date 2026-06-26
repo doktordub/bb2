@@ -1,0 +1,3 @@
+api:
+  request_limits:
+    max_body_bytes: 0

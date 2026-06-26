@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.contracts.config import ConfigurationView
 from app.contracts.errors import ConfigurationError
 from app.contracts.trace import TraceStore
+from app.observability.metrics import MetricsRecorder
 from app.persistence.settings import get_persistence_settings
 from app.persistence.sqlite_trace_store import SqliteTraceStore
 
 
-async def build_trace_store(config: ConfigurationView) -> TraceStore:
+async def build_trace_store(
+    config: ConfigurationView,
+    *,
+    metrics: MetricsRecorder | None = None,
+    logger: logging.Logger | None = None,
+) -> TraceStore:
     """Build and initialize the configured trace-store implementation."""
 
     trace_settings = get_persistence_settings(config).trace
@@ -20,7 +27,12 @@ async def build_trace_store(config: ConfigurationView) -> TraceStore:
             f"Unsupported trace store provider: {trace_settings.provider}"
         )
 
-    store = SqliteTraceStore(trace_settings.sqlite.path, settings=trace_settings.sqlite)
+    store = SqliteTraceStore(
+        trace_settings.sqlite.path,
+        settings=trace_settings.sqlite,
+        metrics=metrics,
+        logger=logger,
+    )
     await store.initialize()
     return store
 

@@ -1,0 +1,7 @@
+api:
+  request_limits:
+    max_body_bytes: 512
+    max_message_chars: 128
+    max_metadata_bytes: 64
+    request_timeout_seconds: 10
+    stream_timeout_seconds: 10
