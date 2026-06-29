@@ -1,0 +1,45 @@
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: policy_denied_profile
+  usecases:
+    default_chat:
+      llm_profile: policy_denied_profile
+
+agents:
+  other_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Fixture-only agent used to validate policy-denied orchestration profile routing.
+
+llm:
+  defaults:
+    profile: policy_denied_profile
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+  profiles:
+    policy_denied_profile:
+      provider: fake_provider
+      model: fake-policy-denied-model
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      max_output_tokens: 256
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - other_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

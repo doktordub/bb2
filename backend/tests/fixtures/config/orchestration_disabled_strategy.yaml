@@ -1,0 +1,4 @@
+orchestration:
+  strategies:
+    direct_agent:
+      enabled: false

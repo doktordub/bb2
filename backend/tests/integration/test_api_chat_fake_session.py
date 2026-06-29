@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -50,6 +51,7 @@ def test_chat_route_round_trip_works_with_real_app_factory_and_fake_session_serv
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         first = client.post(
             "/chat",
             headers={"x-trace-id": "trace-chat-int-0001"},

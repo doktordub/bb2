@@ -1,0 +1,84 @@
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: fake_basic
+  usecases:
+    default_chat:
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: fake_basic
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+      tools:
+        enabled: true
+        allowed_tools:
+          - documents.search
+    support_chat:
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: fake_basic
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+
+session:
+  history:
+    enabled: true
+    include_tool_summaries: false
+    include_system_messages: false
+    include_metadata: true
+    max_message_chars: 2048
+    redaction_enabled: true
+
+llm:
+  defaults:
+    profile: fake_basic
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+      extra:
+        response_text: fake response
+  profiles:
+    fake_basic:
+      enabled: true
+      provider: fake_provider
+      model: fake-basic-model
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      max_output_tokens: 256
+      allowed_for:
+        usecases: []
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []
+
+tooling:
+  registry:
+    tools:
+      documents.search:
+        enabled: true
+        mcp_tool_name: documents.search
+        description: Search documents.
+        allowed_for:
+          usecases:
+            - default_chat
+            - support_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        tags:
+          - knowledge
+        safety_level: read_only

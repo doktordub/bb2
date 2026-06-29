@@ -1,0 +1,5 @@
+agents:
+  plugins:
+    support_agent:
+      type: general_assistant
+      llm_profile: missing_profile

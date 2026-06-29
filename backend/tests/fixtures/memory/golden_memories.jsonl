@@ -1,0 +1,2 @@
+{"memory_id":"memory-architecture-1","memory_type":"project_fact","text":"MemoryGateway is the only orchestration-facing boundary for long-term memory.","scope":{"project_id":"project-1"},"title":"Memory boundary"}
+{"memory_id":"memory-doc-1","memory_type":"document_chunk","text":"Search returns relevant chunks and records, not full documents, by default.","scope":{"project_id":"project-1"},"source":{"source_id":"source-1","document_id":"doc-1","chunk_id":"chunk-2","chunk_index":2,"section_path":["Guide","Memory Boundary"]}}

@@ -1,0 +1,46 @@
+session:
+  enabled: true
+  identifiers:
+    prefix: session
+    accept_client_session_id: true
+    generate_when_missing: true
+    max_length: 128
+    allowed_pattern: "^[A-Za-z0-9_.:-]{3,128}$"
+  defaults:
+    default_user_id: local_user
+    default_usecase: default_chat
+    default_history_limit: 50
+    max_history_limit: 200
+    timezone_metadata_key: timezone
+  lifecycle:
+    create_on_first_chat: true
+    resume_existing_sessions: true
+    reject_unknown_client_session_id: false
+    update_last_seen_on_load: true
+    save_after_failed_orchestration: true
+    save_after_cancelled_stream: true
+  concurrency:
+    mode: optimistic_version
+    conflict_policy: reject
+    max_retries: 1
+  state:
+    save_on_chat_completion: true
+    save_on_stream_completion: true
+    save_on_stream_cancellation: true
+    save_on_stream_failure: true
+    save_each_stream_delta: false
+  history:
+    enabled: false
+    include_tool_summaries: false
+    include_system_messages: false
+    include_metadata: true
+    max_message_chars: 4000
+    redaction_enabled: true
+  tracing:
+    record_session_created: true
+    record_session_resumed: true
+    record_session_reset: true
+    record_state_loaded: true
+    record_state_saved: true
+    record_history_returned: true
+    record_stream_lifecycle: true

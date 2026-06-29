@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -52,6 +54,7 @@ def test_oversized_request_body_returns_stable_413(
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         response = client.post("/chat", json={"message": "x" * 600})
         service = app.state.container.session_service
 
@@ -77,6 +80,7 @@ def test_configured_message_limit_rejects_chat_before_service_call(
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         response = client.post("/chat", json={"message": "x" * 129})
         service = app.state.container.session_service
 

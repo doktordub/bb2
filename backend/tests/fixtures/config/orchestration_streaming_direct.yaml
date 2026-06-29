@@ -1,0 +1,22 @@
+features:
+  streaming_enabled: true
+
+orchestration:
+  defaults:
+    strategy: direct_agent
+    fallback_strategy: direct_agent
+    max_turn_duration_seconds: 90
+    max_stream_duration_seconds: 240
+    emit_step_events: true
+    emit_tool_events: false
+    emit_memory_events: false
+  strategies:
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      default_agent: support_agent
+      allowed_usecases:
+        - default_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      tools_enabled: false

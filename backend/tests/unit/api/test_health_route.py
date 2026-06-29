@@ -68,7 +68,42 @@ def test_health_route_returns_api_facing_shape_with_safe_checks(
     }
     assert payload["workflow_state"]["provider"] == "sqlite"
     assert payload["trace"]["provider"] == "sqlite"
-    assert payload["llm"] == {"status": "not_checked", "configured": True}
-    assert payload["mcp"] == {"status": "not_checked", "configured": True}
+    assert payload["llm"] == {
+        "status": "ok",
+        "providers_configured": True,
+        "profiles_configured": True,
+        "default_profile": "local_reasoning",
+        "providers": {
+            "local_provider": {
+                "status": "ok",
+                "type": "openai_compatible",
+                "enabled": True,
+            }
+        },
+        "profiles": {
+            "local_reasoning": {
+                "status": "ok",
+                "provider": "local_provider",
+                "enabled": True,
+                "supports_streaming": True,
+            }
+        },
+    }
+    assert payload["mcp"] == {
+        "status": "not_configured",
+        "configured": True,
+        "tooling_enabled": False,
+        "adapter_reachable": False,
+        "mcp_status": "disabled",
+        "discovery_enabled": True,
+        "discovery_state": "disabled",
+        "tools_configured": 0,
+        "tools_discovered": 0,
+        "tools_enabled": 0,
+        "registry_status": "disabled",
+        "transport": "http",
+        "server_name": "main",
+        "identity_mode": "none",
+    }
     assert payload["checks"]["workflow_state"] == payload["workflow_state"]
     assert payload["checks"]["trace"] == payload["trace"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -50,6 +51,7 @@ def test_reset_route_clears_fake_session_state_and_returns_headers(
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         chat = client.post("/chat", json={"message": "hello", "session_id": "session_123"})
         assert chat.status_code == 200
 

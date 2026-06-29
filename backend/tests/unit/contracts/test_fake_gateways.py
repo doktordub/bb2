@@ -10,9 +10,22 @@ import sys
 import pytest
 
 from app.contracts.context import OrchestrationContext, RequestContext
-from app.contracts.memory import MemoryResult, MemoryScope, MemorySearchRequest, MemoryWrite
+from app.contracts.llm import LLMMessage, LLMRequest
+from app.contracts.memory import (
+    MemoryGetRequest,
+    MemoryResult,
+    MemoryScope,
+    MemorySearchRequest,
+    MemoryWrite,
+)
 from app.contracts.policy import PolicyRequest
-from app.contracts.tools import ToolCallRequest, ToolSpec
+from app.contracts.tools import (
+    ToolCallRequest,
+    ToolExecutionRequest,
+    ToolListFilters,
+    ToolScopes,
+    ToolSpec,
+)
 from app.contracts.trace import TraceEvent
 from app.testing.fakes import (
     FakeConfigurationLoader,
@@ -115,7 +128,7 @@ async def test_contract_slice_runs_without_concrete_infrastructure(
         context,
     )
 
-    assert found == []
+    assert found.results == []
     assert listed == []
     assert context.state.states[context.request.session_id] == {"step": "contracts"}
     assert context.trace.events[0].component == "tests.contracts"
@@ -139,8 +152,8 @@ async def test_fake_dependencies_build_a_complete_orchestration_context() -> Non
     assert (await context.state.health())["provider"] == "fake"
     assert (await context.trace.health())["status"] == "ok"
     assert (await context.trace.health())["provider"] == "fake"
-    assert (await context.memory.health())["status"] == "ok"
-    assert (await context.memory.health())["provider"] == "fake"
+    assert (await context.memory.health()).status == "ok"
+    assert (await context.memory.health()).provider == "fake"
     assert context.config.require("agents.fake_agent.enabled") is True
 
 
@@ -162,13 +175,18 @@ async def test_fake_memory_gateway_records_search_write_and_forget() -> None:
 
     found = await memory.search(search_request, context)
     record = await memory.upsert(write, context)
+    fetched = await memory.get(MemoryGetRequest(identifier="note_1"), context)
     await memory.forget(record.memory_id, context)
+    stats = await memory.stats()
 
-    assert found == [result]
+    assert found.results == [result]
     assert memory.search_requests == [search_request]
     assert memory.writes == [write]
     assert record.memory_id == "note_1"
+    assert fetched is not None
+    assert fetched.memory_id == "note_1"
     assert memory.forgotten_ids == ["note_1"]
+    assert stats.total_records == 0
 
 
 async def test_fake_tool_gateway_lists_tools_and_records_calls() -> None:
@@ -177,20 +195,54 @@ async def test_fake_tool_gateway_lists_tools_and_records_calls() -> None:
         description="Search documents",
         input_schema={"type": "object"},
         source="fake",
+        execution_modes=["sync", "stream"],
+        tags=["search"],
     )
     tools = FakeToolGateway(tools=[tool])
     context = build_context()
 
-    listed = await tools.list_tools(context)
-    result = await tools.call_tool(
+    listed = await tools.list_tools(
+        context,
+        ToolListFilters(tags=["search"], execution_mode="stream", enabled_only=True),
+    )
+    resolved = await tools.get_tool("documents.search", context)
+    result = await tools.execute(
+        ToolExecutionRequest(
+            tool_name="documents.search",
+            arguments={"query": "policy"},
+            scopes=ToolScopes(project_id="proj-1"),
+        ),
+        context,
+    )
+    compatibility_result = await tools.call_tool(
         ToolCallRequest(tool_name="documents.search", arguments={"query": "policy"}),
         context,
     )
+    stream_events = [
+        event
+        async for event in tools.stream_execute(
+            ToolExecutionRequest(
+                tool_name="documents.search",
+                arguments={"query": "policy"},
+                scopes=ToolScopes(project_id="proj-1"),
+                stream=True,
+            ),
+            context,
+        )
+    ]
+    health = await tools.health()
+    capabilities = await tools.capabilities()
 
     assert listed == [tool]
-    assert len(tools.calls) == 1
+    assert resolved == tool
+    assert len(tools.calls) == 2
+    assert len(tools.stream_calls) == 1
     assert result.success is True
     assert result.data == {"fake": True, "arguments": {"query": "policy"}}
+    assert compatibility_result.data == {"fake": True, "arguments": {"query": "policy"}}
+    assert [event.type for event in stream_events] == ["started", "delta", "completed"]
+    assert health["tools_enabled"] == 1
+    assert capabilities["available_logical_tools"][0]["name"] == "documents.search"
 
 
 async def test_fake_state_and_trace_store_record_in_memory() -> None:
@@ -210,16 +262,38 @@ async def test_fake_state_and_trace_store_record_in_memory() -> None:
     )
     await trace.record_event(event)
 
-    assert loaded == {"step": "agent"}
+    assert loaded.state == {"step": "agent"}
+    assert loaded.version == 1
+    assert loaded.found is True
     assert "session_1" not in state.states
     assert trace.events == [event]
+
+
+async def test_fake_llm_gateway_exposes_stream_health_and_profiles() -> None:
+    gateway = FakeLLMGateway(response_text="streamed answer")
+    context = build_context()
+    request = LLMRequest(
+        component="agent.fake_gateway",
+        messages=[LLMMessage(role="user", content="hello")],
+    )
+
+    events = [event async for event in gateway.stream(request, context)]
+    health = await gateway.health()
+    profiles = await gateway.list_profiles()
+
+    assert [event.type for event in events] == ["started", "delta", "completed"]
+    assert events[1].text == "streamed answer"
+    assert health.status == "ok"
+    assert health.default_profile == "fake_profile"
+    assert profiles[0].name == "fake_profile"
+    assert profiles[0].metadata == {"source": "fake"}
 
 
 async def test_fake_policy_service_can_allow_and_deny() -> None:
     allowed_policy = FakePolicyService(allow=True)
     denied_policy = FakePolicyService(allow=False)
     context = build_context()
-    request = PolicyRequest(action="tool.call", component="agent.fake_agent")
+    request = PolicyRequest(action="tool.execute", component="agent.fake_agent")
 
     allowed = await allowed_policy.evaluate(request, context)
 

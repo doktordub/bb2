@@ -23,7 +23,11 @@ async def get_capabilities(
     api_settings: ApiSettings = Depends(get_api_settings_dependency),
     container: FoundationContainer = Depends(get_foundation_container),
 ) -> CapabilitiesResponse:
-    payload = container.capabilities.describe_api(api_settings=api_settings)
+    payload = await container.capabilities.describe_api(
+        api_settings=api_settings,
+        trace_id=context.trace_id,
+        user_id=context.user_id,
+    )
     return CapabilitiesResponse(
         trace_id=context.trace_id,
         data=CapabilitiesResponseData.model_validate(payload),

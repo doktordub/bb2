@@ -8,8 +8,15 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.contracts.results import OrchestrationResult
+from app.deployment.process_control import RestartRequestReceipt
 from app.observability.redaction import SENSITIVE_KEY_PARTS, is_sensitive_key
-from app.session.models import SessionChatResult, SessionResetResult
+from app.session.models import (
+    SessionChatResult,
+    SessionDeleteResult,
+    SessionHistoryResult,
+    SessionListResult,
+    SessionResetResult,
+)
 
 SCHEMA_VERSION = "1.0"
 _DEFAULT_MAX_MESSAGE_CHARS = 20000
@@ -141,6 +148,171 @@ class ResetSessionResponse(BaseModel):
         )
 
 
+class SessionHistoryMessageData(BaseModel):
+    """Frontend-safe message projection for session history."""
+
+    role: str
+    content: str
+    created_at: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionHistoryResponseData(BaseModel):
+    """Response body for session history."""
+
+    messages: list[SessionHistoryMessageData] = Field(default_factory=list)
+    truncated: bool
+
+
+class SessionHistoryResponse(BaseModel):
+    """Stable public response envelope for session history."""
+
+    schema_version: str = SCHEMA_VERSION
+    trace_id: str
+    session_id: str
+    data: SessionHistoryResponseData
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_result(cls, result: SessionHistoryResult) -> SessionHistoryResponse:
+        return cls(
+            trace_id=result.trace_id,
+            session_id=result.session_id,
+            data=SessionHistoryResponseData(
+                messages=[
+                    SessionHistoryMessageData(
+                        role=item.role,
+                        content=item.content,
+                        created_at=item.created_at,
+                        metadata=dict(item.metadata),
+                    )
+                    for item in result.messages
+                ],
+                truncated=result.truncated,
+            ),
+            metadata=dict(result.metadata),
+        )
+
+
+class SessionSummaryData(BaseModel):
+    """Frontend-safe session summary DTO."""
+
+    session_id: str
+    usecase: str | None = None
+    status: str
+    created_at: str | None = None
+    updated_at: str | None = None
+    last_activity_at: str | None = None
+    reset_count: int
+    message_count: int
+
+
+class SessionListResponseData(BaseModel):
+    """Response body for session listing."""
+
+    sessions: list[SessionSummaryData] = Field(default_factory=list)
+    limit: int
+    has_more: bool
+
+
+class SessionListResponse(BaseModel):
+    """Stable public response envelope for session listing."""
+
+    schema_version: str = SCHEMA_VERSION
+    trace_id: str
+    data: SessionListResponseData
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_result(cls, result: SessionListResult) -> SessionListResponse:
+        return cls(
+            trace_id=result.trace_id,
+            data=SessionListResponseData(
+                sessions=[
+                    SessionSummaryData(
+                        session_id=item.session_id,
+                        usecase=item.usecase,
+                        status=item.status,
+                        created_at=item.created_at,
+                        updated_at=item.updated_at,
+                        last_activity_at=item.last_activity_at,
+                        reset_count=item.reset_count,
+                        message_count=item.message_count,
+                    )
+                    for item in result.sessions
+                ],
+                limit=result.limit,
+                has_more=result.has_more,
+            ),
+            metadata=dict(result.metadata),
+        )
+
+
+class SessionDeleteResponseData(BaseModel):
+    """Response body for session deletion."""
+
+    deleted: bool
+    message: str
+
+
+class SessionDeleteResponse(BaseModel):
+    """Stable public response envelope for session deletion."""
+
+    schema_version: str = SCHEMA_VERSION
+    trace_id: str
+    session_id: str
+    data: SessionDeleteResponseData
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_result(cls, result: SessionDeleteResult) -> SessionDeleteResponse:
+        return cls(
+            trace_id=result.trace_id,
+            session_id=result.session_id,
+            data=SessionDeleteResponseData(
+                deleted=result.deleted,
+                message=result.message,
+            ),
+            metadata=dict(result.metadata),
+        )
+
+
+class RestartResponseData(BaseModel):
+    """Response body for accepted restart requests."""
+
+    restart_requested: bool
+    request_id: str
+    requested_at: str
+    signal_path: str
+
+
+class RestartResponse(BaseModel):
+    """Stable public response envelope for backend restart requests."""
+
+    schema_version: str = SCHEMA_VERSION
+    trace_id: str
+    data: RestartResponseData
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_receipt(
+        cls,
+        *,
+        trace_id: str,
+        receipt: RestartRequestReceipt,
+    ) -> RestartResponse:
+        return cls(
+            trace_id=trace_id,
+            data=RestartResponseData(
+                restart_requested=receipt.restart_requested,
+                request_id=receipt.request_id,
+                requested_at=receipt.requested_at,
+                signal_path=receipt.signal_path,
+            ),
+            metadata=dict(receipt.metadata),
+        )
+
+
 class HealthResponse(BaseModel):
     """Frontend-safe health response DTO."""
 
@@ -156,6 +328,7 @@ class HealthResponse(BaseModel):
     memory: dict[str, Any] = Field(default_factory=dict)
     llm: dict[str, Any] = Field(default_factory=dict)
     mcp: dict[str, Any] = Field(default_factory=dict)
+    orchestration: dict[str, Any] = Field(default_factory=dict)
     checks: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -165,6 +338,10 @@ class UseCaseCapability(BaseModel):
     name: str
     display_name: str
     description: str | None = None
+    strategy_type: str
+    streaming_supported: bool
+    memory_enabled: bool
+    tools_enabled: bool
 
 
 class ChatCapabilities(BaseModel):
@@ -180,6 +357,8 @@ class SessionCapabilities(BaseModel):
 
     reset_enabled: bool
     history_enabled: bool = False
+    list_enabled: bool = False
+    delete_enabled: bool = False
     client_session_id_enabled: bool
 
 
@@ -187,6 +366,49 @@ class DebugCapabilities(BaseModel):
     """Frontend-safe debug-route capability flags."""
 
     trace_routes_enabled: bool
+    restart_enabled: bool = False
+
+
+class MemoryCapabilities(BaseModel):
+    """Frontend-safe memory capability flags."""
+
+    enabled: bool
+    configured: bool
+    provider: str | None = None
+    search_available: bool
+    ingest_available: bool
+
+
+class ToolingCapabilities(BaseModel):
+    """Frontend-safe tool-gateway capability flags."""
+
+    enabled: bool
+    configured: bool
+    streaming_supported: bool
+    total_tools: int
+    approval_required_tools: int
+    safety_levels: dict[str, int] = Field(default_factory=dict)
+    transport: str | None = None
+    discovery_enabled: bool | None = None
+
+
+class LLMCapabilities(BaseModel):
+    """Frontend-safe LLM capability flags."""
+
+    enabled: bool
+    default_profile: str | None = None
+    streaming_supported: bool
+    structured_output_supported: bool
+
+
+class AgentCapabilities(BaseModel):
+    """Frontend-safe agent descriptor surfaced through capabilities."""
+
+    name: str
+    display_name: str
+    type: str
+    streaming_supported: bool
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class CapabilitiesResponseData(BaseModel):
@@ -195,7 +417,11 @@ class CapabilitiesResponseData(BaseModel):
     chat: ChatCapabilities
     sessions: SessionCapabilities
     usecases: list[UseCaseCapability] = Field(default_factory=list)
+    agents: list[AgentCapabilities] = Field(default_factory=list)
     debug: DebugCapabilities
+    tools: ToolingCapabilities
+    memory: MemoryCapabilities
+    llm: LLMCapabilities
 
 
 class CapabilitiesResponse(BaseModel):

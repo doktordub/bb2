@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.contracts.memory import MemoryScope, MemorySearchRequest
 from app.contracts.context import OrchestrationContext, RequestContext
 from app.testing.fakes import (
     FakeAgent,
@@ -14,7 +15,12 @@ from app.testing.fakes import (
 )
 
 
-def build_context(response_text: str = "fake response") -> OrchestrationContext:
+def build_context(
+    response_text: str = "fake response",
+    *,
+    config: FakeConfigurationView | None = None,
+    memory: FakeMemoryGateway | None = None,
+) -> OrchestrationContext:
     return OrchestrationContext(
         request=RequestContext(
             user_id="user_1",
@@ -24,12 +30,12 @@ def build_context(response_text: str = "fake response") -> OrchestrationContext:
             trace_id="trace_1",
         ),
         llm=FakeLLMGateway(response_text=response_text),
-        memory=FakeMemoryGateway(),
+        memory=memory or FakeMemoryGateway(),
         state=FakeWorkflowStateStore(),
         tools=FakeToolGateway(),
         trace=FakeTraceStore(),
         policy=FakePolicyService(),
-        config=FakeConfigurationView(),
+        config=config or FakeConfigurationView(),
         runtime_metadata={"strategy": "direct"},
     )
 
@@ -47,6 +53,29 @@ async def test_fake_agent_uses_llm_gateway_through_context() -> None:
     assert len(context.llm.requests) == 1
     assert context.llm.requests[0].component == "agent.fake_agent"
     assert context.llm.requests[0].messages[0].content == "Explain the contract slice"
+
+
+async def test_fake_agent_uses_memory_gateway_when_enabled() -> None:
+    memory = FakeMemoryGateway()
+    context = build_context(
+        response_text="memory answer",
+        config=FakeConfigurationView(
+            {
+                "features": {"memory_enabled": True},
+                "agents": {"fake_agent": {"memory": {"search_enabled": True}}},
+            }
+        ),
+        memory=memory,
+    )
+    agent = FakeAgent()
+
+    result = await agent.run(context)
+
+    assert result.answer == "memory answer"
+    assert result.metadata["memory_result_count"] == 0
+    assert memory.search_requests == [
+        MemorySearchRequest(text="Explain the contract slice", scope=MemoryScope())
+    ]
 
 
 async def test_fake_strategy_executes_agent_and_returns_normalized_result() -> None:

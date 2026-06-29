@@ -56,6 +56,8 @@ def test_capabilities_route(monkeypatch: pytest.MonkeyPatch) -> None:
                 "sessions": {
                     "reset_enabled": True,
                     "history_enabled": False,
+                    "list_enabled": False,
+                    "delete_enabled": False,
                     "client_session_id_enabled": True,
                 },
                 "usecases": [
@@ -63,16 +65,110 @@ def test_capabilities_route(monkeypatch: pytest.MonkeyPatch) -> None:
                         "name": "routing_chat",
                         "display_name": "Routing Chat",
                         "description": "Routed chat use case.",
+                        "strategy_type": "router",
+                        "streaming_supported": True,
+                        "memory_enabled": False,
+                        "tools_enabled": True,
                     },
                     {
                         "name": "support_chat",
                         "display_name": "Support Chat",
                         "description": "Support chat use case.",
+                        "strategy_type": "direct_agent",
+                        "streaming_supported": True,
+                        "memory_enabled": True,
+                        "tools_enabled": True,
+                    },
+                ],
+                "agents": [
+                    {
+                        "name": "analyst_agent",
+                        "display_name": "Analyst Agent",
+                        "type": "custom",
+                        "streaming_supported": True,
+                        "capabilities": ["answer", "memory_context", "tool_reasoning"],
+                    },
+                    {
+                        "name": "support_agent",
+                        "display_name": "Support Agent",
+                        "type": "custom",
+                        "streaming_supported": True,
+                        "capabilities": ["answer", "memory_context", "tool_reasoning"],
                     },
                 ],
                 "debug": {
                     "trace_routes_enabled": False,
+                    "restart_enabled": False,
+                },
+                "tools": {
+                    "enabled": True,
+                    "configured": True,
+                    "streaming_supported": False,
+                    "total_tools": 2,
+                    "approval_required_tools": 0,
+                    "safety_levels": {
+                        "read_only": 2,
+                        "write": 0,
+                        "destructive": 0,
+                        "external_side_effect": 0,
+                    },
+                    "transport": "http",
+                    "discovery_enabled": True,
+                },
+                "memory": {
+                    "enabled": True,
+                    "configured": True,
+                    "provider": "memory_store",
+                    "search_available": True,
+                    "ingest_available": True,
+                },
+                "llm": {
+                    "enabled": True,
+                    "default_profile": "cloud_fast",
+                    "streaming_supported": True,
+                    "structured_output_supported": False,
                 },
             },
             "metadata": {},
         }
+
+
+def test_capabilities_history_flag_follows_session_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    clear_settings_env(monkeypatch)
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/valid_full.yaml")
+    monkeypatch.setenv(
+        "APP_CONFIG_OVERRIDE_PATH",
+        "tests/fixtures/config/session_history_enabled.yaml",
+    )
+
+    app = create_app(load_settings(env_file=None))
+
+    with TestClient(app) as client:
+        response = client.get("/capabilities")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["tools"] == {
+        "enabled": True,
+        "configured": True,
+        "streaming_supported": False,
+        "total_tools": 2,
+        "approval_required_tools": 0,
+        "safety_levels": {
+            "read_only": 2,
+            "write": 0,
+            "destructive": 0,
+            "external_side_effect": 0,
+        },
+        "transport": "http",
+        "discovery_enabled": True,
+    }
+    assert response.json()["data"]["sessions"]["history_enabled"] is True
+    assert response.json()["data"]["sessions"]["list_enabled"] is False
+    assert response.json()["data"]["sessions"]["delete_enabled"] is False
+    assert response.json()["data"]["memory"] == {
+        "enabled": True,
+        "configured": True,
+        "provider": "memory_store",
+        "search_available": True,
+        "ingest_available": True,
+    }

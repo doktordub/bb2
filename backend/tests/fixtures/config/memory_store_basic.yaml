@@ -1,0 +1,17 @@
+memory:
+  enabled: true
+  provider: memory_store
+  required: false
+  defaults:
+    top_k: 8
+  store:
+    database:
+      path: memory-basic
+      schema_version: 2
+  search:
+    limit_max: 24
+    vector_top_n: 24
+    fts_top_n: 18
+    final_top_k: 12
+  lifecycle:
+    allow_writes: false

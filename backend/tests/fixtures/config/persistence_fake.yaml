@@ -46,7 +46,7 @@ llm:
 
 mcp:
   main:
-    url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
 
 persistence:
   base_dir: ${env:APP_DATA_DIR:./data}

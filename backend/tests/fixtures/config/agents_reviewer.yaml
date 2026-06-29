@@ -1,0 +1,16 @@
+agents:
+  defaults:
+    strict_prompt_profile_validation: true
+    known_prompt_profiles:
+      - reviewer_v1
+  plugins:
+    support_agent:
+      type: reviewer
+      display_name: Reviewer Agent
+      description: Reviews answers against configured criteria.
+      llm_profile: local_reasoning
+      prompt_profile: reviewer_v1
+      capabilities:
+        answer: false
+        review: true
+        stream: false

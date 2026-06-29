@@ -1,0 +1,3 @@
+llm:
+  defaults:
+    profile: missing_profile

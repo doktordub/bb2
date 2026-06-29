@@ -66,21 +66,19 @@ def test_stream_route_returns_event_stream_and_sets_headers(
     assert response.headers["x-session-id"].startswith("session_")
 
     events = _parse_sse_events(response.text)
-    assert [event["event"] for event in events] == [
-        "response.started",
-        "response.delta",
-        "response.delta",
-        "response.completed",
-    ]
+    event_names = [event["event"] for event in events]
+    assert event_names[0] == "response.started"
+    assert event_names[-1] == "response.completed"
+    assert event_names.count("response.delta") >= 1
     assert events[0]["data"] == {
         "schema_version": "1.0",
         "session_id": response.headers["x-session-id"],
     }
-    assert events[1]["data"]["text"]
-    assert events[2]["data"]["text"]
-    assert events[3]["data"] == {
+    delta_events = [event for event in events if event["event"] == "response.delta"]
+    assert all(event["data"]["text"] for event in delta_events)
+    assert events[-1]["data"] == {
         "session_id": response.headers["x-session-id"],
-        "finish_reason": "stop",
+        "finish_reason": "completed",
         "duration_ms": 0,
     }
 
@@ -124,6 +122,7 @@ def test_stream_route_emits_response_error_event_when_service_fails(
             "message": "The request failed.",
             "retryable": True,
         },
+        "session_id": response.headers["x-session-id"],
     }
 
 

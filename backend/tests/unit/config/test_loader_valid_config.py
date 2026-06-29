@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 import pytest
 
@@ -55,7 +56,13 @@ def test_load_validated_config_parses_valid_minimal_fixture() -> None:
     config = load_validated_config(FIXTURES_DIR / "valid_minimal.yaml", env={})
 
     assert config.app.active_usecase == "default_chat"
-    assert config.llm.default_profile == "local_reasoning"
+    assert config.orchestration.defaults.strategy == "direct_agent"
+    assert config.orchestration.strategies["direct_agent"].type == "direct_agent"
+    assert config.usecases["default_chat"].default_agent == "support_agent"
+    assert config.llm.defaults.profile == "local_reasoning"
+    assert config.memory.enabled is False
+    assert config.memory.provider == "memory_store"
+    assert config.memory.required is False
     assert config.persistence.memory.provider == "memory_store"
     assert config.observability.trace_enabled is True
     assert config.observability.trace_store_required is True
@@ -68,9 +75,13 @@ def test_load_validated_config_parses_valid_full_fixture() -> None:
     config = load_validated_config(FIXTURES_DIR / "valid_full.yaml", env={})
 
     assert config.app.active_usecase == "support_chat"
+    assert config.orchestration.defaults.strategy == "direct_agent"
+    assert config.orchestration.defaults.fallback_strategy == "direct_agent"
     assert set(config.usecases) == {"support_chat", "routing_chat"}
+    assert config.orchestration.usecases["routing_chat"].strategy == "router"
     assert config.strategies["router"].llm_profile == "cloud_fast"
     assert config.llm.profiles["cloud_fast"].fallback_profiles == ["local_reasoning"]
+    assert config.memory.provider == "memory_store"
     assert config.observability.trace_enabled is True
     assert config.observability.trace_payloads_enabled is True
     assert config.observability.max_trace_payload_chars == 12000
@@ -84,7 +95,68 @@ async def test_yaml_configuration_loader_returns_validated_view() -> None:
     view = await loader.load()
 
     assert view.require("app.active_usecase") == "default_chat"
-    assert view.section("llm")["default_profile"] == "local_reasoning"
+    assert view.require("llm.defaults.profile") == "local_reasoning"
+
+
+def test_load_prepared_config_uses_backend_env_file_values_by_default(tmp_path: Path) -> None:
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    original = env_path.read_text(encoding="utf-8") if env_path.exists() else None
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "service:\n"
+        "  base_url: ${env:LOCAL_LLM_BASE_URL:http://localhost:8081/v1}\n"
+        "  log_level: ${env:APP_LOG_LEVEL:INFO}\n",
+        encoding="utf-8",
+    )
+
+    os.environ.pop("LOCAL_LLM_BASE_URL", None)
+    os.environ.pop("APP_LOG_LEVEL", None)
+    env_path.write_text(
+        "LOCAL_LLM_BASE_URL=http://env-file.example/v1\n"
+        "APP_LOG_LEVEL=WARNING\n",
+        encoding="utf-8",
+    )
+
+    try:
+        prepared = load_prepared_config(config_path)
+    finally:
+        if original is None:
+            env_path.unlink(missing_ok=True)
+        else:
+            env_path.write_text(original, encoding="utf-8")
+
+    assert prepared == {
+        "service": {
+            "base_url": "http://env-file.example/v1",
+            "log_level": "WARNING",
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("override_name", "expected_strategy", "expected_usecase"),
+    [
+        ("orchestration_basic_direct.yaml", "direct_agent", "default_chat"),
+        ("orchestration_streaming_direct.yaml", "direct_agent", "default_chat"),
+        ("orchestration_retrieval_augmented.yaml", "retrieval_augmented", "document_qa"),
+        ("orchestration_tool_assisted.yaml", "tool_assisted", "tooling_chat"),
+        ("orchestration_router.yaml", "router", "routing_chat"),
+        ("orchestration_policy_denied.yaml", "direct_agent", "default_chat"),
+    ],
+)
+def test_load_validated_config_accepts_orchestration_override_fixtures(
+    override_name: str,
+    expected_strategy: str,
+    expected_usecase: str,
+) -> None:
+    config = load_validated_config(
+        FIXTURES_DIR / "valid_minimal.yaml",
+        override_path=FIXTURES_DIR / override_name,
+        env={},
+    )
+
+    assert config.orchestration.defaults.strategy == expected_strategy
+    assert expected_usecase in config.orchestration.usecases
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,11 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 import logging
+from pathlib import Path
+import signal
+import sys
 
 from fastapi import FastAPI
 
@@ -10,11 +14,17 @@ from app.api.errors import register_exception_handlers
 from app.api.openapi import register_api_openapi_routes
 from app.api.routes_chat import router as chat_router
 from app.api.routes_capabilities import router as capabilities_router
+from app.api.routes_debug_control import router as debug_control_router
 from app.api.routes_debug_traces import router as debug_trace_router
 from app.api.routes_health import router as health_router
 from app.api.routes_sessions import router as sessions_router
 from app.config.bootstrap import build_container
-from app.config.settings import Settings, load_settings
+from app.config.settings import BACKEND_ROOT, Settings, load_settings
+from app.deployment.process_control import (
+    RestartLaunchSpec,
+    ShutdownHandler,
+    build_self_relaunch_handler,
+)
 from app.foundation.container import FoundationContainer
 from app.observability.context import TraceContext, reset_trace_context, set_trace_context
 from app.observability.errors import build_log_error_details
@@ -55,6 +65,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
             container = await build_container(resolved_settings)
+            if container.process_control_service is not None:
+                container = replace(
+                    container,
+                    process_control_service=container.process_control_service.with_shutdown_handler(
+                        _resolve_runtime_shutdown_handler(settings=resolved_settings)
+                    ),
+                )
             app.state.container = container
             _configure_api_surface(app, container)
             await container.trace_recorder.record(
@@ -103,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             if container is not None:
-                await container.persistence.close()
+                await container.close()
             app.state.container = None
 
     app = FastAPI(
@@ -126,6 +143,116 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 app = create_app()
 
 
+def _resolve_runtime_shutdown_handler(*, settings: Settings) -> ShutdownHandler | None:
+    shutdown_signal = _resolve_runtime_shutdown_signal()
+    if shutdown_signal is None:
+        return None
+    launch_spec = _resolve_restart_launch_spec(settings=settings)
+    if launch_spec is None:
+        return None
+    return build_self_relaunch_handler(
+        launch_spec=launch_spec,
+        shutdown_signal=shutdown_signal,
+    )
+
+
+def _resolve_restart_launch_spec(*, settings: Settings) -> RestartLaunchSpec | None:
+    command = _resolve_restart_command(settings=settings)
+    if command is None:
+        return None
+    return RestartLaunchSpec(
+        command=command,
+        working_dir=str(BACKEND_ROOT),
+    )
+
+
+def _resolve_restart_command(*, settings: Settings) -> tuple[str, ...] | None:
+    original_command = _resolve_original_uvicorn_command()
+    if original_command is not None:
+        return original_command
+
+    python_executable = _resolve_python_executable()
+    if python_executable is None:
+        return None
+
+    command = [
+        python_executable,
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        settings.host,
+        "--port",
+        str(settings.port),
+    ]
+    if settings.reload:
+        command.append("--reload")
+    return tuple(command)
+
+
+def _resolve_original_uvicorn_command() -> tuple[str, ...] | None:
+    raw_argv = getattr(sys, "orig_argv", None)
+    if not isinstance(raw_argv, (list, tuple)) or not raw_argv:
+        return None
+
+    argv = tuple(str(argument) for argument in raw_argv if isinstance(argument, str) and argument)
+    if not argv or not _targets_backend_app(argv):
+        return None
+    if _is_uvicorn_module_command(argv) or _is_uvicorn_executable_command(argv):
+        return argv
+    return None
+
+
+def _targets_backend_app(argv: tuple[str, ...]) -> bool:
+    return any(argument.startswith("app.main:") for argument in argv)
+
+
+def _is_uvicorn_module_command(argv: tuple[str, ...]) -> bool:
+    return len(argv) >= 3 and argv[1] == "-m" and argv[2] == "uvicorn"
+
+
+def _is_uvicorn_executable_command(argv: tuple[str, ...]) -> bool:
+    executable_name = Path(argv[0]).name.lower()
+    return executable_name in {"uvicorn", "uvicorn.exe"}
+
+
+def _resolve_python_executable() -> str | None:
+    executable = sys.executable.strip()
+    if not executable:
+        return None
+    return str(Path(executable).resolve(strict=False))
+
+
+def _resolve_runtime_shutdown_signal() -> int | None:
+    for shutdown_signal in _preferred_shutdown_signals():
+        handler = signal.getsignal(shutdown_signal)
+        if _is_uvicorn_signal_handler(handler):
+            return shutdown_signal
+    return None
+
+
+def _preferred_shutdown_signals() -> tuple[int, ...]:
+    shutdown_signals = [signal.SIGTERM, signal.SIGINT]
+    sigbreak = getattr(signal, "SIGBREAK", None)
+    if isinstance(sigbreak, int):
+        shutdown_signals.append(sigbreak)
+    return tuple(shutdown_signals)
+
+
+def _is_uvicorn_signal_handler(handler: object) -> bool:
+    if not callable(handler) or handler is signal.default_int_handler:
+        return False
+    module_candidates = (
+        getattr(handler, "__module__", ""),
+        getattr(getattr(handler, "__func__", None), "__module__", ""),
+        getattr(getattr(getattr(handler, "__self__", None), "__class__", None), "__module__", ""),
+    )
+    return any(
+        isinstance(module_name, str) and module_name.startswith("uvicorn.")
+        for module_name in module_candidates
+    )
+
+
 def _configure_api_surface(app: FastAPI, container: FoundationContainer) -> None:
     if getattr(app.state, "api_surface_registered", False):
         return
@@ -142,6 +269,8 @@ def _configure_api_surface(app: FastAPI, container: FoundationContainer) -> None
     app.include_router(sessions_router, prefix=prefix)
     if api_settings.debug_routes.enabled:
         app.include_router(debug_trace_router, prefix=prefix)
+        if api_settings.debug_routes.restart_enabled:
+            app.include_router(debug_control_router, prefix=prefix)
     register_api_openapi_routes(app, api_settings=api_settings)
     app.openapi_schema = None
     app.state.api_surface_registered = True

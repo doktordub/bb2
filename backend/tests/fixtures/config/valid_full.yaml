@@ -4,60 +4,143 @@ app:
   active_usecase: support_chat
   data_dir: ${env:APP_DATA_DIR:./data}
 
+orchestration:
+  enabled: true
+  defaults:
+    strategy: direct_agent
+    fallback_strategy: direct_agent
+    max_steps: 8
+    max_tool_calls: 4
+    max_memory_searches: 3
+    max_llm_calls: 6
+    max_turn_duration_seconds: 120
+    max_stream_duration_seconds: 300
+    emit_step_events: true
+    emit_tool_events: true
+    emit_memory_events: true
+    expose_chain_of_thought: false
+    save_runtime_snapshots: false
+  strategies:
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      description: Run the default configured agent.
+      default_agent: support_agent
+      allowed_usecases:
+        - support_chat
+      llm_profile: local_reasoning
+      memory_enabled: true
+      tools_enabled: true
+    router:
+      enabled: true
+      type: router
+      description: Select the best candidate agent.
+      llm_profile: cloud_fast
+      default_agent: analyst_agent
+      allowed_usecases:
+        - routing_chat
+      tools_enabled: true
+      max_candidate_agents: 3
+      candidate_strategies:
+        - direct_agent
+  usecases:
+    support_chat:
+      enabled: true
+      description: Support chat use case.
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      memory:
+        enabled: true
+        include_document_chunks: true
+        default_limit: 8
+      tools:
+        enabled: true
+        allowed_tools:
+          - documents.search
+      policy_profile: default
+    routing_chat:
+      enabled: true
+      description: Routed chat use case.
+      strategy: router
+      agent: analyst_agent
+      llm_profile: cloud_fast
+      allowed_agents:
+        - analyst_agent
+      memory:
+        enabled: false
+        include_document_chunks: false
+        default_limit: 4
+      tools:
+        enabled: true
+        allowed_tools:
+          - documents.search
+          - calculator.run
+      policy_profile: permissive
+
 features:
   streaming_enabled: true
   memory_enabled: true
   tools_enabled: true
   trace_enabled: true
 
-usecases:
-  support_chat:
-    enabled: true
-    description: Support chat use case.
-    strategy: direct_agent
-    default_agent: support_agent
-    allowed_agents:
-      - support_agent
-    orchestrator_llm_profile: local_reasoning
-    memory:
-      enabled: true
-      include_document_chunks: true
-      default_limit: 8
+tooling:
+  enabled: true
+  defaults:
+    timeout_seconds: 60
+    stream_timeout_seconds: 300
+    max_retries: 1
+    max_argument_bytes: 65536
+    max_result_bytes: 262144
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: true
+    discovery_refresh_seconds: 300
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
     tools:
-      enabled: true
-      allowed_tools:
-        - documents.search
-    policy_profile: default
-  routing_chat:
-    enabled: true
-    description: Routed chat use case.
-    strategy: router
-    default_agent: analyst_agent
-    allowed_agents:
-      - analyst_agent
-    orchestrator_llm_profile: cloud_fast
-    memory:
-      enabled: false
-      include_document_chunks: false
-      default_limit: 4
-    tools:
-      enabled: true
-      allowed_tools:
-        - documents.search
-        - calculator.run
-    policy_profile: permissive
-
-strategies:
-  direct_agent:
-    enabled: true
-    type: direct
-    description: Run the default configured agent.
-  router:
-    enabled: true
-    type: router
-    description: Select the best candidate agent.
-    llm_profile: cloud_fast
-    max_candidate_agents: 3
+      documents.search:
+        enabled: true
+        mcp_tool_name: documents.search
+        description: Search indexed documents through the MCP server.
+        allowed_for:
+          usecases:
+            - support_chat
+            - routing_chat
+          agents:
+            - support_agent
+            - analyst_agent
+          strategies:
+            - direct_agent
+            - router
+        timeout_seconds: 45
+        max_result_bytes: 131072
+        approval_required: false
+        tags:
+          - documents
+          - search
+        safety_level: read_only
+      calculator.run:
+        enabled: true
+        mcp_tool_name: calculator.run
+        description: Run bounded calculator expressions through the MCP server.
+        allowed_for:
+          usecases:
+            - routing_chat
+          agents:
+            - analyst_agent
+          strategies:
+            - router
+        timeout_seconds: 15
+        max_argument_bytes: 2048
+        max_result_bytes: 8192
+        approval_required: false
+        tags:
+          - utility
+        safety_level: read_only
 
 agents:
   support_agent:
@@ -95,40 +178,93 @@ agents:
       developer_prompt: prompts/analyst_agent/developer.md
 
 llm:
-  default_profile: cloud_fast
+  defaults:
+    profile: cloud_fast
+    timeout_seconds: 120
+    stream_timeout_seconds: 300
+    max_retries: 2
+    trace_prompts: false
+    trace_completions: false
   providers:
     local_provider:
       type: openai_compatible
+      enabled: true
       base_url: ${env:LOCAL_LLM_BASE_URL:http://localhost:8081/v1}
       api_key: ${env:LOCAL_LLM_API_KEY:}
       timeout_seconds: 90
-      default_headers: {}
+      stream_timeout_seconds: 180
+      headers: {}
     openai:
       type: openai
-      api_key: ${env:OPENAI_API_KEY:}
+      enabled: true
+      api_key: ${env:OPENAI_API_KEY:dummy-key}
       timeout_seconds: 60
-      default_headers:
+      stream_timeout_seconds: 120
+      headers:
         Authorization: ${env:OPENAI_AUTHORIZATION:}
   profiles:
     local_reasoning:
+      enabled: true
       provider: local_provider
       model: local-reasoning-model
       temperature: 0.7
-      max_tokens: 2048
+      max_output_tokens: 2048
+      max_input_tokens: 24000
+      max_total_tokens: 32000
       timeout_seconds: 90
+      stream_timeout_seconds: 180
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - support_chat
+          - routing_chat
+        agents:
+          - support_agent
+          - analyst_agent
+        strategies:
+          - direct_agent
+          - router
       fallback_profiles: []
     cloud_fast:
+      enabled: true
       provider: openai
       model: gpt-4.1-mini
       temperature: 0.2
-      max_tokens: 1024
+      max_output_tokens: 1024
+      max_total_tokens: 8192
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - support_chat
+          - routing_chat
+        agents:
+          - support_agent
+        strategies:
+          - router
       fallback_profiles:
         - local_reasoning
 
 mcp:
   main:
-    url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    name: main
+    enabled: true
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    transport: http
     timeout_seconds: 30
+    stream_timeout_seconds: 120
+    auth:
+      mode: none
+      token: ${env:MCP_BEARER_TOKEN:}
+      jwt: ${env:MCP_JWT:}
+      oauth:
+        token_url: ${env:MCP_OAUTH_TOKEN_URL:}
+        client_id: ${env:MCP_OAUTH_CLIENT_ID:}
+        client_secret: ${env:MCP_OAUTH_CLIENT_SECRET:}
+        scopes: []
     tool_discovery_enabled: true
 
 persistence:
@@ -145,6 +281,10 @@ persistence:
       default_scope: project
 
 policy:
+  enabled: true
+  mode: enforce
+  default_decision: deny
+  fail_closed: true
   default_profile: default
   profiles:
     default:
@@ -152,11 +292,19 @@ policy:
       deny_unknown_llm_profiles: true
       require_memory_scope: true
       allow_memory_writes: false
+      allow_write_tools: false
+      allow_destructive_tools: false
+      allow_external_side_effect_tools: false
+      allow_approval_required_tools: false
     permissive:
       deny_unknown_tools: false
       deny_unknown_llm_profiles: true
       require_memory_scope: false
       allow_memory_writes: false
+      allow_write_tools: false
+      allow_destructive_tools: false
+      allow_external_side_effect_tools: false
+      allow_approval_required_tools: false
 
 observability:
   log_level: ${env:APP_LOG_LEVEL:INFO}

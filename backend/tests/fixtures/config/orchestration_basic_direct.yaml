@@ -1,0 +1,24 @@
+orchestration:
+  defaults:
+    strategy: direct_agent
+    fallback_strategy: direct_agent
+  strategies:
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      default_agent: support_agent
+      allowed_usecases:
+        - default_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      tools_enabled: false
+  usecases:
+    default_chat:
+      enabled: true
+      description: Direct chat through the configured support agent.
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      policy_profile: default

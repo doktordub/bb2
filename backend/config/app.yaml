@@ -4,6 +4,105 @@ app:
   active_usecase: default_chat
   data_dir: ${env:APP_DATA_DIR:./data}
 
+deployment:
+  profile: ${env:APP_ENV:local}
+  host: ${env:APP_HOST:127.0.0.1}
+  port: ${env:APP_PORT:8000}
+  public_base_url: ${env:APP_PUBLIC_BASE_URL:http://localhost:8000}
+  log_dir: ${env:APP_LOG_DIR:./logs}
+  runtime_dir: ${env:APP_RUNTIME_DIR:./runtime}
+  graceful_shutdown_seconds: ${env:APP_GRACEFUL_SHUTDOWN_SECONDS:20}
+  metrics:
+    enabled: ${env:METRICS_ENABLED:true}
+    bind_host: ${env:METRICS_BIND_HOST:127.0.0.1}
+    port: ${env:METRICS_PORT:9102}
+  readiness:
+    enabled: true
+
+orchestration:
+  enabled: true
+  defaults:
+    strategy: direct_agent
+    fallback_strategy: fallback_answer
+    max_steps: 8
+    max_tool_calls: 4
+    max_memory_searches: 3
+    max_memory_writes: 1
+    max_llm_calls: 6
+    max_tool_loop_iterations: 3
+    max_context_bytes: 64000
+    max_turn_duration_seconds: 120
+    max_stream_duration_seconds: 300
+    emit_step_events: true
+    emit_tool_events: true
+    emit_memory_events: true
+    stream_strategy_events: true
+    expose_strategy_metadata: true
+    expose_chain_of_thought: false
+    save_runtime_snapshots: false
+  strategies:
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      description: Run the configured default agent directly.
+      default_agent: support_agent
+      allowed_usecases:
+        - default_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      memory_write_enabled: false
+      tools_enabled: false
+      stream_llm_deltas: true
+      expose_strategy_metadata: true
+    bounded_planner:
+      enabled: false
+      type: bounded_planner
+      default_agent: support_agent
+      planner_llm_profile: local_reasoning
+      executor_llm_profile: local_reasoning
+      memory_enabled: true
+      memory_write_enabled: false
+      tools_enabled: true
+      max_plan_steps: 4
+      max_execute_steps: 4
+      max_memory_writes: 1
+      max_tool_loop_iterations: 2
+      max_context_bytes: 32000
+      stream_strategy_events: true
+      expose_strategy_metadata: true
+    memory_update:
+      enabled: false
+      type: memory_update
+      default_agent: support_agent
+      llm_profile: local_reasoning
+      memory_enabled: true
+      memory_write_enabled: true
+      max_memory_writes: 1
+      candidate_limit: 3
+      require_policy_approval: true
+      expose_strategy_metadata: true
+    fallback_answer:
+      enabled: true
+      type: fallback_answer
+      llm_profile: local_reasoning
+      message: I could not complete the full workflow, but here is the safest answer I can provide.
+      allowed_usecases:
+        - default_chat
+      expose_strategy_metadata: true
+  usecases:
+    default_chat:
+      enabled: true
+      description: Default local backend use case.
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      allowed_strategies:
+        - direct_agent
+        - fallback_answer
+      policy_profile: default
+
 api:
   enabled: true
   base_path: ""
@@ -39,8 +138,9 @@ api:
     record_response_returned: true
     record_validation_errors: true
   debug_routes:
-    enabled: false
+    enabled: true
     require_localhost: true
+    restart_enabled: true
     max_trace_events: 500
     max_search_results: 50
   sse:
@@ -48,50 +148,259 @@ api:
     send_trace_id_event: true
     send_metadata_events: true
 
+session:
+  enabled: true
+  identifiers:
+    prefix: session
+    accept_client_session_id: true
+    generate_when_missing: true
+    max_length: 128
+    allowed_pattern: "^[A-Za-z0-9_.:-]{3,128}$"
+  defaults:
+    default_user_id: local_user
+    default_usecase: default_chat
+    default_history_limit: 50
+    max_history_limit: 200
+    timezone_metadata_key: timezone
+  lifecycle:
+    create_on_first_chat: true
+    resume_existing_sessions: true
+    reject_unknown_client_session_id: false
+    update_last_seen_on_load: true
+    save_after_failed_orchestration: true
+    save_after_cancelled_stream: true
+  concurrency:
+    mode: optimistic_version
+    conflict_policy: reject
+    max_retries: 1
+  state:
+    save_on_chat_completion: true
+    save_on_stream_completion: true
+    save_on_stream_cancellation: true
+    save_on_stream_failure: true
+    save_each_stream_delta: false
+  history:
+    enabled: true
+    include_tool_summaries: true
+    include_system_messages: true
+    include_metadata: true
+    max_message_chars: 4000
+    redaction_enabled: true
+  management:
+    list_enabled: true
+    delete_enabled: true
+    default_list_limit: 50
+    max_list_limit: 200
+  tracing:
+    record_session_created: true
+    record_session_resumed: true
+    record_session_reset: true
+    record_state_loaded: true
+    record_state_saved: true
+    record_history_returned: true
+    record_stream_lifecycle: true
+
 features:
-  streaming_enabled: false
-  memory_enabled: false
-  tools_enabled: false
+  streaming_enabled: true
+  memory_enabled: true
+  tools_enabled: true
   trace_enabled: true
 
-usecases:
-  default_chat:
-    enabled: true
-    description: Default local backend use case.
-    strategy: direct_agent
-    default_agent: support_agent
-    allowed_agents:
-      - support_agent
-    policy_profile: default
-
-strategies:
-  direct_agent:
-    enabled: true
-    type: direct
-    description: Run the configured default agent directly.
+tooling:
+  enabled: false
+  defaults:
+    timeout_seconds: 60
+    stream_timeout_seconds: 300
+    max_retries: 1
+    max_argument_bytes: 65536
+    max_result_bytes: 262144
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: true
+    discovery_refresh_seconds: 300
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
+    tools: {}
 
 agents:
-  support_agent:
+  defaults:
     enabled: true
-    module: app.testing.fakes.fake_agent
-    class_name: FakeAgent
-    description: Placeholder support agent for local backend startup.
+    stream_llm_deltas: true
+    expose_agent_metadata: true
+    strict_prompt_profile_validation: false
+    known_prompt_profiles:
+      - general_assistant_v1
+    max_prompt_context_bytes: 32000
+    max_output_chars: 12000
+    max_tool_intents: 3
+    max_memory_candidates: 5
+    max_llm_calls: 1
+    max_self_managed_tool_calls: 0
+    max_self_managed_memory_searches: 0
+    allow_self_managed_tools: false
+    allow_self_managed_memory: false
+    allow_memory_write: false
+  plugins:
+    support_agent:
+      enabled: true
+      type: general_assistant
+      display_name: Support Agent
+      description: General purpose assistant for direct answers.
+      llm_profile: local_reasoning
+      prompt_profile: general_assistant_v1
+      capabilities:
+        answer: true
+        review: false
+        stream: true
+        memory_read: false
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: false
+        tool_execute: false
+        self_managed_memory: false
+        self_managed_tools: false
+      allowed_tool_intents: []
+      allowed_memory_scopes:
+        - project
 
 llm:
-  default_profile: local_reasoning
+  defaults:
+    profile: local_reasoning
+    timeout_seconds: 120
+    stream_timeout_seconds: 300
+    max_retries: 1
+    trace_prompts: false
+    trace_completions: false
   providers:
     local_provider:
       type: openai_compatible
-      base_url: ${env:LOCAL_LLM_BASE_URL:http://localhost:8081/v1}
-      api_key: ${env:LOCAL_LLM_API_KEY:}
+      enabled: true
+      base_url: ${env:LOCAL_LLM_BASE_URL:http://192.168.1.80:8081/v1}
+      api_key: ${env:LOCAL_LLM_API_KEY:fake_key}
+      timeout_seconds: 120
+      stream_timeout_seconds: 300
+      headers:
+        Content-Type: application/json
   profiles:
     local_reasoning:
+      enabled: true
       provider: local_provider
-      model: local-reasoning-model
+      model: qwen3.5-27b-claude-4.6-opus-reasoning-distilled-i1
+      temperature: 0.7
+      max_output_tokens: 2048
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []
+
+memory:
+  enabled: false
+  provider: memory_store
+  required: false
+  defaults:
+    default_scope: project
+    top_k: 10
+    include_agent_memories: true
+    include_document_chunks: true
+    include_graph_context: true
+    max_result_chars: 1200
+    max_total_context_chars: 8000
+    trace_query_capture: none
+    trace_result_content_capture: none
+  store:
+    database:
+      path: ${env:MEMORY_STORE_DB_PATH:memory}
+      create_if_missing: true
+      schema_version: 1
+      embedded_single_process: true
+    embeddings:
+      provider: fastembed
+      model: BAAI/bge-small-en-v1.5
+      dimension: 384
+      batch_size: 64
+      normalize: true
+      dimension_mismatch: error
+    reranker:
+      enabled: true
+      provider: fastembed
+      model: Xenova/ms-marco-MiniLM-L-6-v2
+      top_n: 60
+  chunking:
+    strategy: markdown_section
+    max_tokens: 350
+    overlap_tokens: 50
+    include_heading_path: true
+    include_frontmatter_in_embedding: true
+    preserve_code_blocks: true
+    removed_chunk_policy: mark_removed
+  search:
+    limit_max: 30
+    vector_top_n: 30
+    fts_top_n: 30
+    rrf_k: 60
+    graph_expansion_enabled: true
+    graph_expansion_hops: 1
+    final_top_k: 10
+    include_component_scores: true
+    include_debug: false
+  scoring:
+    weights:
+      reranker: 0.45
+      retrieval_fusion: 0.15
+      vector: 0.10
+      full_text: 0.08
+      temporal: 0.07
+      importance: 0.06
+      confidence: 0.04
+      graph: 0.03
+      user_rating: 0.02
+  lifecycle:
+    allow_writes: false
+    default_ttl_days: null
+    contradiction_policy: keep_both_mark_conflict
+    supersede_policy: mark_previous_superseded
+    require_durable_scope_for_writes: true
+    allow_session_scope_only_writes: false
+    require_durable_scope_for_delete_export: true
+  privacy:
+    default_sensitivity: internal
+    allow_llm_context_default: true
+    allow_retrieval_default: true
+    delete_by_scope_requires_confirm: true
+    enable_export_by_scope: false
+    enable_delete_by_scope: false
+    hard_delete_enabled: false
+    tombstone_on_forget: true
+    require_policy_approval_for_delete_export: true
+  health:
+    deep_check_enabled: false
 
 mcp:
   main:
-    url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    name: main
+    enabled: true
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    transport: http
+    timeout_seconds: 60
+    stream_timeout_seconds: 300
+    auth:
+      mode: ${env:MCP_AUTH_MODE:none}
+      token: ${env:MCP_BEARER_TOKEN:}
+      jwt: ${env:MCP_JWT:}
+      oauth:
+        token_url: ${env:MCP_OAUTH_TOKEN_URL:}
+        client_id: ${env:MCP_OAUTH_CLIENT_ID:}
+        client_secret: ${env:MCP_OAUTH_CLIENT_SECRET:}
+        scopes: []
+    tool_discovery_enabled: true
 
 persistence:
   base_dir: ${env:APP_DATA_DIR:./data}
@@ -140,27 +449,84 @@ persistence:
         enabled: false
         keep_days: 30
         cleanup_batch_size: 1000
-  memory:
-    provider: memory_store
-    required: false
-    memory_store:
-      database_path: ${env:MEMORY_STORE_DB_PATH:memory}
-      default_scope: project
-      search_limit_default: 10
-      search_limit_max: 30
-      allow_writes: false
-
 policy:
+  enabled: true
+  mode: enforce
+  default_decision: deny
+  fail_closed: true
   default_profile: default
   profiles:
     default:
+      enabled: true
       deny_unknown_tools: true
       deny_unknown_llm_profiles: true
       require_memory_scope: true
       allow_memory_writes: false
+      allow_write_tools: false
+      allow_destructive_tools: false
+      allow_external_side_effect_tools: false
+      allow_approval_required_tools: false
+      usecases:
+        allowed:
+          - default_chat
+      strategies:
+        allowed:
+          - direct_agent
+          - fallback_answer
+      agents:
+        allowed:
+          - support_agent
+      llm:
+        allowed_profiles:
+          - local_reasoning
+        allow_prompt_trace: false
+        allow_completion_trace: false
+      memory:
+        allowed_read_scopes:
+          - project
+        allowed_write_scopes: []
+      tools:
+        allowed_tools: []
+      approval:
+        require_approval_for_write_tools: true
+        require_approval_for_destructive_tools: true
+        require_approval_for_external_side_effect_tools: true
+        require_approval_for_memory_writes: false
+      fallback:
+        allow_fallbacks: true
+        allow_after_denial: false
+        allow_after_external_side_effects: false
+        allowed_strategies:
+          - fallback_answer
+      trace:
+        allow_trace: true
+        expose_raw_payloads: false
+        expose_prompt_text: false
+        expose_completion_text: false
+      stream:
+        allow_stream_events: true
+        expose_internal_events: false
+        expose_raw_deltas: false
+      capabilities:
+        expose_enabled: true
+        include_policy_profiles: false
+        include_denied_actions: false
+      health:
+        expose_enabled: true
+        include_profile_names: true
+        include_decision_counts: false
+      audit:
+        enabled: true
+        include_reason_codes: true
+        include_actor_identifiers: false
+        include_resource_names: true
+      decision_cache:
+        enabled: true
+        ttl_seconds: 30
+        max_entries: 1024
 
 observability:
-  log_level: ${env:APP_LOG_LEVEL:INFO}
+  log_level: ${env:LOG_LEVEL:INFO}
   structured_logging: true
   trace_enabled: true
   trace_payloads_enabled: false

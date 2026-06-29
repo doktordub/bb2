@@ -1,0 +1,31 @@
+llm:
+  defaults:
+    profile: structured_writer
+    timeout_seconds: 40
+    stream_timeout_seconds: 55
+    max_retries: 1
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 40
+      stream_timeout_seconds: 55
+  profiles:
+    structured_writer:
+      provider: fake_provider
+      model: fake-structured-model
+      temperature: 0.0
+      max_output_tokens: 384
+      supports_streaming: false
+      supports_json_schema: true
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

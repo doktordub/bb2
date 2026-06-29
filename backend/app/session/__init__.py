@@ -1,3 +1,60 @@
 """Session package for API-facing session boundary modules."""
 
-__all__: list[str] = []
+from app.session.errors import (
+	InvalidSessionIdError,
+	SessionConflictError,
+	SessionDeleteDisabledError,
+	SessionDeleteFailedError,
+	SessionError,
+	SessionHistoryDisabledError,
+	SessionHistoryUnavailableError,
+	SessionIdRequiredError,
+	SessionListDisabledError,
+	SessionListUnavailableError,
+	SessionNotFoundError,
+	SessionResetFailedError,
+	SessionStateUnavailableError,
+	UnknownUseCaseError,
+)
+from app.session.identifiers import PrefixedUuidSessionIdProvider, SessionIdProvider
+from app.session.models import (
+	SessionChatRequest,
+	SessionChatResult,
+	SessionDeleteResult,
+	SessionHistoryMessage,
+	SessionHistoryResult,
+	SessionListResult,
+	SessionRequestContext,
+	SessionResetResult,
+	SessionSummary,
+	SessionStreamEvent,
+)
+
+__all__ = [
+	"InvalidSessionIdError",
+	"PrefixedUuidSessionIdProvider",
+	"SessionChatRequest",
+	"SessionChatResult",
+	"SessionConflictError",
+	"SessionDeleteDisabledError",
+	"SessionDeleteFailedError",
+	"SessionError",
+	"SessionHistoryDisabledError",
+	"SessionHistoryMessage",
+	"SessionHistoryResult",
+	"SessionHistoryUnavailableError",
+	"SessionIdProvider",
+	"SessionIdRequiredError",
+	"SessionListDisabledError",
+	"SessionListResult",
+	"SessionListUnavailableError",
+	"SessionNotFoundError",
+	"SessionRequestContext",
+	"SessionDeleteResult",
+	"SessionResetFailedError",
+	"SessionResetResult",
+	"SessionStateUnavailableError",
+	"SessionSummary",
+	"SessionStreamEvent",
+	"UnknownUseCaseError",
+]

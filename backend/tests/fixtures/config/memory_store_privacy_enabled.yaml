@@ -1,0 +1,12 @@
+memory:
+  enabled: true
+  provider: memory_store
+  required: false
+  lifecycle:
+    allow_writes: true
+  privacy:
+    enable_export_by_scope: true
+    enable_delete_by_scope: true
+    delete_by_scope_requires_confirm: true
+    hard_delete_enabled: false
+    require_policy_approval_for_delete_export: true

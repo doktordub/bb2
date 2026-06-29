@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -11,7 +12,9 @@ from app.contracts.errors import ConfigurationError
 from app.config.settings import load_settings
 from app.main import create_app
 from app.observability.metrics import InMemoryMetricsRecorder
+from app.orchestration.core import DefaultOrchestrationRuntime
 from app.persistence.trace_store import resolve_trace_store_path
+from app.session.service import DefaultSessionService
 
 
 GENERATED_TRACE_ID_PATTERN = re.compile(r"^trace_[0-9a-f]{32}$")
@@ -63,7 +66,56 @@ def test_create_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         assert app.state.container.config_summary["configured"] is True
         assert app.state.container.persistence.workflow_state is app.state.container.workflow_state
         assert app.state.container.persistence.trace_store is app.state.container.trace_store
-        assert app.state.container.persistence.memory is app.state.container.memory
+        assert app.state.container.memory is not None
+
+
+def test_create_app_wires_default_session_service(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    build_test_settings(monkeypatch)
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/valid_minimal.yaml")
+    monkeypatch.setenv("APP_CONFIG_OVERRIDE_PATH", "tests/fixtures/config/session_basic.yaml")
+    monkeypatch.setenv("APP_DATA_DIR", tmp_path.as_posix())
+
+    app = create_app(load_settings(env_file=None))
+
+    with TestClient(app):
+        session_service = app.state.container.session_service
+
+        assert isinstance(session_service, DefaultSessionService)
+        assert isinstance(session_service.orchestrator, DefaultOrchestrationRuntime)
+        assert app.state.container.orchestrator is session_service.orchestrator
+        assert session_service.workflow_state is app.state.container.workflow_state
+        assert session_service.trace_recorder is app.state.container.trace_recorder
+        assert app.state.container.llm_gateway is session_service.orchestrator.llm_gateway
+        assert app.state.container.memory is session_service.orchestrator.memory
+        assert app.state.container.policy_service is session_service.orchestrator.policy_service
+
+
+def test_create_app_wires_real_tool_gateway_when_tooling_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    build_test_settings(monkeypatch)
+    monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/valid_minimal.yaml")
+    monkeypatch.setenv(
+        "APP_CONFIG_OVERRIDE_PATH",
+        "tests/fixtures/config/api_with_fake_mcp_tooling.yaml",
+    )
+    monkeypatch.setenv("APP_DATA_DIR", tmp_path.as_posix())
+
+    app = create_app(load_settings(env_file=None))
+
+    with TestClient(app):
+        session_service = app.state.container.session_service
+        assert isinstance(session_service, DefaultSessionService)
+        assert isinstance(session_service.orchestrator, DefaultOrchestrationRuntime)
+        assert app.state.container.orchestrator is session_service.orchestrator
+        assert app.state.container.tool_gateway is session_service.orchestrator.tools
+
+        health = asyncio.run(app.state.container.tool_gateway.health())
+
+    assert health.tooling_enabled is True
+    assert health.mcp_configured is True
+    assert health.tools_configured == 1
 
 
 def test_trace_id_header(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

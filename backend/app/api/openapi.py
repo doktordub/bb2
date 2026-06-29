@@ -48,7 +48,7 @@ def register_api_openapi_routes(
         app.openapi_schema = schema
         return schema
 
-    app.openapi = custom_openapi
+    setattr(app, "openapi", custom_openapi)
 
     @app.get(openapi_path, include_in_schema=False)
     async def openapi_schema() -> JSONResponse:

@@ -1,0 +1,6 @@
+memory:
+  enabled: true
+  provider: memory_store
+  chunking:
+    max_tokens: 64
+    overlap_tokens: 64

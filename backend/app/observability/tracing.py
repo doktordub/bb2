@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 import logging
 from typing import Any, cast
 
 from app.config.view import ObservabilitySettings
+from app.contracts.config import ConfigurationView
 from app.contracts.errors import TraceStoreError
-from app.contracts.trace import TraceEvent, TraceStore
+from app.contracts.policy import PolicyService
+from app.contracts.trace import TraceEvent, TraceReadModel, TraceSearchFilters, TraceStore, TraceSummary
 from app.observability.context import get_trace_context
 from app.observability.ids import new_trace_id
 from app.observability.events import (
@@ -22,6 +24,9 @@ from app.observability.events import (
 )
 from app.observability.metrics import MetricsRecorder
 from app.observability.redaction import Redactor
+from app.policy.context import build_readonly_policy_context
+from app.policy.redaction_policy import apply_redaction_obligations
+from app.policy.trace_policy import build_trace_policy_request, infer_trace_payload_category
 
 UNKNOWN_SESSION_ID = "unknown_session"
 WORKFLOW_STATE_COMPONENT = "persistence.workflow_state"
@@ -35,6 +40,8 @@ class TraceRecorder:
     store: TraceStore
     settings: ObservabilitySettings
     redactor: Redactor
+    policy_service: PolicyService | None = None
+    config: ConfigurationView | None = None
     logger: logging.Logger = field(default_factory=lambda: logging.getLogger(__name__))
 
     async def record(
@@ -105,8 +112,56 @@ class TraceRecorder:
             payload=self._build_payload(payload),
         )
 
+        await self.record_trace_event(event)
+
+    def _build_payload(self, payload: Mapping[str, Any] | None) -> dict[str, Any]:
+        if not self.settings.trace_payloads_enabled or not payload:
+            return {}
+
+        return dict(payload)
+
+    async def record_trace_event(self, event: TraceEvent) -> None:
+        """Record a prebuilt trace event through the same redaction and failure policy path."""
+
+        if not self.settings.trace_enabled:
+            return
+
+        payload = self._build_payload(event.payload)
+        if self.policy_service is not None and self.config is not None:
+            payload_category = infer_trace_payload_category(payload)
+            policy_context = build_readonly_policy_context(
+                policy_service=self.policy_service,
+                config=self.config,
+                trace_id=event.trace_id,
+                user_id=event.user_id,
+                session_id=event.session_id,
+                usecase_name=event.usecase,
+            )
+            policy_request = build_trace_policy_request(
+                trace_id=event.trace_id,
+                session_id=event.session_id,
+                user_id=event.user_id,
+                usecase_name=event.usecase,
+                event_name=event.resolved_event_name,
+                component=event.component,
+                payload=payload,
+                payload_category=payload_category,
+            )
+            decision = await self.policy_service.evaluate(policy_request, policy_context)
+            if decision.is_denied:
+                payload = {}
+            else:
+                payload = apply_redaction_obligations(payload, decision=decision, redactor=self.redactor)
+        else:
+            redacted = self.redactor.redact(payload)
+            if isinstance(redacted, dict):
+                payload = cast(dict[str, Any], redacted)
+            else:
+                payload = {"value": redacted}
+
+        redacted_event = replace(event, payload=payload)
         try:
-            await self.store.record_event(event)
+            await self.store.record_event(redacted_event)
         except Exception as exc:
             if self.settings.trace_store_required:
                 raise TraceStoreError("Trace store recording failed.") from exc
@@ -114,24 +169,54 @@ class TraceRecorder:
             self.logger.error(
                 "Trace event persistence failed",
                 extra={
-                    "component": component,
-                    "event_type": resolved_event_name,
+                    "component": redacted_event.component,
+                    "event_type": redacted_event.resolved_event_name,
                     "error_type": type(exc).__name__,
                     "details": {
-                        "trace_id": resolved_trace_id,
-                        "trace_event_type": resolved_event_type,
+                        "trace_id": redacted_event.trace_id,
+                        "trace_event_type": redacted_event.event_type,
                     },
                 },
             )
 
-    def _build_payload(self, payload: Mapping[str, Any] | None) -> dict[str, Any]:
-        if not self.settings.trace_payloads_enabled or not payload:
-            return {}
+    async def record_trace_events(self, events: Sequence[TraceEvent]) -> None:
+        """Record multiple prebuilt trace events through the recorder path."""
 
-        redacted = self.redactor.redact(dict(payload))
-        if not isinstance(redacted, dict):
-            return {"value": redacted}
-        return cast(dict[str, Any], redacted)
+        for event in events:
+            await self.record_trace_event(event)
+
+
+@dataclass(slots=True)
+class RecorderTraceStoreAdapter:
+    """Write-only trace facade that keeps orchestration callers off the raw trace store."""
+
+    recorder: TraceRecorder
+
+    async def record_event(self, event: TraceEvent) -> None:
+        await self.recorder.record_trace_event(event)
+
+    async def record_events(self, events: Sequence[TraceEvent]) -> None:
+        await self.recorder.record_trace_events(events)
+
+    async def read_trace(
+        self,
+        *,
+        trace_id: str,
+        limit: int | None = None,
+    ) -> TraceReadModel:
+        _ = trace_id
+        _ = limit
+        raise TraceStoreError("Trace reads are not available through the orchestration recorder facade.")
+
+    async def search_traces(self, *, filters: TraceSearchFilters) -> list[TraceSummary]:
+        _ = filters
+        raise TraceStoreError("Trace search is not available through the orchestration recorder facade.")
+
+    async def health(self) -> dict[str, Any]:
+        return {
+            "status": "ok" if self.recorder.settings.trace_enabled else "disabled",
+            "mode": "write_only",
+        }
 
 
 @dataclass(slots=True)

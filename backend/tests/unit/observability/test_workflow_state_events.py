@@ -48,8 +48,10 @@ async def test_sqlite_workflow_state_store_emits_safe_success_events_and_metrics
     loaded = await store.load("session-1")
     await store.reset("session-1")
 
-    assert missing["metadata"]["loaded_empty"] is True
-    assert loaded == state
+    assert missing.loaded_empty is True
+    assert missing.state["metadata"]["loaded_empty"] is True
+    assert loaded.state == state
+    assert loaded.version == 1
     assert [event.resolved_event_name for event in trace_store.events] == [
         WORKFLOW_STATE_LOADED,
         WORKFLOW_STATE_SAVED,

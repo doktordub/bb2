@@ -1,0 +1,37 @@
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - missing.logical.tool
+
+agents:
+  support_agent:
+    allowed_tools:
+      - missing.logical.tool
+
+tooling:
+  enabled: true
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
+    tools:
+      documents.search:
+        enabled: true
+        mcp_tool_name: documents.search
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+
+mcp:
+  main:
+    enabled: true
+    auth:
+      mode: none

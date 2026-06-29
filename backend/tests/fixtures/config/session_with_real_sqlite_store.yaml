@@ -1,0 +1,49 @@
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: fake_basic
+  usecases:
+    default_chat:
+      llm_profile: fake_basic
+
+persistence:
+  workflow_state:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/workflow_state.db
+  trace:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/trace.db
+
+llm:
+  defaults:
+    profile: fake_basic
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+      extra:
+        response_text: fake response
+  profiles:
+    fake_basic:
+      enabled: true
+      provider: fake_provider
+      model: fake-basic-model
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      max_output_tokens: 256
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

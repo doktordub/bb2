@@ -48,15 +48,19 @@ async def test_sqlite_workflow_state_store_save_load_reset_and_health(tmp_path) 
 
     await store.initialize()
     missing = await store.load("session-1")
-    assert missing["session_id"] == "session-1"
-    assert missing["conversation"] == {"messages": []}
-    assert missing["metadata"]["loaded_empty"] is True
+    assert missing.session_id == "session-1"
+    assert missing.version is None
+    assert missing.state["conversation"] == {"messages": []}
+    assert missing.state["metadata"]["loaded_empty"] is True
 
-    await store.save("session-1", state_v1)
-    await store.save("session-1", state_v2)
+    first_save = await store.save("session-1", state_v1)
+    second_save = await store.save("session-1", state_v2)
 
     loaded = await store.load("session-1")
-    assert loaded == state_v2
+    assert first_save.version == 1
+    assert second_save.version == 2
+    assert loaded.state == state_v2
+    assert loaded.version == 2
 
     health = await store.health()
     assert health == {
@@ -119,13 +123,17 @@ async def test_sqlite_workflow_state_store_save_load_reset_and_health(tmp_path) 
     assert state_row[8]
     assert state_row[9] == 0
 
-    await store.reset("session-1")
+    reset_result = await store.reset("session-1")
     reset_state = await store.load("session-1")
-    assert reset_state["session_id"] == "session-1"
-    assert reset_state["conversation"] == {"messages": []}
-    assert reset_state["workflow"]["current_step"] is None
-    assert reset_state["workflow"]["checkpoint"] is None
-    assert reset_state["metadata"]["loaded_empty"] is True
+    assert reset_result.version == 3
+    assert reset_result.reset_generation == 1
+    assert reset_result.cleared_version == 2
+    assert reset_state.session_id == "session-1"
+    assert reset_state.version == 3
+    assert reset_state.state["conversation"] == {"messages": []}
+    assert reset_state.state["workflow"]["current_step"] is None
+    assert reset_state.state["workflow"]["checkpoint"] is None
+    assert reset_state.state["metadata"]["loaded_empty"] is True
 
     with sqlite3.connect(database_path) as connection:
         reset_row = connection.execute(
@@ -155,7 +163,7 @@ async def test_sqlite_workflow_state_store_save_load_reset_and_health(tmp_path) 
     assert reset_row[2]
     assert session_after_reset == (1,)
     assert current_after_reset is not None
-    assert json.loads(current_after_reset[0]) == reset_state
+    assert json.loads(current_after_reset[0]) == reset_state.state
     assert current_after_reset[1:] == (0, None, None, 3, 1)
 
 
@@ -179,7 +187,9 @@ async def test_sqlite_workflow_state_store_reopens_existing_database(tmp_path) -
     await first_store.save("session-1", state)
 
     await second_store.initialize()
-    assert await second_store.load("session-1") == state
+    loaded = await second_store.load("session-1")
+    assert loaded.state == state
+    assert loaded.version == 1
 
 
 @pytest.mark.asyncio
@@ -247,7 +257,9 @@ async def test_sqlite_workflow_state_store_migrates_legacy_workflow_states_table
     store = SqliteWorkflowStateStore(database_path)
     await store.initialize()
 
-    assert await store.load("session-1") == legacy_state
+    loaded = await store.load("session-1")
+    assert loaded.state == legacy_state
+    assert loaded.version == 4
 
     with sqlite3.connect(database_path) as connection:
         schema_version = connection.execute(

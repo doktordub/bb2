@@ -5,14 +5,11 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+from app.contracts.errors import ConfigurationError
 from app.config.settings import load_settings
 from app.main import create_app
 from app.persistence.errors import (
-    MemoryGatewayError,
-    PersistenceConfigurationError,
-    TraceStoreUnavailableError,
     WorkflowStateMigrationError,
-    WorkflowStateUnavailableError,
 )
 
 
@@ -90,27 +87,22 @@ def test_optional_memory_store_failure_degrades_health(
     payload = response.json()
     assert payload["status"] == "degraded"
     assert payload["checks"]["persistence"] == {
-        "status": "degraded",
+        "status": "ok",
         "configured": True,
         "required_components": 2,
-        "optional_components": 1,
+        "optional_components": 0,
         "components": {
             "workflow_state": "ok",
             "trace": "ok",
-            "memory": "degraded",
         },
     }
-    assert payload["checks"]["memory"] == {
-        "status": "degraded",
-        "configured": True,
-        "provider": "memory_store",
-        "required": False,
-        "config_path_configured": True,
-        "database_path_configured": False,
-        "service_initialized": False,
-        "reason": "config_path_missing",
-        "error_type": "FileNotFoundError",
-    }
+    assert payload["checks"]["memory"]["status"] == "degraded"
+    assert payload["checks"]["memory"]["provider"] == "memory_store"
+    assert payload["checks"]["memory"]["required"] is False
+    assert payload["checks"]["memory"]["search_available"] is False
+    assert payload["checks"]["memory"]["ingest_available"] is False
+    assert payload["checks"]["memory"]["reason"] == "config_path_missing"
+    assert payload["checks"]["memory"]["error_type"] == "FileNotFoundError"
 
 
 def test_required_memory_store_failure_blocks_startup(
@@ -122,7 +114,7 @@ def test_required_memory_store_failure_blocks_startup(
 
     app = create_app(load_settings(env_file=None))
 
-    with pytest.raises(MemoryGatewayError, match="Memory gateway initialization failed"):
+    with pytest.raises(ConfigurationError, match="memory\.store\.config_path must point to a readable file"):
         with TestClient(app):
             pass
 
@@ -136,7 +128,7 @@ def test_invalid_persistence_provider_blocks_startup(
 
     app = create_app(load_settings(env_file=None))
 
-    with pytest.raises(PersistenceConfigurationError, match="Unsupported memory gateway provider"):
+    with pytest.raises(ConfigurationError, match="Invalid configuration schema"):
         with TestClient(app):
             pass
 
@@ -176,7 +168,7 @@ def test_unavailable_workflow_state_store_blocks_startup(
 
     app = create_app(load_settings(env_file=None))
 
-    with pytest.raises(WorkflowStateUnavailableError, match="initialization failed"):
+    with pytest.raises(ConfigurationError, match="persistence\.workflow_state\.sqlite\.path must resolve to a file path"):
         with TestClient(app):
             pass
 
@@ -194,7 +186,7 @@ def test_required_trace_store_failure_blocks_startup(
 
     app = create_app(load_settings(env_file=None))
 
-    with pytest.raises(TraceStoreUnavailableError, match="initialization failed"):
+    with pytest.raises(ConfigurationError, match="persistence\.trace\.sqlite\.path must resolve to a file path"):
         with TestClient(app):
             pass
 
@@ -212,30 +204,9 @@ def test_optional_trace_store_failure_degrades_health(
 
     app = create_app(load_settings(env_file=None))
 
-    with TestClient(app) as client:
-        response = client.get("/health")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "degraded"
-    assert payload["checks"]["persistence"] == {
-        "status": "degraded",
-        "configured": True,
-        "required_components": 1,
-        "optional_components": 2,
-        "components": {
-            "workflow_state": "ok",
-            "trace": "degraded",
-            "memory": "ok",
-        },
-    }
-    assert payload["checks"]["trace"] == {
-        "status": "degraded",
-        "configured": False,
-        "provider": "sqlite",
-        "required": False,
-        "reason": "initialization_failed",
-    }
+    with pytest.raises(ConfigurationError, match="persistence\.trace\.sqlite\.path must resolve to a file path"):
+        with TestClient(app):
+            pass
 
 
 def test_workflow_state_schema_mismatch_blocks_startup(

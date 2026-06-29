@@ -1,0 +1,6 @@
+session:
+  identifiers:
+    accept_client_session_id: true
+    generate_when_missing: true
+  lifecycle:
+    reject_unknown_client_session_id: true

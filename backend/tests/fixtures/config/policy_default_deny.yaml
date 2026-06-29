@@ -1,0 +1,69 @@
+policy:
+  enabled: true
+  mode: enforce
+  default_decision: deny
+  fail_closed: true
+  default_profile: default
+  profiles:
+    default:
+      enabled: true
+      deny_unknown_tools: true
+      deny_unknown_llm_profiles: true
+      require_memory_scope: true
+      allow_memory_writes: false
+      allow_write_tools: false
+      allow_destructive_tools: false
+      allow_external_side_effect_tools: false
+      allow_approval_required_tools: false
+      usecases:
+        allowed:
+          - default_chat
+      strategies:
+        allowed:
+          - direct_agent
+      agents:
+        allowed:
+          - support_agent
+      llm:
+        allowed_profiles:
+          - local_reasoning
+      memory:
+        allowed_read_scopes:
+          - project
+      tools:
+        allowed_tools: []
+      approval:
+        require_approval_for_write_tools: true
+        require_approval_for_destructive_tools: true
+        require_approval_for_external_side_effect_tools: true
+        require_approval_for_memory_writes: false
+      fallback:
+        allow_fallbacks: true
+        allowed_strategies:
+          - direct_agent
+      trace:
+        allow_trace: true
+        expose_raw_payloads: false
+        expose_prompt_text: false
+        expose_completion_text: false
+      stream:
+        allow_stream_events: true
+        expose_internal_events: false
+        expose_raw_deltas: false
+      capabilities:
+        expose_enabled: true
+        include_policy_profiles: false
+        include_denied_actions: false
+      health:
+        expose_enabled: true
+        include_profile_names: true
+        include_decision_counts: false
+      audit:
+        enabled: true
+        include_reason_codes: true
+        include_actor_identifiers: false
+        include_resource_names: true
+      decision_cache:
+        enabled: true
+        ttl_seconds: 30
+        max_entries: 256

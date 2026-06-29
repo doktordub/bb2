@@ -5,28 +5,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 import inspect
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.config.view import ObservabilitySettings, get_observability_settings
 from app.contracts.config import ConfigurationView
 from app.contracts.health import HEALTH_NOT_CONFIGURED, HealthStatus
-from app.contracts.memory import (
-    MemoryGateway,
-    MemoryRecord,
-    MemoryResult,
-    MemorySearchRequest,
-    MemoryWrite,
-)
 from app.contracts.state import WorkflowStateStore
 from app.contracts.trace import TraceEvent, TraceStore
 from app.persistence.errors import (
-    MemoryGatewayError,
     PersistenceConfigurationError,
     TraceStoreError,
 )
-from app.persistence.memory_store_adapter import MemoryStoreAdapter
 from app.persistence.settings import (
-    MemoryPersistenceSettings,
     PersistenceSettings,
     TracePersistenceSettings,
     WorkflowStatePersistenceSettings,
@@ -36,10 +26,7 @@ from app.observability.metrics import MetricsRecorder, build_metrics_recorder
 from app.observability.tracing import WorkflowStateObserver
 from app.persistence.sqlite_trace_store import SqliteTraceStore
 from app.persistence.sqlite_workflow_state_store import SqliteWorkflowStateStore
-from app.testing.fakes import FakeMemoryGateway, FakeTraceStore, FakeWorkflowStateStore
-
-if TYPE_CHECKING:
-    from app.contracts.context import OrchestrationContext
+from app.testing.fakes import FakeTraceStore, FakeWorkflowStateStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,12 +36,11 @@ class PersistenceBundle:
     settings: PersistenceSettings
     workflow_state: WorkflowStateStore
     trace_store: TraceStore
-    memory: MemoryGateway
 
     async def close(self) -> None:
         """Close persistence resources that hold open handles."""
 
-        for component in (self.memory, self.trace_store, self.workflow_state):
+        for component in (self.trace_store, self.workflow_state):
             close = getattr(component, "close", None)
             if not callable(close):
                 continue
@@ -100,12 +86,10 @@ async def build_persistence_bundle_with_observability(
             trace_enabled=resolved_observability.trace_enabled,
         ),
     )
-    memory = await _build_memory_gateway(settings.memory)
     return PersistenceBundle(
         settings=settings,
         workflow_state=workflow_state,
         trace_store=trace_store,
-        memory=memory,
     )
 
 
@@ -171,32 +155,6 @@ async def _build_trace_store(
     )
 
 
-async def _build_memory_gateway(settings: MemoryPersistenceSettings) -> MemoryGateway:
-    if settings.provider in {"", "disabled", "none"}:
-        return _DeferredMemoryGateway(
-            provider=settings.provider or "disabled",
-            required=settings.required,
-            reason="disabled",
-            status=HEALTH_NOT_CONFIGURED,
-        )
-
-    if settings.provider == "fake":
-        return FakeMemoryGateway()
-
-    if settings.provider == "memory_store":
-        gateway = MemoryStoreAdapter(settings.memory_store, required=settings.required)
-        if settings.required:
-            try:
-                await gateway.initialize()
-            except Exception as exc:
-                raise MemoryGatewayError("Memory gateway initialization failed.") from exc
-        return gateway
-
-    raise PersistenceConfigurationError(
-        f"Unsupported memory gateway provider: {settings.provider}"
-    )
-
-
 class _UnavailableTraceStore:
     def __init__(
         self,
@@ -227,47 +185,6 @@ class _UnavailableTraceStore:
 
     async def search_traces(self, *, filters: Any) -> list[Any]:
         raise TraceStoreError("Trace store is not available.")
-
-    async def health(self) -> dict[str, Any]:
-        return {
-            "status": self._status,
-            "configured": False,
-            "provider": self._provider,
-            "required": self._required,
-            "reason": self._reason,
-        }
-
-
-class _DeferredMemoryGateway:
-    def __init__(
-        self,
-        *,
-        provider: str,
-        required: bool,
-        reason: str,
-        status: HealthStatus,
-    ) -> None:
-        self._provider = provider
-        self._required = required
-        self._reason = reason
-        self._status = status
-
-    async def search(
-        self,
-        request: MemorySearchRequest,
-        context: OrchestrationContext,
-    ) -> list[MemoryResult]:
-        raise MemoryGatewayError("Memory gateway is not available in the current backend phase.")
-
-    async def upsert(
-        self,
-        memory: MemoryWrite,
-        context: OrchestrationContext,
-    ) -> MemoryRecord:
-        raise MemoryGatewayError("Memory gateway is not available in the current backend phase.")
-
-    async def forget(self, memory_id: str, context: OrchestrationContext) -> None:
-        raise MemoryGatewayError("Memory gateway is not available in the current backend phase.")
 
     async def health(self) -> dict[str, Any]:
         return {

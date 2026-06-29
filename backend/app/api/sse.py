@@ -6,7 +6,11 @@ import json
 from typing import Any
 
 from app.api.versioning import API_SCHEMA_VERSION
+from app.contracts.config import ConfigurationView
 from app.config.view import ApiSseSettings
+from app.contracts.policy import PolicyService
+from app.policy.context import build_readonly_policy_context
+from app.policy.stream_policy import build_stream_policy_request, infer_stream_payload_category
 from app.session.models import SessionStreamEvent
 
 _SAFE_METADATA_KEYS = frozenset(
@@ -55,24 +59,24 @@ def encode_session_stream_event(
     if event.event_type == "response.metadata":
         if not settings.send_metadata_events:
             return None
-        payload = {
+        metadata_payload = {
             key: value
             for key, value in event.data.items()
             if key in _SAFE_METADATA_KEYS and value is not None
         }
-        return encode_sse(event.event_type, payload)
+        return encode_sse(event.event_type, metadata_payload)
 
     if event.event_type == "response.completed":
-        payload: dict[str, Any] = {
+        completed_payload: dict[str, Any] = {
             "session_id": event.session_id,
             "finish_reason": _as_text(event.data.get("finish_reason")) or "stop",
         }
         duration_ms = event.data.get("duration_ms")
         if isinstance(duration_ms, int | float):
-            payload["duration_ms"] = duration_ms
+            completed_payload["duration_ms"] = duration_ms
         if settings.send_trace_id_event:
-            payload["trace_id"] = event.trace_id
-        return encode_sse(event.event_type, payload)
+            completed_payload["trace_id"] = event.trace_id
+        return encode_sse(event.event_type, completed_payload)
 
     if event.event_type == "response.error":
         return encode_sse(
@@ -81,10 +85,10 @@ def encode_session_stream_event(
         )
 
     if event.event_type == "heartbeat":
-        payload: dict[str, Any] = {}
+        heartbeat_payload: dict[str, Any] = {}
         if settings.send_trace_id_event:
-            payload["trace_id"] = event.trace_id
-        return encode_sse(event.event_type, payload)
+            heartbeat_payload["trace_id"] = event.trace_id
+        return encode_sse(event.event_type, heartbeat_payload)
 
     return None
 
@@ -138,6 +142,33 @@ def encode_completed(
     if settings.send_trace_id_event:
         payload["trace_id"] = trace_id
     return encode_sse("response.completed", payload)
+
+
+async def encode_session_stream_event_for_api(
+    event: SessionStreamEvent,
+    *,
+    settings: ApiSseSettings,
+    policy_service: PolicyService,
+    config: ConfigurationView,
+    user_id: str | None = None,
+    usecase_name: str | None = None,
+) -> str | None:
+    """Apply stream policy and then encode one session stream event for the public SSE contract."""
+
+    payload_category = infer_stream_payload_category(event)
+    request = build_stream_policy_request(event=event, payload_category=payload_category)
+    context = build_readonly_policy_context(
+        policy_service=policy_service,
+        config=config,
+        trace_id=event.trace_id,
+        user_id=user_id,
+        session_id=event.session_id,
+        usecase_name=usecase_name,
+    )
+    decision = await policy_service.evaluate(request, context)
+    if decision.is_denied:
+        return None
+    return encode_session_stream_event(event, settings=settings)
 
 
 def _started_payload(

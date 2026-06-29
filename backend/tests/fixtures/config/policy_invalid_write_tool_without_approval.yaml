@@ -1,0 +1,6 @@
+policy:
+  profiles:
+    default:
+      allow_write_tools: true
+      approval:
+        require_approval_for_write_tools: false

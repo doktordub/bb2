@@ -1,0 +1,5 @@
+agents:
+  plugins:
+    support_agent:
+      enabled: false
+      type: general_assistant

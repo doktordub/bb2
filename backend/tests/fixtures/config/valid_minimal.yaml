@@ -4,26 +4,65 @@ app:
   active_usecase: default_chat
   data_dir: ${env:APP_DATA_DIR:./data}
 
+orchestration:
+  enabled: true
+  defaults:
+    strategy: direct_agent
+    fallback_strategy: direct_agent
+    max_steps: 8
+    max_tool_calls: 4
+    max_memory_searches: 3
+    max_llm_calls: 6
+    max_turn_duration_seconds: 120
+    max_stream_duration_seconds: 300
+    emit_step_events: true
+    emit_tool_events: true
+    emit_memory_events: true
+    expose_chain_of_thought: false
+    save_runtime_snapshots: false
+  strategies:
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      default_agent: support_agent
+      allowed_usecases:
+        - default_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      tools_enabled: false
+  usecases:
+    default_chat:
+      enabled: true
+      description: Minimal backend test use case.
+      strategy: direct_agent
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+
 features:
   streaming_enabled: false
   memory_enabled: false
   tools_enabled: false
   trace_enabled: true
 
-usecases:
-  default_chat:
-    enabled: true
-    description: Minimal backend test use case.
-    strategy: direct_agent
-    default_agent: support_agent
-    allowed_agents:
-      - support_agent
-    policy_profile: default
-
-strategies:
-  direct_agent:
-    enabled: true
-    type: direct
+tooling:
+  enabled: false
+  defaults:
+    timeout_seconds: 60
+    stream_timeout_seconds: 300
+    max_retries: 1
+    max_argument_bytes: 65536
+    max_result_bytes: 262144
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: true
+    discovery_refresh_seconds: 300
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
+    tools: {}
 
 agents:
   support_agent:
@@ -33,20 +72,60 @@ agents:
     description: Minimal fake agent.
 
 llm:
-  default_profile: local_reasoning
+  defaults:
+    profile: local_reasoning
+    timeout_seconds: 120
+    stream_timeout_seconds: 300
+    max_retries: 1
+    trace_prompts: false
+    trace_completions: false
   providers:
     local_provider:
       type: openai_compatible
+      enabled: true
       base_url: ${env:LOCAL_LLM_BASE_URL:http://localhost:8081/v1}
       api_key: ${env:LOCAL_LLM_API_KEY:}
+      timeout_seconds: 120
+      stream_timeout_seconds: 300
+      headers:
+        Content-Type: application/json
   profiles:
     local_reasoning:
+      enabled: true
       provider: local_provider
       model: local-reasoning-model
+      temperature: 0.7
+      max_output_tokens: 2048
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []
 
 mcp:
   main:
-    url: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    name: main
+    enabled: true
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    transport: http
+    timeout_seconds: 60
+    stream_timeout_seconds: 300
+    auth:
+      mode: none
+      token: ${env:MCP_BEARER_TOKEN:}
+      jwt: ${env:MCP_JWT:}
+      oauth:
+        token_url: ${env:MCP_OAUTH_TOKEN_URL:}
+        client_id: ${env:MCP_OAUTH_CLIENT_ID:}
+        client_secret: ${env:MCP_OAUTH_CLIENT_SECRET:}
+        scopes: []
+    tool_discovery_enabled: true
 
 persistence:
   workflow_state:
@@ -61,6 +140,10 @@ persistence:
       database_path: ${env:MEMORY_STORE_DB_PATH:./data/memory}
 
 policy:
+  enabled: true
+  mode: enforce
+  default_decision: deny
+  fail_closed: true
   default_profile: default
   profiles:
     default:
@@ -68,6 +151,10 @@ policy:
       deny_unknown_llm_profiles: true
       require_memory_scope: true
       allow_memory_writes: false
+      allow_write_tools: false
+      allow_destructive_tools: false
+      allow_external_side_effect_tools: false
+      allow_approval_required_tools: false
 
 observability:
   log_level: ${env:APP_LOG_LEVEL:INFO}

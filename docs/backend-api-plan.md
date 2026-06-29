@@ -108,8 +108,8 @@ The main implementation concerns to resolve explicitly during execution are:
 | 4 | Non-Streaming Chat Route | `POST /chat` works against a fake session service and proves the thin-route boundary. |
 | 5 | [DONE] Streaming Route and SSE | `POST /chat/stream` emits valid SSE events with safe lifecycle behavior and no per-token state writes. |
 | 6 | [DONE] Reset, Health, Capabilities, and Debug Routes | The remaining route surface is completed, existing foundation routes are expanded into API-facing responses, and debug-trace access is added behind strict guards. |
-| 7 | Walking Skeleton Session Service | The fake session implementation is replaced by a real session slice that loads and saves workflow state and records safe trace summaries. |
-| 8 | Tests, Quality Gates, and Freeze | Focused tests, fixture configs, and full backend validation prove the API acceptance criteria and hand off cleanly to the deeper session-service phase. |
+| 7 | [DONE] Walking Skeleton Session Service | The fake session implementation is replaced by a real session slice that loads and saves workflow state and records safe trace summaries. |
+| 8 | [DONE] Tests, Quality Gates, and Freeze | Focused tests, fixture configs, and full backend validation prove the API acceptance criteria and hand off cleanly to the deeper session-service phase. |
 
 ---
 
@@ -464,7 +464,7 @@ Complete the V1 route surface, evolve the current foundation routes into API-fac
 - [DONE] The API exposes `/sessions/{session_id}/reset`, `/health`, and `/capabilities` in their intended V1 shapes.
 - [DONE] Optional debug trace routes stay disabled by default and safe when enabled.
 
-### Phase 7. Walking Skeleton Session Service
+### [DONE] Phase 7. Walking Skeleton Session Service
 
 **Goal**
 
@@ -472,47 +472,47 @@ Replace the fake session service with a real walking-skeleton session path that 
 
 **Files to create or update**
 
-- `backend/app/session/service.py`
-- `backend/app/session/models.py`
-- `backend/app/session/errors.py`
-- `backend/app/config/bootstrap.py`
-- `backend/app/foundation/container.py`
-- `backend/app/contracts/context.py`
-- `backend/app/testing/fakes/fake_session_service.py`
-- `backend/tests/unit/api/test_session_service_mapping.py`
-- `backend/tests/integration/test_api_walking_skeleton.py`
-- `backend/tests/integration/test_api_reset_boundary.py`
-- `backend/tests/integration/test_api_trace_correlation.py`
+- [DONE] `backend/app/session/service.py`
+- [DONE] `backend/app/session/models.py`
+- [DONE] `backend/app/session/errors.py`
+- [DONE] `backend/app/config/bootstrap.py`
+- [DONE] `backend/app/foundation/container.py`
+- [DONE] `backend/app/contracts/context.py`
+- [DONE] `backend/app/testing/fakes/fake_session_service.py`
+- [DONE] `backend/tests/unit/api/test_session_service_mapping.py`
+- [DONE] `backend/tests/integration/test_api_walking_skeleton.py`
+- [DONE] `backend/tests/integration/test_api_reset_boundary.py`
+- [DONE] `backend/tests/integration/test_api_trace_correlation.py`
 
 **Implementation tasks**
 
-- Implement a real `SessionService` that:
-  - loads workflow state once near request start
-  - maps API request data into `backend/app/contracts/context.py:RequestContext`
-  - runs a stub orchestrator or echo-style internal execution path
-  - saves final workflow state once per non-streaming request
-  - saves final or cancellation-safe state once per streaming request
-  - records safe trace summaries through the existing trace recorder/store boundary
-- Keep the session implementation intentionally narrow: it should exercise real workflow-state and trace dependencies without pretending the later LLM, memory, tool, or MCP phases already exist.
-- Map known persistence/session failures to explicit session-service errors so the existing API error layer can translate them cleanly.
-- Extend startup wiring so the real session service is built from the same container/persistence/config path as the rest of the backend.
-- Preserve the architecture rule that the API does not call `WorkflowStateStore` directly for chat behavior; only the session service may do so.
-- Preserve streaming lifecycle rules: no per-token state saves, safe cancellation, and final completion or cancellation summaries only.
+- [DONE] Implement a real `SessionService` that:
+  - [DONE] loads workflow state once near request start
+  - [DONE] maps API request data into `backend/app/contracts/context.py:RequestContext`
+  - [DONE] runs a stub orchestrator or echo-style internal execution path
+  - [DONE] saves final workflow state once per non-streaming request
+  - [DONE] saves final or cancellation-safe state once per streaming request
+  - [DONE] records safe trace summaries through the existing trace recorder/store boundary
+- [DONE] Keep the session implementation intentionally narrow: it should exercise real workflow-state and trace dependencies without pretending the later LLM, memory, tool, or MCP phases already exist.
+- [DONE] Map known persistence/session failures to explicit session-service errors so the existing API error layer can translate them cleanly.
+- [DONE] Extend startup wiring so the real session service is built from the same container/persistence/config path as the rest of the backend.
+- [DONE] Preserve the architecture rule that the API does not call `WorkflowStateStore` directly for chat behavior; only the session service may do so.
+- [DONE] Preserve streaming lifecycle rules: no per-token state saves, safe cancellation, and final completion or cancellation summaries only.
 
 **Validation**
 
-- Add and pass focused unit tests proving API request context maps correctly into orchestration-facing request context.
-- Add and pass integration tests proving `POST /chat` persists workflow-state changes through the walking skeleton and that reset clears workflow state only.
-- Add and pass integration tests proving trace IDs show up both in responses and in the trace-store-backed observability path.
-- Run a focused walking-skeleton gate from `backend/`:
-  - `backend/.venv\Scripts\python.exe -m pytest tests/unit/api/test_session_service_mapping.py tests/integration/test_api_walking_skeleton.py tests/integration/test_api_reset_boundary.py tests/integration/test_api_trace_correlation.py`
+- [DONE] Add and pass focused unit tests proving API request context maps correctly into orchestration-facing request context.
+- [DONE] Add and pass integration tests proving `POST /chat` persists workflow-state changes through the walking skeleton and that reset clears workflow state only.
+- [DONE] Add and pass integration tests proving trace IDs show up both in responses and in the trace-store-backed observability path.
+- [DONE] Run a focused walking-skeleton gate from `backend/`:
+  - [DONE] `backend/.venv\Scripts\python.exe -m pytest tests/unit/api/test_session_service_mapping.py tests/integration/test_api_walking_skeleton.py tests/integration/test_api_reset_boundary.py tests/integration/test_api_trace_correlation.py`
 
 **Exit criteria**
 
-- The API walking skeleton exercises real workflow-state and trace-store dependencies through `SessionService`.
-- Chat, stream, and reset routes remain thin while the backend stays ready for the deeper session-service architecture phase.
+- [DONE] The API walking skeleton exercises real workflow-state and trace-store dependencies through `SessionService`.
+- [DONE] Chat, stream, and reset routes remain thin while the backend stays ready for the deeper session-service architecture phase.
 
-### Phase 8. Tests, Quality Gates, and Freeze
+### [DONE] Phase 8. Tests, Quality Gates, and Freeze
 
 **Goal**
 
@@ -520,59 +520,61 @@ Prove the API acceptance criteria end to end, keep the test/fixture layout repo-
 
 **Files to create or update**
 
-- `backend/tests/unit/api/test_chat_schemas.py`
-- `backend/tests/unit/api/test_chat_route.py`
-- `backend/tests/unit/api/test_stream_route.py`
-- `backend/tests/unit/api/test_session_reset_route.py`
-- `backend/tests/unit/api/test_health_route.py`
-- `backend/tests/unit/api/test_capabilities_route.py`
-- `backend/tests/unit/api/test_error_mapping.py`
-- `backend/tests/unit/api/test_trace_id_middleware.py`
-- `backend/tests/unit/api/test_request_limits.py`
-- `backend/tests/unit/api/test_sse_formatting.py`
-- `backend/tests/unit/api/test_debug_trace_routes.py`
-- `backend/tests/integration/test_api_chat_fake_session.py`
-- `backend/tests/integration/test_api_streaming_sse.py`
-- `backend/tests/integration/test_api_health_with_real_stores.py`
-- `backend/tests/integration/test_api_debug_traces_disabled.py`
-- `backend/tests/integration/test_api_debug_traces_enabled.py`
-- `backend/tests/integration/test_api_walking_skeleton.py`
-- `backend/tests/integration/test_api_reset_boundary.py`
-- `backend/tests/integration/test_api_trace_correlation.py`
-- `backend/tests/integration/test_api_cors.py`
-- `backend/tests/fixtures/config/api_basic.yaml`
-- `backend/tests/fixtures/config/api_streaming_enabled.yaml`
-- `backend/tests/fixtures/config/api_debug_traces_disabled.yaml`
-- `backend/tests/fixtures/config/api_debug_traces_enabled.yaml`
-- `backend/tests/fixtures/config/api_small_request_limits.yaml`
-- `backend/tests/fixtures/config/api_cors_localhost.yaml`
-- `backend/tests/fixtures/config/api_with_real_sqlite_stores.yaml`
-- `backend/README.md`
+- [DONE] `backend/tests/unit/api/test_chat_schemas.py`
+- [DONE] `backend/tests/unit/api/test_chat_route.py`
+- [DONE] `backend/tests/unit/api/test_stream_route.py`
+- [DONE] `backend/tests/unit/api/test_session_reset_route.py`
+- [DONE] `backend/tests/unit/api/test_health_route.py`
+- [DONE] `backend/tests/unit/api/test_capabilities_route.py`
+- [DONE] `backend/tests/unit/api/test_error_mapping.py`
+- [DONE] `backend/tests/unit/api/test_trace_id_middleware.py`
+- [DONE] `backend/tests/unit/api/test_request_limits.py`
+- [DONE] `backend/tests/unit/api/test_sse_formatting.py`
+- [DONE] `backend/tests/unit/api/test_debug_trace_routes.py`
+- [DONE] `backend/tests/integration/test_api_chat_fake_session.py`
+- [DONE] `backend/tests/integration/test_api_streaming_sse.py`
+- [DONE] `backend/tests/integration/test_api_health_with_real_stores.py`
+- [DONE] `backend/tests/integration/test_api_debug_traces_disabled.py`
+- [DONE] `backend/tests/integration/test_api_debug_traces_enabled.py`
+- [DONE] `backend/tests/integration/test_api_walking_skeleton.py`
+- [DONE] `backend/tests/integration/test_api_reset_boundary.py`
+- [DONE] `backend/tests/integration/test_api_trace_correlation.py`
+- [DONE] `backend/tests/integration/test_api_cors.py`
+- [DONE] `backend/tests/fixtures/config/api_basic.yaml`
+- [DONE] `backend/tests/fixtures/config/api_streaming_enabled.yaml`
+- [DONE] `backend/tests/fixtures/config/api_debug_traces_disabled.yaml`
+- [DONE] `backend/tests/fixtures/config/api_debug_traces_enabled.yaml`
+- [DONE] `backend/tests/fixtures/config/api_small_request_limits.yaml`
+- [DONE] `backend/tests/fixtures/config/api_cors_localhost.yaml`
+- [DONE] `backend/tests/fixtures/config/api_with_real_sqlite_stores.yaml`
+- [DONE] `backend/README.md`
 
 **Implementation tasks**
 
-- Add the unit and integration coverage called for by `backend-api-architecture.md`, using the repo's real backend-local test paths.
-- Keep integration tests flat under `backend/tests/integration/` to match the current repository pattern.
-- Add fixture-backed config coverage for basic API startup, streaming enabled, debug routes enabled/disabled, small request limits, localhost CORS, and real SQLite-backed walking skeleton behavior.
-- Update `backend/README.md` with backend-local API route expectations, dev startup instructions, test commands, and any safe debug-route notes.
-- Run the full backend quality gate from `backend/`:
-  - `backend/.venv\Scripts\python.exe -m pytest`
-  - `backend/.venv\Scripts\python.exe -m ruff check .`
-  - `backend/.venv\Scripts\python.exe -m mypy app`
-- Confirm that the API acceptance criteria from `backend-api-architecture.md` are satisfied at repo-accurate paths under `backend/`.
-- Record the intentional deferrals for the next phase, especially:
-  - deep session lifecycle rules
-  - history shaping and optional history route policy
-  - real orchestration runtime behavior
-  - LLM gateway integration
-  - memory gateway integration
-  - tool and MCP integration
-  - auth/policy hardening beyond localhost debug-route guards
+- [DONE] Add the unit and integration coverage called for by `backend-api-architecture.md`, using the repo's real backend-local test paths.
+- [DONE] Keep integration tests flat under `backend/tests/integration/` to match the current repository pattern.
+- [DONE] Add fixture-backed config coverage for basic API startup, streaming enabled, debug routes enabled/disabled, small request limits, localhost CORS, and real SQLite-backed session-service behavior.
+- [DONE] Update `backend/README.md` with backend-local API route expectations, dev startup instructions, test commands, and any safe debug-route notes.
+- [DONE] Run the full backend quality gate from `backend/`:
+  - [DONE] `backend/.venv\Scripts\python.exe -m pytest`
+  - [DONE] `backend/.venv\Scripts\python.exe -m ruff check .`
+  - [DONE] `backend/.venv\Scripts\python.exe -m mypy app`
+- [DONE] Confirm that the API acceptance criteria from `backend-api-architecture.md` are satisfied at repo-accurate paths under `backend/`.
+- [DONE] Record the intentional deferrals for the next phase, especially:
+  - [DONE] deep session lifecycle rules
+  - [DONE] history shaping and optional history route policy
+  - [DONE] real orchestration runtime behavior
+  - [DONE] LLM gateway integration
+  - [DONE] memory gateway integration
+  - [DONE] tool and MCP integration
+  - [DONE] auth/policy hardening beyond localhost debug-route guards
 
 **Exit criteria**
 
-- API behavior is covered by focused tests at both the unit and integration level.
-- The backend API walking skeleton is stable, repo-accurate, and ready for `docs/backend-session-service-architecture.md`.
+- [DONE] API behavior is covered by focused tests at both the unit and integration level.
+- [DONE] The backend API walking skeleton is stable, repo-accurate, and ready for `docs/backend-session-service-architecture.md`.
+
+The walking-skeleton label in this document is now historical. The current backend keeps the same API ownership rules, but startup is wired to the deeper `DefaultSessionService` delivered by the later session-service phase.
 
 ---
 
@@ -610,7 +612,7 @@ This plan should be considered complete when the backend can do all of the follo
 - Enforce request limits, CORS, and safe error behavior through validated config and shared middleware.
 - Keep request-boundary telemetry safe and redacted.
 - Expose optional debug trace routes only when explicitly enabled and only through bounded redacted read/search behavior.
-- Exercise real workflow-state and trace-store dependencies through a walking-skeleton `SessionService` without introducing direct route-level store calls.
+- Exercise real workflow-state and trace-store dependencies through the stable `SessionService` boundary, which the API phase introduced as a walking skeleton and the later session-service phase deepened into `DefaultSessionService`, without introducing direct route-level store calls.
 - Run focused API tests plus the full backend validation gate from `backend/`.
 - Hand off cleanly to `docs/backend-session-service-architecture.md` for deeper session lifecycle and orchestration behavior.
 

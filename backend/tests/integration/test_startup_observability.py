@@ -35,4 +35,4 @@ def test_observability_wiring_runs_during_lifespan_startup(monkeypatch: pytest.M
     assert row[1] == "startup_completed"
     assert row[2] == "backend.startup"
     payload = json.loads(row[3])
-    assert payload["config_summary"]["configured"] is True
+    assert payload == {}

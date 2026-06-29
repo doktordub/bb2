@@ -1,0 +1,45 @@
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: fake_trace_capture
+  usecases:
+    default_chat:
+      llm_profile: fake_trace_capture
+
+llm:
+  defaults:
+    profile: fake_trace_capture
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: true
+    trace_completions: true
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+      extra:
+        response_text: traced fake response
+  profiles:
+    fake_trace_capture:
+      enabled: true
+      provider: fake_provider
+      model: fake-trace-capture-model
+      temperature: 0.1
+      max_output_tokens: 256
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []
+
+observability:
+  trace_payloads_enabled: true

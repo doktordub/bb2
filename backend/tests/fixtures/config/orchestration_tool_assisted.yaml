@@ -1,0 +1,36 @@
+tooling:
+  enabled: true
+
+orchestration:
+  defaults:
+    strategy: tool_assisted
+    fallback_strategy: direct_agent
+  strategies:
+    tool_assisted:
+      enabled: true
+      type: tool_assisted
+      default_agent: support_agent
+      allowed_usecases:
+        - tooling_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      tools_enabled: true
+      tools:
+        max_calls: 4
+        allowed_safety_levels:
+          - read_only
+  usecases:
+    tooling_chat:
+      enabled: true
+      description: Use approved tools during support chat.
+      strategy: tool_assisted
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+      tools:
+        enabled: true
+
+app:
+  active_usecase: tooling_chat

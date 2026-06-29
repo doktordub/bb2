@@ -12,10 +12,35 @@ CONTEXT_CREATED = "context_created"
 WORKFLOW_STATE_LOADED = "workflow_state_loaded"
 MEMORY_SEARCH_STARTED = "memory_search_started"
 MEMORY_SEARCH_COMPLETED = "memory_search_completed"
+MEMORY_SEARCH_FAILED = "memory_search_failed"
+MEMORY_GET_STARTED = "memory_get_started"
+MEMORY_GET_COMPLETED = "memory_get_completed"
+MEMORY_GET_FAILED = "memory_get_failed"
+MEMORY_WRITE_STARTED = "memory_write_started"
+MEMORY_WRITE_COMPLETED = "memory_write_completed"
+MEMORY_WRITE_FAILED = "memory_write_failed"
+MEMORY_LIFECYCLE_UPDATED = "memory_lifecycle_updated"
+DOCUMENT_INGEST_STARTED = "document_ingest_started"
+DOCUMENT_INGEST_COMPLETED = "document_ingest_completed"
+DOCUMENT_INGEST_FAILED = "document_ingest_failed"
+MEMORY_DELETE_BY_SCOPE_STARTED = "memory_delete_by_scope_started"
+MEMORY_DELETE_BY_SCOPE_COMPLETED = "memory_delete_by_scope_completed"
+MEMORY_DELETE_BY_SCOPE_FAILED = "memory_delete_by_scope_failed"
+MEMORY_EXPORT_BY_SCOPE_COMPLETED = "memory_export_by_scope_completed"
+MEMORY_EXPORT_BY_SCOPE_FAILED = "memory_export_by_scope_failed"
+MEMORY_HEALTH_CHECKED = "memory_health_checked"
+MEMORY_STATS_CHECKED = "memory_stats_checked"
 LLM_CALL_STARTED = "llm_call_started"
+LLM_PROFILE_RESOLVED = "llm_profile_resolved"
+LLM_POLICY_CHECKED = "llm_policy_checked"
 LLM_CALL_COMPLETED = "llm_call_completed"
 LLM_CALL_FAILED = "llm_call_failed"
 LLM_FALLBACK_SELECTED = "llm_fallback_selected"
+LLM_STREAM_STARTED = "llm_stream_started"
+LLM_STREAM_COMPLETED = "llm_stream_completed"
+LLM_STREAM_CANCELLED = "llm_stream_cancelled"
+LLM_RETRY_SCHEDULED = "llm_retry_scheduled"
+LLM_PROVIDER_HEALTH_CHECKED = "llm_provider_health_checked"
 STRATEGY_SELECTED = "strategy_selected"
 AGENT_SELECTED = "agent_selected"
 AGENT_STARTED = "agent_started"
@@ -32,10 +57,35 @@ MINIMUM_TRACE_EVENT_TYPES = (
     WORKFLOW_STATE_LOADED,
     MEMORY_SEARCH_STARTED,
     MEMORY_SEARCH_COMPLETED,
+    MEMORY_SEARCH_FAILED,
+    MEMORY_GET_STARTED,
+    MEMORY_GET_COMPLETED,
+    MEMORY_GET_FAILED,
+    MEMORY_WRITE_STARTED,
+    MEMORY_WRITE_COMPLETED,
+    MEMORY_WRITE_FAILED,
+    MEMORY_LIFECYCLE_UPDATED,
+    DOCUMENT_INGEST_STARTED,
+    DOCUMENT_INGEST_COMPLETED,
+    DOCUMENT_INGEST_FAILED,
+    MEMORY_DELETE_BY_SCOPE_STARTED,
+    MEMORY_DELETE_BY_SCOPE_COMPLETED,
+    MEMORY_DELETE_BY_SCOPE_FAILED,
+    MEMORY_EXPORT_BY_SCOPE_COMPLETED,
+    MEMORY_EXPORT_BY_SCOPE_FAILED,
+    MEMORY_HEALTH_CHECKED,
+    MEMORY_STATS_CHECKED,
     LLM_CALL_STARTED,
+    LLM_PROFILE_RESOLVED,
+    LLM_POLICY_CHECKED,
     LLM_CALL_COMPLETED,
     LLM_CALL_FAILED,
     LLM_FALLBACK_SELECTED,
+    LLM_STREAM_STARTED,
+    LLM_STREAM_COMPLETED,
+    LLM_STREAM_CANCELLED,
+    LLM_RETRY_SCHEDULED,
+    LLM_PROVIDER_HEALTH_CHECKED,
     STRATEGY_SELECTED,
     AGENT_SELECTED,
     AGENT_STARTED,

@@ -1,0 +1,12 @@
+features:
+  memory_enabled: true
+
+policy:
+  profiles:
+    default:
+      allow_memory_writes: true
+      memory:
+        allowed_read_scopes:
+          - project
+        allowed_write_scopes:
+          - project

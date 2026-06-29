@@ -1,0 +1,9 @@
+session:
+  state:
+    save_on_chat_completion: true
+    save_on_stream_completion: true
+    save_on_stream_cancellation: true
+    save_on_stream_failure: true
+    save_each_stream_delta: false
+  tracing:
+    record_stream_lifecycle: true

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -50,6 +51,7 @@ def test_chat_route_returns_response_headers_and_calls_service_once(
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         response = client.post(
             "/chat",
             headers={"x-trace-id": "trace-chat-route-1234"},
@@ -96,6 +98,7 @@ def test_chat_route_accepts_session_header_when_body_session_missing(
     app = build_app(monkeypatch, tmp_path)
 
     with TestClient(app) as client:
+        app.state.container = replace(app.state.container, session_service=FakeSessionService())
         response = client.post(
             "/chat",
             headers={"x-session-id": "session_from_header"},

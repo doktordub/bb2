@@ -1,0 +1,4 @@
+memory:
+  enabled: false
+  provider: memory_store
+  required: false

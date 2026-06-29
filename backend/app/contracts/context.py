@@ -6,13 +6,17 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from app.config.view import OrchestrationSettings, StrategySettings
     from app.contracts.config import ConfigurationView
     from app.contracts.llm import LLMGateway
     from app.contracts.memory import MemoryGateway
     from app.contracts.policy import PolicyService
-    from app.contracts.state import WorkflowStateStore
     from app.contracts.tools import ToolGateway
     from app.contracts.trace import TraceStore
+    from app.observability.tracing import TraceRecorder
+    from app.orchestration.limits import OrchestrationLimitTracker
+    from app.orchestration.models import OrchestrationRuntimeContext
+    from app.orchestration.state_delta import WorkflowStateSnapshot
 
 
 @dataclass(slots=True)
@@ -34,9 +38,15 @@ class OrchestrationContext:
     request: RequestContext
     llm: LLMGateway
     memory: MemoryGateway
-    state: WorkflowStateStore
+    state: WorkflowStateSnapshot | None
     tools: ToolGateway
     trace: TraceStore
     policy: PolicyService
     config: ConfigurationView
-    runtime_metadata: dict[str, Any]
+    runtime_metadata: dict[str, Any] = field(default_factory=dict)
+    runtime: OrchestrationRuntimeContext | None = None
+    settings: OrchestrationSettings | None = None
+    strategy_settings: StrategySettings | None = None
+    observability: TraceRecorder | None = None
+    limits: OrchestrationLimitTracker | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)

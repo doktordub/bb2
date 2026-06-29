@@ -1,0 +1,45 @@
+agents:
+  support_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Minimal fake agent.
+    llm_profile: restricted_profile
+  other_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Alternate fake agent.
+
+llm:
+  defaults:
+    profile: restricted_profile
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+  profiles:
+    restricted_profile:
+      enabled: true
+      provider: fake_provider
+      model: restricted-model
+      temperature: 0.1
+      max_output_tokens: 256
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - other_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

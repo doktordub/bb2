@@ -1,0 +1,52 @@
+tooling:
+  enabled: true
+  registry:
+    tools:
+      documents_search:
+        enabled: true
+        mcp_tool_name: documents.search
+        allowed_for:
+          usecases:
+            - tooling_chat
+          agents:
+            - support_agent
+          strategies:
+            - tool_assisted
+        safety_level: read_only
+
+orchestration:
+  defaults:
+    strategy: tool_assisted
+    fallback_strategy: direct_agent
+  strategies:
+    tool_assisted:
+      enabled: true
+      type: tool_assisted
+      default_agent: support_agent
+      allowed_usecases:
+        - tooling_chat
+      llm_profile: local_reasoning
+      tools_enabled: true
+      tools:
+        allowed_tools:
+          - documents.search
+  usecases:
+    tooling_chat:
+      enabled: true
+      description: Invalid raw MCP tool wiring.
+      strategy: tool_assisted
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      allowed_strategies:
+        - tool_assisted
+        - direct_agent
+      policy_profile: default
+      tools:
+        enabled: true
+        allowed_tools:
+          - documents_search
+
+app:
+  active_usecase: tooling_chat

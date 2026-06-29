@@ -40,6 +40,10 @@ def build_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> object:
         monkeypatch.delenv(name, raising=False)
 
     monkeypatch.setenv("APP_CONFIG_PATH", "tests/fixtures/config/valid_minimal.yaml")
+    monkeypatch.setenv(
+        "APP_CONFIG_OVERRIDE_PATH",
+        "tests/fixtures/config/llm_fake_basic.yaml",
+    )
     monkeypatch.setenv("APP_DATA_DIR", tmp_path.as_posix())
     return create_app(load_settings(env_file=None))
 

@@ -12,7 +12,7 @@ import yaml
 from app.contracts.config import ConfigurationLoader
 from app.config.env_resolver import resolve_env_references
 from app.config.schemas import BackendConfig
-from app.config.settings import BACKEND_ROOT
+from app.config.settings import BACKEND_ROOT, load_settings
 from app.config.validation import parse_backend_config, validate_backend_config, validate_literal_secrets
 from app.config.view import ValidatedConfigurationView
 from app.contracts.errors import ConfigurationError
@@ -97,7 +97,8 @@ def load_prepared_config(
     override_mapping = load_yaml_mapping(override_path, required=False)
     merged_mapping = merge_mappings(base_mapping, override_mapping)
     validate_literal_secrets(merged_mapping)
-    resolved_mapping = resolve_env_references(merged_mapping, env=env)
+    resolved_env = dict(load_settings().environment_overrides()) if env is None else dict(env)
+    resolved_mapping = resolve_env_references(merged_mapping, env=resolved_env)
 
     if not isinstance(resolved_mapping, dict):
         raise ConfigurationError("Resolved configuration must remain a mapping.")

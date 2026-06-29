@@ -1,0 +1,14 @@
+features:
+  tools_enabled: false
+
+tooling:
+  enabled: false
+  registry:
+    tools: {}
+
+mcp:
+  main:
+    enabled: false
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    auth:
+      mode: none

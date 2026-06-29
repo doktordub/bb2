@@ -1,0 +1,10 @@
+features:
+  streaming_enabled: true
+
+policy:
+  profiles:
+    default:
+      stream:
+        allow_stream_events: true
+        expose_internal_events: false
+        expose_raw_deltas: false

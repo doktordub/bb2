@@ -1,0 +1,4 @@
+session:
+  concurrency:
+    conflict_policy: reject
+    max_retries: 2

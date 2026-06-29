@@ -1,0 +1,15 @@
+memory:
+  enabled: true
+  provider: memory_store
+  required: false
+  defaults:
+    top_k: 6
+  store:
+    database:
+      path: memory-local-optional
+      schema_version: 1
+  search:
+    limit_max: 18
+    final_top_k: 6
+  lifecycle:
+    allow_writes: false

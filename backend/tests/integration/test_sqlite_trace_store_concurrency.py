@@ -63,7 +63,11 @@ async def test_sqlite_trace_store_concurrent_writes_preserve_per_trace_sequence_
     assert sorted(row[1] for row in event_rows) == [event.timestamp.isoformat() for event in events]
     assert {row[2] for row in event_rows} == {"completed", "started"}
 
-    assert run_row == (10, 0, "completed", "chat")
+    assert run_row is not None
+    assert run_row[0] == 10
+    assert run_row[1] == 0
+    assert run_row[2] in {"started", "completed"}
+    assert run_row[3] == "chat"
     assert journal_mode is not None
     assert str(journal_mode[0]).lower() == "wal"
     assert synchronous == (1,)

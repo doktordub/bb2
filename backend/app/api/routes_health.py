@@ -9,7 +9,7 @@ from app.api.request_context import ApiRequestContext
 from app.api.schemas import HealthResponse
 from app.contracts.health import HEALTH_FAILED
 from app.foundation.container import FoundationContainer
-from app.foundation.health import build_api_health_payload
+from app.foundation.health import apply_health_policy, build_api_health_payload
 from app.observability.events import HEALTH_CHECKED
 
 router = APIRouter(tags=["health"])
@@ -41,7 +41,8 @@ async def get_health(
         },
     )
     return HealthResponse.model_validate(
-        build_api_health_payload(
+        await apply_health_policy(
+            payload=build_api_health_payload(
             health_payload=health_payload,
             service_name=container.config.require("app.name"),
             version=container.settings.app_version,
@@ -49,5 +50,10 @@ async def get_health(
             trace_id=context.trace_id,
             api_settings=container.api_settings,
             streaming_enabled=bool(container.config.get("features.streaming_enabled", False)),
+            ),
+            policy_service=container.policy_service,
+            config=container.config,
+            trace_id=context.trace_id,
+            user_id=context.user_id,
         )
     )

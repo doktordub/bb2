@@ -1,0 +1,36 @@
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - documents_search
+
+tooling:
+  enabled: true
+  registry:
+    tools:
+      documents_search:
+        enabled: true
+        mcp_tool_name: documents.search
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        safety_level: read_only
+
+agents:
+  plugins:
+    support_agent:
+      type: tool_using
+      capabilities:
+        answer: true
+        stream: true
+        tool_intents: true
+      allowed_tool_intents:
+        - documents.search

@@ -1,0 +1,33 @@
+orchestration:
+  defaults:
+    strategy: fallback_answer
+    fallback_strategy: fallback_answer
+    max_memory_writes: 1
+    max_tool_loop_iterations: 3
+    max_context_bytes: 64000
+    stream_strategy_events: true
+    expose_strategy_metadata: true
+  strategies:
+    fallback_answer:
+      enabled: true
+      type: fallback_answer
+      llm_profile: local_reasoning
+      message: I could not complete the full workflow, but I can still provide a safe fallback answer.
+      allowed_usecases:
+        - fallback_chat
+      expose_strategy_metadata: true
+  usecases:
+    fallback_chat:
+      enabled: true
+      description: Safe fallback-only chat path.
+      strategy: fallback_answer
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      allowed_strategies:
+        - fallback_answer
+      policy_profile: default
+
+app:
+  active_usecase: fallback_chat

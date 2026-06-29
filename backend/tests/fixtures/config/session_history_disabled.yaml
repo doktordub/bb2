@@ -1,0 +1,6 @@
+session:
+  history:
+    enabled: false
+    include_metadata: true
+    max_message_chars: 1024
+    redaction_enabled: true

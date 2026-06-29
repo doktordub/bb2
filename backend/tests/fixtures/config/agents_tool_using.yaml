@@ -1,0 +1,49 @@
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - documents_search
+
+tooling:
+  enabled: true
+  registry:
+    tools:
+      documents_search:
+        enabled: true
+        mcp_tool_name: documents.search
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        safety_level: read_only
+
+agents:
+  defaults:
+    strict_prompt_profile_validation: true
+    known_prompt_profiles:
+      - tool_using_v1
+  plugins:
+    support_agent:
+      type: tool_using
+      display_name: Tool Using Agent
+      description: Produces logical tool intents from safe tool results.
+      llm_profile: local_reasoning
+      prompt_profile: tool_using_v1
+      capabilities:
+        answer: true
+        stream: true
+        tool_intents: true
+        tool_execute: false
+        memory_read: false
+        memory_write: false
+      allowed_tool_intents:
+        - documents_search
+      limits:
+        max_tool_intents: 2

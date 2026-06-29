@@ -1,0 +1,6 @@
+policy:
+  profiles:
+    default:
+      usecases:
+        allowed:
+          - missing_usecase

@@ -1,0 +1,33 @@
+features:
+  memory_enabled: true
+
+memory:
+  enabled: true
+
+agents:
+  defaults:
+    strict_prompt_profile_validation: true
+    known_prompt_profiles:
+      - document_qa_v1
+  plugins:
+    support_agent:
+      type: document_qa
+      display_name: Document Q&A Agent
+      description: Answers questions using bounded retrieved context.
+      llm_profile: local_reasoning
+      prompt_profile: document_qa_v1
+      capabilities:
+        answer: true
+        stream: true
+        memory_read: true
+        memory_write: false
+        tool_intents: false
+        tool_execute: false
+      context_policy:
+        require_context_for_grounded_claims: true
+        cite_context_labels: true
+        max_context_items: 6
+        max_context_bytes: 12000
+      allowed_memory_scopes:
+        - project
+        - usecase

@@ -1,0 +1,47 @@
+memory:
+  enabled: true
+  lifecycle:
+    allow_writes: true
+
+policy:
+  profiles:
+    default:
+      allow_memory_writes: true
+
+orchestration:
+  defaults:
+    strategy: memory_update
+    fallback_strategy: direct_agent
+    max_memory_writes: 1
+  strategies:
+    memory_update:
+      enabled: true
+      type: memory_update
+      default_agent: support_agent
+      allowed_usecases:
+        - memory_capture
+      llm_profile: local_reasoning
+      memory_enabled: true
+      memory_write_enabled: true
+      max_memory_writes: 1
+      candidate_limit: 5
+      require_policy_approval: true
+      expose_strategy_metadata: true
+  usecases:
+    memory_capture:
+      enabled: true
+      description: Curate memory candidates from chat.
+      strategy: memory_update
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      allowed_strategies:
+        - memory_update
+        - direct_agent
+      policy_profile: default
+      memory:
+        enabled: true
+
+app:
+  active_usecase: memory_capture

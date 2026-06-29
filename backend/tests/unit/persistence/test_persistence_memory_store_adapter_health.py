@@ -27,17 +27,21 @@ async def test_memory_store_adapter_health_reports_missing_config_path_for_optio
 
     health = await adapter.health()
 
-    assert health == {
-        "status": HEALTH_DEGRADED,
-        "configured": True,
-        "provider": "memory_store",
-        "required": False,
-        "config_path_configured": True,
-        "database_path_configured": False,
-        "service_initialized": False,
-        "reason": "config_path_missing",
-        "error_type": "FileNotFoundError",
-    }
+    assert health["status"] == HEALTH_DEGRADED
+    assert health["configured"] is True
+    assert health["enabled"] is True
+    assert health["provider"] == "memory_store"
+    assert health["required"] is False
+    assert health["config_path_configured"] is True
+    assert health["database_path_configured"] is False
+    assert health["service_initialized"] is False
+    assert health["embedding_model_configured"] is True
+    assert health["embedding_dimension"] == 384
+    assert health["search_available"] is False
+    assert health["ingest_available"] is False
+    assert health["reason"] == "config_path_missing"
+    assert health["error"] == "config_path_missing"
+    assert health["error_type"] == "FileNotFoundError"
 
 
 @pytest.mark.asyncio
@@ -63,17 +67,21 @@ async def test_memory_store_adapter_health_reports_missing_dependency_for_option
 
     health = await adapter.health()
 
-    assert health == {
-        "status": HEALTH_DEGRADED,
-        "configured": True,
-        "provider": "memory_store",
-        "required": False,
-        "config_path_configured": False,
-        "database_path_configured": True,
-        "service_initialized": False,
-        "reason": "dependency_unavailable",
-        "error_type": "ModuleNotFoundError",
-    }
+    assert health["status"] == HEALTH_DEGRADED
+    assert health["configured"] is True
+    assert health["enabled"] is True
+    assert health["provider"] == "memory_store"
+    assert health["required"] is False
+    assert health["config_path_configured"] is False
+    assert health["database_path_configured"] is True
+    assert health["service_initialized"] is False
+    assert health["embedding_model_configured"] is True
+    assert health["embedding_dimension"] == 384
+    assert health["search_available"] is False
+    assert health["ingest_available"] is False
+    assert health["reason"] == "dependency_unavailable"
+    assert health["error"] == "dependency_unavailable"
+    assert health["error_type"] == "ModuleNotFoundError"
 
 
 @pytest.mark.asyncio
@@ -122,18 +130,21 @@ async def test_memory_store_adapter_health_returns_ok_without_exposing_database_
     health = await adapter.health()
     await adapter.close()
 
-    assert health == {
-        "status": HEALTH_OK,
-        "configured": True,
-        "provider": "memory_store",
-        "required": True,
-        "config_path_configured": False,
-        "database_path_configured": True,
-        "service_initialized": True,
-        "dependency_available": True,
-        "dependencies": {"arcadedb_embedded": True, "fastembed": False},
-        "schema_version": 3,
-    }
+    assert health["status"] == HEALTH_OK
+    assert health["configured"] is True
+    assert health["enabled"] is True
+    assert health["provider"] == "memory_store"
+    assert health["required"] is True
+    assert health["config_path_configured"] is False
+    assert health["database_path_configured"] is True
+    assert health["service_initialized"] is True
+    assert health["embedding_model_configured"] is True
+    assert health["embedding_dimension"] == 384
+    assert health["search_available"] is True
+    assert health["ingest_available"] is True
+    assert health["dependency_available"] is True
+    assert health["dependencies"] == {"arcadedb_embedded": True, "fastembed": False}
+    assert health["schema_version"] == 3
     assert "database_path" not in health
 
 

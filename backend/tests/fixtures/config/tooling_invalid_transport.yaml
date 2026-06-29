@@ -1,0 +1,12 @@
+features:
+  tools_enabled: true
+
+tooling:
+  enabled: true
+
+mcp:
+  main:
+    enabled: true
+    transport: ftp
+    auth:
+      mode: none

@@ -1,0 +1,32 @@
+orchestration:
+  defaults:
+    strategy: bounded_planner
+    fallback_strategy: direct_agent
+  strategies:
+    bounded_planner:
+      enabled: true
+      type: bounded_planner
+      default_agent: support_agent
+      allowed_usecases:
+        - project_plan
+      planner_llm_profile: local_reasoning
+      executor_llm_profile: local_reasoning
+      memory_enabled: false
+      memory_write_enabled: false
+      tools_enabled: false
+      expose_strategy_metadata: true
+  usecases:
+    project_plan:
+      enabled: true
+      description: Attempt a bounded project plan.
+      strategy: bounded_planner
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      allowed_strategies:
+        - bounded_planner
+      policy_profile: default
+
+app:
+  active_usecase: project_plan

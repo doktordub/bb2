@@ -1,0 +1,5 @@
+policy:
+  profiles:
+    default:
+      trace:
+        expose_raw_payloads: true

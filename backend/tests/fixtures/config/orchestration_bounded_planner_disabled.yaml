@@ -1,0 +1,26 @@
+orchestration:
+  defaults:
+    max_memory_writes: 1
+    max_tool_loop_iterations: 3
+    max_context_bytes: 64000
+    stream_strategy_events: true
+    expose_strategy_metadata: true
+  strategies:
+    bounded_planner:
+      enabled: false
+      type: bounded_planner
+      default_agent: support_agent
+      allowed_usecases:
+        - project_plan
+      planner_llm_profile: local_reasoning
+      executor_llm_profile: local_reasoning
+      memory_enabled: true
+      memory_write_enabled: false
+      tools_enabled: true
+      max_memory_writes: 1
+      max_tool_loop_iterations: 2
+      max_context_bytes: 32000
+      max_plan_steps: 4
+      max_execute_steps: 4
+      stream_strategy_events: true
+      expose_strategy_metadata: true

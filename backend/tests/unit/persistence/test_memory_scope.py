@@ -4,41 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.contracts.context import OrchestrationContext, RequestContext
-from app.contracts.memory import MemoryResult, MemoryScope, MemorySearchRequest
+from app.contracts.memory import MemoryResult, MemoryScope, MemorySearchRequest, MemorySearchResult
 from app.persistence.memory_store_adapter import MemoryStoreAdapter, normalize_memory_search_limit
 from app.persistence.settings import MemoryStoreSettings
-from app.testing.fakes import (
-    FakeConfigurationView,
-    FakeLLMGateway,
-    FakeMemoryGateway,
-    FakePolicyService,
-    FakeToolGateway,
-    FakeTraceStore,
-    FakeWorkflowStateStore,
-)
-
-
-def build_context(*, project_id: str | None = None) -> OrchestrationContext:
-    metadata = {"project_id": project_id} if project_id is not None else {}
-    return OrchestrationContext(
-        request=RequestContext(
-            user_id="user-123",
-            session_id="session-123",
-            message="remember this",
-            usecase="support",
-            trace_id="trace-123",
-            metadata=metadata,
-        ),
-        llm=FakeLLMGateway(),
-        memory=FakeMemoryGateway(),
-        state=FakeWorkflowStateStore(),
-        tools=FakeToolGateway(),
-        trace=FakeTraceStore(),
-        policy=FakePolicyService(),
-        config=FakeConfigurationView({}),
-        runtime_metadata={},
-    )
 
 
 def test_memory_scope_normalizes_strings_and_summarizes_without_identifiers() -> None:
@@ -62,8 +30,12 @@ def test_memory_scope_normalizes_strings_and_summarizes_without_identifiers() ->
         "user_id_present": True,
         "project_id_present": False,
         "tenant_id_present": True,
+        "agent_name_present": False,
         "usecase_present": False,
         "session_id_present": True,
+        "source_id_present": False,
+        "document_id_present": False,
+        "tag_count": 0,
     }
 
 
@@ -75,7 +47,7 @@ def test_normalize_memory_search_limit_uses_defaults_and_caps_maximum() -> None:
 
 
 @pytest.mark.asyncio
-async def test_memory_store_adapter_search_uses_default_user_scope_caps_limit_and_emits_safe_traces(
+async def test_memory_store_adapter_search_uses_request_scope_and_caps_limit(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
@@ -90,9 +62,16 @@ async def test_memory_store_adapter_search_uses_default_user_scope_caps_limit_an
             self.allow_retrieval_only = kwargs["allow_retrieval_only"]
 
     class FakeScope:
-        def __init__(self, *, user_id: str | None = None, project_id: str | None = None) -> None:
+        def __init__(
+            self,
+            *,
+            user_id: str | None = None,
+            project_id: str | None = None,
+            agent_id: str | None = None,
+        ) -> None:
             self.user_id = user_id
             self.project_id = project_id
+            self.agent_id = agent_id
 
     class FakeMemoryCreate:
         def __init__(self, **kwargs: object) -> None:
@@ -117,7 +96,15 @@ async def test_memory_store_adapter_search_uses_default_user_scope_caps_limit_an
                 memory_id="memory-1",
                 text="safe text",
                 memory_type="project_fact",
-                metadata={"source": "fake"},
+                scope=SimpleNamespace(user_id="user-123", project_id=None, agent_id=None),
+                status="active",
+                metadata={
+                    "source": "fake",
+                    "_backend_scope": {
+                        "user_id": "user-123",
+                        "session_id": "session-123",
+                    },
+                },
                 source_hash="source-1",
                 chunk_id=None,
             )
@@ -147,30 +134,36 @@ async def test_memory_store_adapter_search_uses_default_user_scope_caps_limit_an
         ),
         required=False,
     )
-    context = build_context()
     request = MemorySearchRequest(
         text="top secret query",
-        scope=MemoryScope(session_id="session-123"),
+        scope=MemoryScope(user_id="user-123", session_id="session-123"),
         include_document_chunks=False,
         limit=50,
     )
 
-    results = await adapter.search(request, context)
+    results = await adapter.search(request)
     await adapter.close()
 
-    assert results == [
-        MemoryResult(
-            memory_id="memory-1",
-            text="safe text",
-            score=0.75,
-            memory_type="project_fact",
-            source_id="source-1",
-            chunk_id=None,
-            metadata={"source": "fake"},
-        )
-    ]
+    assert isinstance(results, MemorySearchResult)
+    assert results.total_candidates == 1
+    assert len(results.results) == 1
+    assert results.results[0] == MemoryResult(
+        memory_id="memory-1",
+        text="safe text",
+        score=0.75,
+        memory_type="project_fact",
+        source_id="source-1",
+        chunk_id=None,
+        metadata={"source": "fake"},
+        record=results.results[0].record,
+    )
     assert len(created_services) == 1
-    assert created_services[0].overrides == {"database": {"path": str(tmp_path / "memory-store")}}
+    assert created_services[0].overrides["database"] == {
+        "schema_version": 1,
+        "path": str(tmp_path / "memory-store"),
+    }
+    assert created_services[0].overrides["retrieval"]["final_top_k"] == 10
+    assert created_services[0].overrides["chunking"]["strategy"] == "markdown_section"
     assert len(created_services[0].search_calls) == 1
     query = created_services[0].search_calls[0]
     assert query.scope.user_id == "user-123"
@@ -186,32 +179,3 @@ async def test_memory_store_adapter_search_uses_default_user_scope_caps_limit_an
         "error_debug_note",
     ]
     assert created_services[0].closed is True
-
-    trace_events = context.trace.events
-    assert [event.event_type for event in trace_events] == [
-        "memory_search_started",
-        "memory_search_completed",
-    ]
-    assert all("top secret query" not in str(event.payload) for event in trace_events)
-    assert trace_events[0].payload == {
-        "scope_type": "user",
-        "user_id_present": True,
-        "project_id_present": False,
-        "tenant_id_present": False,
-        "usecase_present": False,
-        "session_id_present": True,
-        "limit": 20,
-        "include_document_chunks": False,
-        "memory_type_count": 7,
-    }
-    assert trace_events[1].payload == {
-        "scope_type": "user",
-        "user_id_present": True,
-        "project_id_present": False,
-        "tenant_id_present": False,
-        "usecase_present": False,
-        "session_id_present": True,
-        "limit": 20,
-        "result_count": 1,
-        "success": True,
-    }

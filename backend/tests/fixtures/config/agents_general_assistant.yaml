@@ -1,0 +1,26 @@
+agents:
+  defaults:
+    strict_prompt_profile_validation: true
+    known_prompt_profiles:
+      - general_assistant_v1
+    max_prompt_context_bytes: 24000
+    max_output_chars: 9000
+    max_tool_intents: 2
+    max_memory_candidates: 4
+    max_llm_calls: 1
+  plugins:
+    support_agent:
+      type: general_assistant
+      display_name: Support Assistant
+      description: General purpose assistant for direct answers.
+      llm_profile: local_reasoning
+      prompt_profile: general_assistant_v1
+      module: null
+      class_name: null
+      capabilities:
+        answer: true
+        stream: true
+        memory_read: false
+        memory_write: false
+        tool_intents: false
+        tool_execute: false

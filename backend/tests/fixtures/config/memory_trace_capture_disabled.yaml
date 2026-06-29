@@ -1,0 +1,7 @@
+memory:
+  defaults:
+    trace_query_capture: none
+    trace_result_content_capture: none
+
+observability:
+  trace_payloads_enabled: false

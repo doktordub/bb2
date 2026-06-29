@@ -56,8 +56,30 @@ def test_health_route_reports_real_store_statuses(
     assert payload["workflow_state"]["provider"] == "sqlite"
     assert payload["trace"]["status"] == "ok"
     assert payload["trace"]["provider"] == "sqlite"
+    assert payload["llm"] == {
+        "status": "ok",
+        "providers_configured": True,
+        "profiles_configured": True,
+        "default_profile": "local_reasoning",
+        "providers": {
+            "local_provider": {
+                "status": "ok",
+                "type": "openai_compatible",
+                "enabled": True,
+            }
+        },
+        "profiles": {
+            "local_reasoning": {
+                "status": "ok",
+                "provider": "local_provider",
+                "enabled": True,
+                "supports_streaming": True,
+            }
+        },
+    }
     assert payload["checks"]["persistence"]["components"] == {
         "workflow_state": "ok",
         "trace": "ok",
-        "memory": "ok",
     }
+    assert payload["memory"]["status"] == "ok"
+    assert payload["memory"]["provider"] == "memory_store"

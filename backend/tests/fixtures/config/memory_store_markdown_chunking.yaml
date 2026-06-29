@@ -1,0 +1,20 @@
+memory:
+  enabled: true
+  provider: memory_store
+  required: false
+  defaults:
+    top_k: 7
+  chunking:
+    strategy: markdown_section
+    max_tokens: 280
+    overlap_tokens: 32
+    include_heading_path: true
+    include_frontmatter_in_embedding: false
+    preserve_code_blocks: true
+    removed_chunk_policy: mark_removed
+  search:
+    limit_max: 14
+    vector_top_n: 18
+    fts_top_n: 14
+    graph_expansion_hops: 1
+    final_top_k: 10

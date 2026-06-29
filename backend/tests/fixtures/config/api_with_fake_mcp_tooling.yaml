@@ -1,0 +1,147 @@
+api:
+  enabled: true
+  base_path: ""
+
+orchestration:
+  defaults:
+    strategy: tool_assisted
+    fallback_strategy: direct_agent
+  strategies:
+    direct_agent:
+      llm_profile: fake_basic
+    tool_assisted:
+      enabled: true
+      type: tool_assisted
+      default_agent: support_agent
+      allowed_usecases:
+        - default_chat
+      llm_profile: fake_basic
+      tools_enabled: true
+      tools:
+        allowed_tools:
+          - documents.search
+  usecases:
+    default_chat:
+      enabled: true
+      strategy: tool_assisted
+      agent: support_agent
+      llm_profile: fake_basic
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+      tools:
+        enabled: true
+        allowed_tools:
+          - documents.search
+
+persistence:
+  workflow_state:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/workflow_state.db
+  trace:
+    provider: sqlite
+    path: ${env:APP_DATA_DIR:./data}/trace.db
+
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - documents.search
+
+agents:
+  support_agent:
+    allowed_tools:
+      - documents.search
+
+llm:
+  defaults:
+    profile: fake_basic
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+  profiles:
+    fake_basic:
+      provider: fake_provider
+      model: fake-basic-model
+      temperature: 0.1
+      max_output_tokens: 512
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - tool_assisted
+      fallback_profiles: []
+
+tooling:
+  enabled: true
+  defaults:
+    timeout_seconds: 45
+    stream_timeout_seconds: 90
+    max_retries: 2
+    max_argument_bytes: 4096
+    max_result_bytes: 131072
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: true
+    discovery_refresh_seconds: 120
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
+    tools:
+      documents.search:
+        enabled: true
+        mcp_tool_name: documents.search
+        description: Search indexed documents through the MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - tool_assisted
+        timeout_seconds: 30
+        max_argument_bytes: 4096
+        max_result_bytes: 65536
+        approval_required: false
+        input_schema_override:
+          type: object
+          required:
+            - query
+          properties:
+            query:
+              type: string
+            limit:
+              type: integer
+        tags:
+          - documents
+          - search
+        safety_level: read_only
+
+mcp:
+  main:
+    name: fake_main
+    enabled: true
+    endpoint: http://tooling.invalid/mcp
+    transport: http
+    timeout_seconds: 45
+    stream_timeout_seconds: 90
+    auth:
+      mode: none
+    tool_discovery_enabled: true

@@ -1,0 +1,41 @@
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: fake_streaming
+  usecases:
+    default_chat:
+      llm_profile: fake_streaming
+
+llm:
+  defaults:
+    profile: fake_streaming
+    timeout_seconds: 50
+    stream_timeout_seconds: 75
+    max_retries: 1
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 50
+      stream_timeout_seconds: 75
+  profiles:
+    fake_streaming:
+      provider: fake_provider
+      model: fake-stream-model
+      temperature: 0.2
+      max_output_tokens: 768
+      timeout_seconds: 50
+      stream_timeout_seconds: 75
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

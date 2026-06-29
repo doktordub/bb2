@@ -1,0 +1,30 @@
+features:
+  memory_enabled: true
+
+memory:
+  enabled: true
+
+agents:
+  defaults:
+    strict_prompt_profile_validation: true
+    known_prompt_profiles:
+      - memory_curator_v1
+  plugins:
+    support_agent:
+      type: memory_curator
+      display_name: Memory Curator Agent
+      description: Extracts safe memory candidates for policy-controlled writes.
+      llm_profile: local_reasoning
+      prompt_profile: memory_curator_v1
+      capabilities:
+        answer: false
+        stream: false
+        memory_candidate_extract: true
+        memory_write: false
+        tool_intents: false
+        tool_execute: false
+      limits:
+        max_memory_candidates: 3
+      allowed_memory_scopes:
+        - project
+        - user

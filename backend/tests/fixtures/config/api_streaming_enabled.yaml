@@ -1,6 +1,14 @@
 features:
   streaming_enabled: true
 
+orchestration:
+  strategies:
+    direct_agent:
+      llm_profile: fake_streaming
+  usecases:
+    default_chat:
+      llm_profile: fake_streaming
+
 api:
   base_path: /api/v1/
   cors:
@@ -22,3 +30,40 @@ api:
     heartbeat_seconds: 5
     send_trace_id_event: false
     send_metadata_events: false
+
+llm:
+  defaults:
+    profile: fake_streaming
+    timeout_seconds: 45
+    stream_timeout_seconds: 60
+    max_retries: 0
+    trace_prompts: false
+    trace_completions: false
+  providers:
+    fake_provider:
+      type: fake
+      enabled: true
+      timeout_seconds: 45
+      stream_timeout_seconds: 60
+      extra:
+        response_text: fake response
+        stream_chunks:
+          - "fake "
+          - response
+  profiles:
+    fake_streaming:
+      enabled: true
+      provider: fake_provider
+      model: fake-streaming-model
+      supports_streaming: true
+      supports_json_schema: false
+      supports_tool_calling: false
+      max_output_tokens: 256
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

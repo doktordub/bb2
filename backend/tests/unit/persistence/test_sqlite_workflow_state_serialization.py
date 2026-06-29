@@ -7,6 +7,7 @@ import pytest
 
 from app.contracts.state import WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE
 from app.persistence.errors import (
+    WorkflowStateConflictError,
     WorkflowStateError,
     WorkflowStateSerializationError,
     WorkflowStateSizeError,
@@ -24,16 +25,19 @@ async def test_sqlite_workflow_state_store_load_returns_default_state_for_missin
     await store.initialize()
     loaded = await store.load("session-1")
 
-    assert loaded["session_id"] == "session-1"
-    assert loaded["conversation"] == {"messages": []}
-    assert loaded["workflow"] == {
+    assert loaded.session_id == "session-1"
+    assert loaded.version is None
+    assert loaded.found is False
+    assert loaded.loaded_empty is True
+    assert loaded.state["conversation"] == {"messages": []}
+    assert loaded.state["workflow"] == {
         "current_step": None,
         "checkpoint": None,
         "scratch": {},
         "pending_actions": [],
     }
-    assert loaded["metadata"]["loaded_empty"] is True
-    assert loaded["metadata"]["created_at"]
+    assert loaded.state["metadata"]["loaded_empty"] is True
+    assert loaded.state["metadata"]["created_at"]
 
 
 @pytest.mark.asyncio
@@ -42,9 +46,13 @@ async def test_sqlite_workflow_state_store_normalizes_session_id_on_save_and_loa
     state = {"workflow": {"current_step": "draft"}}
 
     await store.initialize()
-    await store.save("  session-1  ", state)
+    save_result = await store.save("  session-1  ", state)
 
-    assert await store.load("session-1") == state
+    loaded = await store.load("session-1")
+    assert save_result.version == 1
+    assert loaded.state == state
+    assert loaded.version == 1
+    assert loaded.found is True
 
 
 @pytest.mark.asyncio
@@ -136,6 +144,22 @@ async def test_sqlite_workflow_state_store_raises_for_corrupt_stored_json(tmp_pa
 
     with pytest.raises(WorkflowStateSerializationError, match="invalid JSON"):
         await store.load("session-1")
+
+
+@pytest.mark.asyncio
+async def test_sqlite_workflow_state_store_save_uses_expected_version(tmp_path) -> None:
+    store = SqliteWorkflowStateStore(tmp_path / "workflow-state-versioned.db")
+
+    await store.initialize()
+
+    first = await store.save("session-1", {"count": 1})
+    second = await store.save("session-1", {"count": 2}, expected_version=first.version)
+
+    assert first.version == 1
+    assert second.version == 2
+
+    with pytest.raises(WorkflowStateConflictError, match="current version"):
+        await store.save("session-1", {"count": 3}, expected_version=1)
 
 
 def _build_settings(

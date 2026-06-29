@@ -30,8 +30,13 @@ SENSITIVE_KEY_PARTS = (
 )
 NON_SENSITIVE_CONTROL_KEYS = frozenset(
     {
+        "auth_header",
         "redact_secrets",
         "expose_secret_values",
+        "max_input_tokens",
+        "max_output_tokens",
+        "max_total_tokens",
+        "timezone_metadata_key",
     }
 )
 REDACTED_VALUE = "***REDACTED***"
@@ -110,8 +115,10 @@ class Redactor:
         result: dict[str, object] = {}
         for key, item in items:
             key_text = str(key)
+            normalized_key = key_text.strip().lower()
             child_sensitive = sensitive_context or (
                 self.redact_secrets
+                and normalized_key not in {"auth", "oauth"}
                 and is_sensitive_key(
                     key_text,
                     sensitive_key_parts=self.sensitive_key_parts,

@@ -8,11 +8,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from app.api.request_context import ApiRequestContext
-from app.api.schemas import ChatRequest
 from app.contracts.context import RequestContext
-from app.contracts.state import default_workflow_state, normalize_workflow_state_session_id
-from app.session.models import SessionChatResult, SessionResetResult, SessionStreamEvent
+from app.contracts.state import default_workflow_state
+from app.session.errors import SessionNotFoundError
+from app.session.identifiers import normalize_session_id
+from app.session.mapping import build_core_request_context
+from app.session.models import (
+    SessionChatRequest,
+    SessionChatResult,
+    SessionDeleteResult,
+    SessionHistoryMessage,
+    SessionHistoryResult,
+    SessionListResult,
+    SessionRequestContext,
+    SessionResetResult,
+    SessionSummary,
+    SessionStreamEvent,
+)
+from app.testing.fakes.fake_session_id_provider import FakeSessionIdProvider
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,16 +42,16 @@ class FakeSessionInvocation:
 class FakeSessionService:
     """Simple echo-style session fake that tracks state transitions deterministically."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, id_provider: FakeSessionIdProvider | None = None) -> None:
         self.states: dict[str, dict[str, Any]] = {}
         self.invocations: list[FakeSessionInvocation] = []
-        self._session_counter = 0
+        self.id_provider = id_provider or FakeSessionIdProvider()
 
     async def handle_chat(
         self,
         *,
-        request: ChatRequest,
-        context: ApiRequestContext,
+        request: SessionChatRequest,
+        context: SessionRequestContext,
     ) -> SessionChatResult:
         session_id = self._resolve_session_id(request=request)
         state = deepcopy(self.states.get(session_id, default_workflow_state(session_id)))
@@ -111,8 +124,8 @@ class FakeSessionService:
     async def stream_chat(
         self,
         *,
-        request: ChatRequest,
-        context: ApiRequestContext,
+        request: SessionChatRequest,
+        context: SessionRequestContext,
     ) -> AsyncIterator[SessionStreamEvent]:
         result = await self.handle_chat(request=request, context=context)
         answer = result.answer
@@ -138,17 +151,22 @@ class FakeSessionService:
             data={
                 "message": "stream_started",
             },
+            sequence_no=1,
         )
         midpoint = max(len(answer) // 2, 1)
+        sequence_no = 1
         for chunk in (answer[:midpoint], answer[midpoint:]):
             if not chunk:
                 continue
+            sequence_no += 1
             yield SessionStreamEvent(
                 event_type="response.delta",
                 trace_id=context.trace_id,
                 session_id=result.session_id,
                 data={"delta": chunk},
+                sequence_no=sequence_no,
             )
+        sequence_no += 1
         yield SessionStreamEvent(
             event_type="response.metadata",
             trace_id=context.trace_id,
@@ -158,7 +176,9 @@ class FakeSessionService:
                 "strategy_name": result.strategy_name,
                 "llm_profile": result.llm_profile,
             },
+            sequence_no=sequence_no,
         )
+        sequence_no += 1
         yield SessionStreamEvent(
             event_type="response.completed",
             trace_id=context.trace_id,
@@ -167,6 +187,7 @@ class FakeSessionService:
                 "finish_reason": "stop",
                 "duration_ms": 0,
             },
+            sequence_no=sequence_no,
         )
 
     async def reset_session(
@@ -174,9 +195,9 @@ class FakeSessionService:
         *,
         session_id: str,
         reason: str | None,
-        context: ApiRequestContext,
+        context: SessionRequestContext,
     ) -> SessionResetResult:
-        normalized_session_id = normalize_workflow_state_session_id(session_id)
+        normalized_session_id = normalize_session_id(session_id)
         self.states.pop(normalized_session_id, None)
         self.invocations.append(
             FakeSessionInvocation(
@@ -195,30 +216,143 @@ class FakeSessionService:
             metadata={"reason": reason},
         )
 
-    def _resolve_session_id(self, *, request: ChatRequest) -> str:
-        if request.session_id is not None:
-            return normalize_workflow_state_session_id(request.session_id)
+    async def get_history(
+        self,
+        *,
+        session_id: str,
+        limit: int,
+        context: SessionRequestContext,
+    ) -> SessionHistoryResult:
+        normalized_session_id = normalize_session_id(session_id)
+        state = deepcopy(self.states.get(normalized_session_id, default_workflow_state(normalized_session_id)))
+        raw_messages = state.get("conversation", {}).get("messages", [])
+        messages: list[SessionHistoryMessage] = []
+        if isinstance(raw_messages, list):
+            for item in raw_messages[-limit:]:
+                if not isinstance(item, dict):
+                    continue
+                role = item.get("role")
+                content = item.get("content")
+                if not isinstance(role, str) or not isinstance(content, str):
+                    continue
+                messages.append(
+                    SessionHistoryMessage(
+                        role=role,
+                        content=content,
+                        metadata={"message_chars": len(content)},
+                    )
+                )
 
-        self._session_counter += 1
-        return f"session_{self._session_counter:04d}"
+        self.invocations.append(
+            FakeSessionInvocation(
+                kind="get_history",
+                session_id=normalized_session_id,
+                trace_id=context.trace_id,
+                request_context=None,
+                metadata={"limit": limit, "message_count": len(messages)},
+            )
+        )
+        return SessionHistoryResult(
+            trace_id=context.trace_id,
+            session_id=normalized_session_id,
+            messages=messages,
+            truncated=False,
+            metadata={"limit": limit, "returned_count": len(messages)},
+        )
+
+    async def list_sessions(
+        self,
+        *,
+        limit: int | None,
+        context: SessionRequestContext,
+    ) -> SessionListResult:
+        resolved_limit = 50 if limit is None else limit
+        sessions = []
+        for session_id, state in self.states.items():
+            raw_messages = state.get("conversation", {}).get("messages", [])
+            metadata = state.get("metadata", {})
+            usecase = None
+            if isinstance(metadata, dict):
+                raw_usecase = metadata.get("usecase")
+                if isinstance(raw_usecase, str) and raw_usecase.strip():
+                    usecase = raw_usecase.strip()
+            sessions.append(
+                SessionSummary(
+                    session_id=session_id,
+                    usecase=usecase,
+                    status="active",
+                    reset_count=0,
+                    message_count=len(raw_messages) if isinstance(raw_messages, list) else 0,
+                )
+            )
+        sessions.sort(key=lambda item: item.session_id)
+        limited_sessions = sessions[:resolved_limit]
+        self.invocations.append(
+            FakeSessionInvocation(
+                kind="list_sessions",
+                session_id="*",
+                trace_id=context.trace_id,
+                request_context=None,
+                metadata={"limit": resolved_limit, "returned_count": len(limited_sessions)},
+            )
+        )
+        return SessionListResult(
+            trace_id=context.trace_id,
+            sessions=limited_sessions,
+            limit=resolved_limit,
+            has_more=len(sessions) > resolved_limit,
+            metadata={
+                "limit": resolved_limit,
+                "returned_count": len(limited_sessions),
+                "has_more": len(sessions) > resolved_limit,
+            },
+        )
+
+    async def delete_session(
+        self,
+        *,
+        session_id: str,
+        context: SessionRequestContext,
+    ) -> SessionDeleteResult:
+        normalized_session_id = normalize_session_id(session_id)
+        deleted = normalized_session_id in self.states
+        self.invocations.append(
+            FakeSessionInvocation(
+                kind="delete_session",
+                session_id=normalized_session_id,
+                trace_id=context.trace_id,
+                request_context=None,
+                metadata={"deleted": deleted},
+            )
+        )
+        if not deleted:
+            raise SessionNotFoundError()
+
+        self.states.pop(normalized_session_id, None)
+        return SessionDeleteResult(
+            session_id=normalized_session_id,
+            trace_id=context.trace_id,
+            deleted=True,
+            message="Session workflow state was deleted.",
+            metadata={"deleted": True},
+        )
+
+    def _resolve_session_id(self, *, request: SessionChatRequest) -> str:
+        if request.session_id is not None:
+            return normalize_session_id(request.session_id)
+
+        return normalize_session_id(self.id_provider.new_session_id())
 
     @staticmethod
     def _to_request_context(
         *,
-        request: ChatRequest,
-        context: ApiRequestContext,
+        request: SessionChatRequest,
+        context: SessionRequestContext,
         session_id: str,
     ) -> RequestContext:
-        return RequestContext(
-            user_id=context.user_id,
+        return build_core_request_context(
+            request=request,
+            context=context,
             session_id=session_id,
-            message=request.message,
-            usecase=request.usecase,
-            trace_id=context.trace_id,
-            metadata={
-                **dict(context.metadata),
-                **dict(request.metadata),
-                "client_host": context.client_host,
-                "user_agent": context.user_agent,
-            },
+            default_usecase=request.usecase,
         )

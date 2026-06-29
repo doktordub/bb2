@@ -1,0 +1,10 @@
+cases:
+  - name: memory-gateway-chunk
+    query: memory gateway
+    expected_chunk_id: chunk-2
+    expected_source_id: source-1
+    expected_document_id: doc-1
+  - name: memory-boundary-fact
+    query: orchestration-facing boundary
+    expected_memory_id: memory-architecture-1
+    expected_memory_type: project_fact

@@ -1,0 +1,25 @@
+features:
+  tools_enabled: true
+
+tooling:
+  enabled: true
+  registry:
+    tools:
+      billing.charge:
+        enabled: true
+        mcp_tool_name: billing.charge
+        description: Submit a bounded billing charge through the MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        approval_required: true
+        safety_level: write
+
+policy:
+  profiles:
+    default:
+      allow_approval_required_tools: false

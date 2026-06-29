@@ -1,0 +1,22 @@
+llm:
+  defaults:
+    profile: disabled_profile
+  providers:
+    disabled_provider:
+      type: fake
+      enabled: false
+  profiles:
+    disabled_profile:
+      provider: disabled_provider
+      model: fake-disabled-model
+      supports_streaming: false
+      supports_json_schema: false
+      supports_tool_calling: false
+      allowed_for:
+        usecases:
+          - default_chat
+        agents:
+          - support_agent
+        strategies:
+          - direct_agent
+      fallback_profiles: []

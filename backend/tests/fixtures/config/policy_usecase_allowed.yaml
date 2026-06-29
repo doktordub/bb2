@@ -1,0 +1,42 @@
+usecases:
+  default_chat:
+    policy_profile: support_access
+
+policy:
+  enabled: true
+  mode: enforce
+  default_decision: deny
+  fail_closed: true
+  default_profile: support_access
+  profiles:
+    support_access:
+      enabled: true
+      usecases:
+        allowed:
+          - default_chat
+      strategies:
+        allowed:
+          - direct_agent
+      agents:
+        allowed:
+          - support_agent
+      llm:
+        allowed_profiles:
+          - local_reasoning
+      memory:
+        allowed_read_scopes:
+          - project
+      tools:
+        allowed_tools: []
+      approval:
+        require_approval_for_write_tools: true
+        require_approval_for_destructive_tools: true
+        require_approval_for_external_side_effect_tools: true
+      trace:
+        expose_raw_payloads: false
+      stream:
+        expose_raw_deltas: false
+orchestration:
+  usecases:
+    default_chat:
+      policy_profile: support_access

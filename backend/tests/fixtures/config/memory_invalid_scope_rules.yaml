@@ -1,0 +1,11 @@
+memory:
+  enabled: true
+  provider: memory_store
+  lifecycle:
+    allow_writes: true
+    require_durable_scope_for_writes: false
+
+policy:
+  profiles:
+    default:
+      allow_memory_writes: true

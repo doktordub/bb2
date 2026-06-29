@@ -50,12 +50,6 @@ def build_persistence_health_components(
             required=bundle.settings.trace.required,
             component=bundle.trace_store,
         ),
-        "memory": PersistenceHealthComponent(
-            name="memory",
-            provider=bundle.settings.memory.provider,
-            required=bundle.settings.memory.required,
-            component=bundle.memory,
-        ),
     }
 
 

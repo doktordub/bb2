@@ -1,0 +1,6 @@
+app:
+  environment: production
+
+orchestration:
+  defaults:
+    expose_chain_of_thought: true

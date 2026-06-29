@@ -5,7 +5,7 @@ from typing import cast
 import pytest
 
 from app.api.request_context import ApiRequestContext
-from app.api.schemas import ChatRequest
+from app.session.mapping import build_session_chat_request, build_session_request_context
 from app.testing.fakes.fake_session_service import FakeSessionService
 
 
@@ -24,17 +24,37 @@ def build_context() -> ApiRequestContext:
     )
 
 
+def to_session_context():
+    context = build_context()
+    return build_session_request_context(
+        trace_id=context.trace_id,
+        request_id=context.request_id,
+        user_id=context.user_id,
+        user_id_hash=context.user_id_hash,
+        client_host=context.client_host,
+        user_agent=context.user_agent,
+        path=context.path,
+        method=context.method,
+        metadata=context.metadata,
+        headers_safe=context.headers_safe,
+    )
+
+
 @pytest.mark.asyncio
 async def test_fake_session_service_generates_stable_session_ids() -> None:
     service = FakeSessionService()
-    context = build_context()
+    context = to_session_context()
 
     first = await service.handle_chat(
-        request=ChatRequest(message="hello"),
+        request=build_session_chat_request(message="hello", session_id=None, usecase=None),
         context=context,
     )
     second = await service.handle_chat(
-        request=ChatRequest(message="hello again"),
+        request=build_session_chat_request(
+            message="hello again",
+            session_id=None,
+            usecase=None,
+        ),
         context=context,
     )
 
@@ -47,10 +67,10 @@ async def test_fake_session_service_generates_stable_session_ids() -> None:
 @pytest.mark.asyncio
 async def test_fake_session_service_reuses_client_session_id_and_records_context() -> None:
     service = FakeSessionService()
-    context = build_context()
+    context = to_session_context()
 
     result = await service.handle_chat(
-        request=ChatRequest(
+        request=build_session_chat_request(
             message="summarize this",
             session_id="session_123",
             usecase="support_chat",
@@ -78,10 +98,14 @@ async def test_fake_session_service_reuses_client_session_id_and_records_context
 @pytest.mark.asyncio
 async def test_fake_session_service_reset_clears_saved_state() -> None:
     service = FakeSessionService()
-    context = build_context()
+    context = to_session_context()
 
     await service.handle_chat(
-        request=ChatRequest(message="hello", session_id="session_123"),
+        request=build_session_chat_request(
+            message="hello",
+            session_id="session_123",
+            usecase=None,
+        ),
         context=context,
     )
     reset_result = await service.reset_session(
@@ -99,12 +123,16 @@ async def test_fake_session_service_reset_clears_saved_state() -> None:
 @pytest.mark.asyncio
 async def test_fake_session_service_streams_events_in_order() -> None:
     service = FakeSessionService()
-    context = build_context()
+    context = to_session_context()
 
     events = [
         event
         async for event in service.stream_chat(
-            request=ChatRequest(message="stream this", session_id="session_456"),
+            request=build_session_chat_request(
+                message="stream this",
+                session_id="session_456",
+                usecase=None,
+            ),
             context=context,
         )
     ]
@@ -118,3 +146,27 @@ async def test_fake_session_service_streams_events_in_order() -> None:
     ]
     assert all(event.session_id == "session_456" for event in events)
     assert events[-1].data["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_fake_session_service_lists_and_deletes_sessions() -> None:
+    service = FakeSessionService()
+    context = to_session_context()
+
+    await service.handle_chat(
+        request=build_session_chat_request(message="hello", session_id="session_123", usecase=None),
+        context=context,
+    )
+    await service.handle_chat(
+        request=build_session_chat_request(message="hi", session_id="session_456", usecase=None),
+        context=context,
+    )
+
+    listed = await service.list_sessions(limit=1, context=context)
+    deleted = await service.delete_session(session_id="session_123", context=context)
+
+    assert listed.limit == 1
+    assert listed.has_more is True
+    assert [item.session_id for item in listed.sessions] == ["session_123"]
+    assert deleted.deleted is True
+    assert "session_123" not in service.states

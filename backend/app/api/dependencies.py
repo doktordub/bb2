@@ -10,6 +10,7 @@ from fastapi import Request
 from app.api.request_context import ApiRequestContext
 from app.api.security import ApiIdentity, build_local_identity
 from app.config.view import ApiSettings
+from app.deployment.process_control import ProcessControlService
 from app.foundation.container import FoundationContainer
 from app.observability.debug_trace_service import DebugTraceService
 from app.observability.context import TraceContext
@@ -142,6 +143,16 @@ def get_debug_trace_service(request: Request) -> DebugTraceService:
     if not _supports_debug_trace_service(service):
         raise RuntimeError("Debug trace service is not configured.")
     return cast(DebugTraceService, service)
+
+
+def get_process_control_service(request: Request) -> ProcessControlService:
+    """Resolve the configured process-control service from the backend container."""
+
+    container = get_foundation_container(request)
+    service = container.process_control_service
+    if not isinstance(service, ProcessControlService):
+        raise RuntimeError("Process control service is not configured.")
+    return service
 
 
 def _supports_debug_trace_service(service: object) -> bool:

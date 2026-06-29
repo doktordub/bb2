@@ -1,0 +1,11 @@
+observability:
+  trace_payloads_enabled: true
+
+policy:
+  profiles:
+    default:
+      trace:
+        allow_trace: true
+        expose_raw_payloads: false
+        expose_prompt_text: false
+        expose_completion_text: false

@@ -1,0 +1,14 @@
+memory:
+  enabled: true
+  provider: memory_store
+  scoring:
+    weights:
+      reranker: 0.0
+      retrieval_fusion: 0.0
+      vector: 0.0
+      full_text: 0.0
+      temporal: 0.0
+      importance: 0.0
+      confidence: 0.0
+      graph: 0.0
+      user_rating: 0.0

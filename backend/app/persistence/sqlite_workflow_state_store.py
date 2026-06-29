@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
@@ -17,6 +18,12 @@ from app.contracts.health import HEALTH_DEGRADED, HEALTH_FAILED, HEALTH_OK
 from app.contracts.state import (
     WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW,
     WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE,
+    WorkflowSessionDeleteResult,
+    WorkflowSessionListResult,
+    WorkflowSessionSummary,
+    WorkflowStateRecord,
+    WorkflowStateResetResult,
+    WorkflowStateSaveResult,
     default_workflow_state,
     normalize_workflow_state_session_id,
 )
@@ -77,6 +84,7 @@ _CAMEL_CASE_BOUNDARY_PATTERN = re.compile(r"(?<!^)(?=[A-Z])")
 
 @dataclass(frozen=True, slots=True)
 class _PreparedWorkflowState:
+    state: dict[str, Any]
     state_json: str
     state_hash: str
     state_size_bytes: int
@@ -91,19 +99,37 @@ class _LoadedWorkflowState:
     found: bool
     state_version: int | None
     message_count: int
+    loaded_empty: bool
+    created_at: datetime | None
+    updated_at: datetime | None
+    reset_generation: int
 
 
 @dataclass(frozen=True, slots=True)
 class _SavedWorkflowState:
+    session_id: str
+    state: dict[str, Any]
     state_version: int
     state_size_bytes: int
     message_count: int
+    reset_generation: int
 
 
 @dataclass(frozen=True, slots=True)
 class _ResetWorkflowState:
+    session_id: str
+    state_version: int | None
     reset_generation: int
     cleared_state_version: int | None
+    state: dict[str, Any] | None
+    deleted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _WorkflowSessionUpsertFields:
+    user_id: str | None
+    user_id_hash: str | None
+    usecase: str | None
 
 
 class _WorkflowStateObserver(Protocol):
@@ -199,7 +225,7 @@ class SqliteWorkflowStateStore:
     async def initialize(self) -> None:
         await asyncio.to_thread(self._initialize_sync)
 
-    async def load(self, session_id: str) -> dict[str, Any]:
+    async def load(self, session_id: str) -> WorkflowStateRecord:
         observer_session_id = _observer_session_id(session_id)
         started_at = perf_counter()
 
@@ -229,14 +255,37 @@ class SqliteWorkflowStateStore:
             history_message_count=loaded.message_count,
             duration_ms=_elapsed_ms(started_at),
         )
-        return loaded.state
+        return WorkflowStateRecord(
+            session_id=_normalize_session_id(session_id),
+            state=loaded.state,
+            version=loaded.state_version,
+            found=loaded.found,
+            loaded_empty=loaded.loaded_empty,
+            message_count=loaded.message_count,
+            reset_generation=loaded.reset_generation,
+            created_at=loaded.created_at,
+            updated_at=loaded.updated_at,
+        )
 
-    async def save(self, session_id: str, state: dict[str, Any]) -> None:
+    async def save(
+        self,
+        session_id: str,
+        state: dict[str, Any],
+        *,
+        expected_version: int | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> WorkflowStateSaveResult:
         observer_session_id = _observer_session_id(session_id)
         started_at = perf_counter()
 
         try:
-            saved = await asyncio.to_thread(self._save_sync, session_id, state)
+            saved = await asyncio.to_thread(
+                self._save_sync,
+                session_id,
+                state,
+                expected_version,
+                dict(metadata or {}),
+            )
         except WorkflowStateConflictError as exc:
             await self._record_conflict(
                 operation="save",
@@ -261,13 +310,32 @@ class SqliteWorkflowStateStore:
             history_message_count=saved.message_count,
             duration_ms=_elapsed_ms(started_at),
         )
+        return WorkflowStateSaveResult(
+            session_id=saved.session_id,
+            state=saved.state,
+            version=saved.state_version,
+            state_size_bytes=saved.state_size_bytes,
+            message_count=saved.message_count,
+            reset_generation=saved.reset_generation,
+        )
 
-    async def reset(self, session_id: str) -> None:
+    async def reset(
+        self,
+        session_id: str,
+        *,
+        reason: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> WorkflowStateResetResult:
         observer_session_id = _observer_session_id(session_id)
         started_at = perf_counter()
 
         try:
-            reset_result = await asyncio.to_thread(self._reset_sync, session_id)
+            reset_result = await asyncio.to_thread(
+                self._reset_sync,
+                session_id,
+                reason,
+                dict(metadata or {}),
+            )
         except WorkflowStateConflictError as exc:
             await self._record_conflict(
                 operation="reset",
@@ -291,6 +359,21 @@ class SqliteWorkflowStateStore:
             cleared_state_version=reset_result.cleared_state_version,
             duration_ms=_elapsed_ms(started_at),
         )
+        return WorkflowStateResetResult(
+            session_id=reset_result.session_id,
+            version=reset_result.state_version,
+            reset_generation=reset_result.reset_generation,
+            cleared_version=reset_result.cleared_state_version,
+            state=reset_result.state,
+            deleted=reset_result.deleted,
+        )
+
+    async def list_sessions(self, *, limit: int) -> WorkflowSessionListResult:
+        normalized_limit = _normalize_session_list_limit(limit)
+        return await asyncio.to_thread(self._list_sessions_sync, normalized_limit)
+
+    async def delete_session(self, session_id: str) -> WorkflowSessionDeleteResult:
+        return await asyncio.to_thread(self._delete_session_sync, session_id)
 
     async def health(self) -> dict[str, Any]:
         return await asyncio.to_thread(self._health_sync)
@@ -321,16 +404,25 @@ class SqliteWorkflowStateStore:
         try:
             with open_sqlite_connection(self._database_path, settings=self._settings) as connection:
                 row = cast(
-                    tuple[str, int, int] | None,
+                    tuple[str, int, int, str, str, int] | None,
                     connection.execute(
                         """
-                        SELECT state_json, state_version, message_count
+                        SELECT state_json, state_version, message_count, created_at, updated_at, reset_generation
                         FROM workflow_state_current
                         WHERE session_id = ?
                         """,
                         (normalized_session_id,),
                     ).fetchone(),
                 )
+                session_row = None
+                if row is None:
+                    session_row = cast(
+                        tuple[int] | None,
+                        connection.execute(
+                            "SELECT reset_count FROM workflow_sessions WHERE session_id = ?",
+                            (normalized_session_id,),
+                        ).fetchone(),
+                    )
         except PersistenceConfigurationError as exc:
             raise WorkflowStateConfigurationError(
                 "Workflow-state store configuration is invalid."
@@ -344,6 +436,10 @@ class SqliteWorkflowStateStore:
                 found=False,
                 state_version=None,
                 message_count=0,
+                loaded_empty=True,
+                created_at=None,
+                updated_at=None,
+                reset_generation=(int(session_row[0]) if session_row is not None else 0),
             )
 
         try:
@@ -358,16 +454,30 @@ class SqliteWorkflowStateStore:
                 "Stored workflow-state payload must be a JSON object."
             )
 
+        state = cast(dict[str, Any], payload)
+        metadata = state.get("metadata")
+
         return _LoadedWorkflowState(
-            state=cast(dict[str, Any], payload),
+            state=state,
             found=True,
             state_version=int(row[1]),
             message_count=int(row[2]),
+            loaded_empty=isinstance(metadata, dict) and bool(metadata.get("loaded_empty", False)),
+            created_at=_parse_datetime(row[3]),
+            updated_at=_parse_datetime(row[4]),
+            reset_generation=int(row[5]),
         )
 
-    def _save_sync(self, session_id: str, state: dict[str, Any]) -> _SavedWorkflowState:
+    def _save_sync(
+        self,
+        session_id: str,
+        state: dict[str, Any],
+        expected_version: int | None,
+        metadata: dict[str, Any],
+    ) -> _SavedWorkflowState:
         normalized_session_id = _normalize_session_id(session_id)
         timestamp = datetime.now(UTC).isoformat()
+        session_fields = _extract_workflow_session_fields(metadata, settings=self._settings)
 
         try:
             prepared = self._prepare_state_for_storage(state, operation="save")
@@ -378,10 +488,32 @@ class SqliteWorkflowStateStore:
 
         try:
             with open_sqlite_connection(self._database_path, settings=self._settings) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                current_row = cast(
+                    tuple[int, int] | None,
+                    connection.execute(
+                        "SELECT state_version, reset_generation FROM workflow_state_current WHERE session_id = ?",
+                        (normalized_session_id,),
+                    ).fetchone(),
+                )
+                current_version = int(current_row[0]) if current_row is not None else None
+                if expected_version is not None and current_version != expected_version:
+                    raise WorkflowStateConflictError(
+                        "Workflow-state save conflicted with the current version.",
+                        details={
+                            "session_id": normalized_session_id,
+                            "expected_version": expected_version,
+                            "actual_version": current_version,
+                        },
+                    )
+
                 _upsert_workflow_session(
                     connection,
                     session_id=normalized_session_id,
                     timestamp=timestamp,
+                    user_id=session_fields.user_id,
+                    user_id_hash=session_fields.user_id_hash,
+                    usecase=session_fields.usecase,
                 )
                 session_row = cast(
                     tuple[int] | None,
@@ -433,9 +565,9 @@ class SqliteWorkflowStateStore:
                     ),
                 )
                 current_row = cast(
-                    tuple[int] | None,
+                    tuple[int, int] | None,
                     connection.execute(
-                        "SELECT state_version FROM workflow_state_current WHERE session_id = ?",
+                        "SELECT state_version, reset_generation FROM workflow_state_current WHERE session_id = ?",
                         (normalized_session_id,),
                     ).fetchone(),
                 )
@@ -452,16 +584,27 @@ class SqliteWorkflowStateStore:
             raise WorkflowStateUnavailableError("Workflow-state save failed.") from exc
 
         return _SavedWorkflowState(
+            session_id=normalized_session_id,
+            state=prepared.state,
             state_version=int(current_row[0]),
             state_size_bytes=prepared.state_size_bytes,
             message_count=prepared.message_count,
+            reset_generation=int(current_row[1]),
         )
 
-    def _reset_sync(self, session_id: str) -> _ResetWorkflowState:
+    def _reset_sync(
+        self,
+        session_id: str,
+        reason: str | None,
+        metadata: dict[str, Any],
+    ) -> _ResetWorkflowState:
         normalized_session_id = _normalize_session_id(session_id)
         now = datetime.now(UTC)
         timestamp = now.isoformat()
+        state_version: int | None = None
+        session_fields = _extract_workflow_session_fields(metadata, settings=self._settings)
         empty_state = None
+        trace_id = _coerce_optional_text(metadata.get("trace_id"))
         if self._settings.reset_mode != WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW:
             empty_state = self._prepare_state_for_storage(
                 default_workflow_state(normalized_session_id, now=now),
@@ -474,6 +617,9 @@ class SqliteWorkflowStateStore:
                     connection,
                     session_id=normalized_session_id,
                     timestamp=timestamp,
+                    user_id=session_fields.user_id,
+                    user_id_hash=session_fields.user_id_hash,
+                    usecase=session_fields.usecase,
                 )
                 session_row = cast(
                     tuple[int] | None,
@@ -520,11 +666,13 @@ class SqliteWorkflowStateStore:
                         cleared_state_version,
                         reset_at
                     )
-                    VALUES (?, ?, NULL, NULL, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(uuid4()),
                         normalized_session_id,
+                        trace_id,
+                        reason,
                         next_reset_generation,
                         cleared_state_version,
                         timestamp,
@@ -578,6 +726,20 @@ class SqliteWorkflowStateStore:
                             next_reset_generation,
                         ),
                     )
+                    new_state_row = cast(
+                        tuple[int] | None,
+                        connection.execute(
+                            "SELECT state_version FROM workflow_state_current WHERE session_id = ?",
+                            (normalized_session_id,),
+                        ).fetchone(),
+                    )
+                    if new_state_row is None:
+                        raise WorkflowStateConflictError(
+                            "Workflow-state reset did not persist the default session row."
+                        )
+                    state_version = int(new_state_row[0])
+                if self._settings.reset_mode == WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW:
+                    state_version = None
 
                 connection.commit()
         except PersistenceConfigurationError as exc:
@@ -588,8 +750,88 @@ class SqliteWorkflowStateStore:
             raise WorkflowStateUnavailableError("Workflow-state reset failed.") from exc
 
         return _ResetWorkflowState(
+            session_id=normalized_session_id,
+            state_version=state_version,
             reset_generation=next_reset_generation,
             cleared_state_version=cleared_state_version,
+            state=(None if empty_state is None else empty_state.state),
+            deleted=self._settings.reset_mode == WORKFLOW_STATE_RESET_MODE_DELETE_STATE_ROW,
+        )
+
+    def _list_sessions_sync(self, limit: int) -> WorkflowSessionListResult:
+        try:
+            with open_sqlite_connection(self._database_path, settings=self._settings) as connection:
+                rows = cast(
+                    list[tuple[str, str | None, str, str, str, str, int, int]],
+                    connection.execute(
+                        """
+                        SELECT
+                            workflow_sessions.session_id,
+                            workflow_sessions.usecase,
+                            workflow_sessions.status,
+                            workflow_sessions.created_at,
+                            workflow_sessions.updated_at,
+                            workflow_sessions.last_activity_at,
+                            workflow_sessions.reset_count,
+                            COALESCE(workflow_state_current.message_count, 0)
+                        FROM workflow_sessions
+                        LEFT JOIN workflow_state_current
+                            ON workflow_state_current.session_id = workflow_sessions.session_id
+                        ORDER BY workflow_sessions.last_activity_at DESC, workflow_sessions.session_id ASC
+                        LIMIT ?
+                        """,
+                        (limit + 1,),
+                    ).fetchall(),
+                )
+        except PersistenceConfigurationError as exc:
+            raise WorkflowStateConfigurationError(
+                "Workflow-state store configuration is invalid."
+            ) from exc
+        except PersistenceUnavailableError as exc:
+            raise WorkflowStateUnavailableError("Workflow-state session list failed.") from exc
+
+        has_more = len(rows) > limit
+        summaries = [
+            WorkflowSessionSummary(
+                session_id=row[0],
+                usecase=_coerce_optional_text(row[1]),
+                status=_coerce_optional_text(row[2]) or "unknown",
+                created_at=_parse_datetime(row[3]),
+                updated_at=_parse_datetime(row[4]),
+                last_activity_at=_parse_datetime(row[5]),
+                reset_count=int(row[6]),
+                message_count=int(row[7]),
+            )
+            for row in rows[:limit]
+        ]
+        return WorkflowSessionListResult(
+            sessions=summaries,
+            limit=limit,
+            has_more=has_more,
+        )
+
+    def _delete_session_sync(self, session_id: str) -> WorkflowSessionDeleteResult:
+        normalized_session_id = _normalize_session_id(session_id)
+
+        try:
+            with open_sqlite_connection(self._database_path, settings=self._settings) as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                cursor = connection.execute(
+                    "DELETE FROM workflow_sessions WHERE session_id = ?",
+                    (normalized_session_id,),
+                )
+                deleted = cursor.rowcount > 0
+                connection.commit()
+        except PersistenceConfigurationError as exc:
+            raise WorkflowStateConfigurationError(
+                "Workflow-state store configuration is invalid."
+            ) from exc
+        except PersistenceUnavailableError as exc:
+            raise WorkflowStateUnavailableError("Workflow-state session delete failed.") from exc
+
+        return WorkflowSessionDeleteResult(
+            session_id=normalized_session_id,
+            deleted=deleted,
         )
 
     def _health_sync(self) -> dict[str, Any]:
@@ -683,6 +925,7 @@ class SqliteWorkflowStateStore:
             )
 
         return _PreparedWorkflowState(
+            state=normalized_state,
             state_json=state_json,
             state_hash=hash_canonical_json(normalized_state),
             state_size_bytes=state_size_bytes,
@@ -794,6 +1037,9 @@ def _upsert_workflow_session(
     *,
     session_id: str,
     timestamp: str,
+    user_id: str | None,
+    user_id_hash: str | None,
+    usecase: str | None,
 ) -> None:
     connection.execute(
         """
@@ -808,7 +1054,7 @@ def _upsert_workflow_session(
             last_activity_at,
             metadata_json
         )
-        VALUES (?, NULL, NULL, NULL, 'active', ?, ?, ?, '{}')
+        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, '{}')
         ON CONFLICT(session_id) DO UPDATE SET
             user_id = COALESCE(excluded.user_id, workflow_sessions.user_id),
             user_id_hash = COALESCE(excluded.user_id_hash, workflow_sessions.user_id_hash),
@@ -823,6 +1069,9 @@ def _upsert_workflow_session(
         """,
         (
             session_id,
+            user_id,
+            user_id_hash,
+            usecase,
             timestamp,
             timestamp,
             timestamp,
@@ -846,6 +1095,51 @@ def _observer_session_id(session_id: object) -> str | None:
 
 def _elapsed_ms(started_at: float) -> int:
     return max(int((perf_counter() - started_at) * 1000), 0)
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or value.strip() == "":
+        return None
+
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _coerce_optional_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_session_list_limit(limit: object) -> int:
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise WorkflowStateError("Workflow-state session list limit must be a positive integer.")
+
+    return limit
+
+
+def _extract_workflow_session_fields(
+    metadata: Mapping[str, Any],
+    *,
+    settings: SqliteWorkflowStateSettings,
+) -> _WorkflowSessionUpsertFields:
+    return _WorkflowSessionUpsertFields(
+        user_id=(
+            _coerce_optional_text(metadata.get("user_id"))
+            if settings.store_user_id
+            else None
+        ),
+        user_id_hash=(
+            _coerce_optional_text(metadata.get("user_id_hash"))
+            if settings.store_user_id_hash
+            else None
+        ),
+        usecase=_coerce_optional_text(metadata.get("usecase")),
+    )
 
 
 def _get_workflow_state_schema_version(connection: sqlite3.Connection) -> int | None:

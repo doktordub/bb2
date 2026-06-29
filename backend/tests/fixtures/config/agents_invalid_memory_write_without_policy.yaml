@@ -1,0 +1,19 @@
+features:
+  memory_enabled: true
+
+memory:
+  enabled: true
+  lifecycle:
+    allow_writes: true
+
+agents:
+  defaults:
+    allow_memory_write: true
+  plugins:
+    support_agent:
+      type: memory_curator
+      capabilities:
+        answer: false
+        stream: false
+        memory_candidate_extract: true
+        memory_write: true

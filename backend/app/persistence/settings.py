@@ -113,12 +113,53 @@ class TracePersistenceSettings:
 class MemoryStoreSettings:
     """Typed memory-store adapter settings."""
 
-    config_path: Path | None
-    database_path: Path | None
-    default_scope: str
-    search_limit_default: int
-    search_limit_max: int
-    allow_writes: bool
+    config_path: Path | None = None
+    database_path: Path | None = None
+    schema_version: int = 1
+    default_scope: str = "project"
+    search_limit_default: int = 10
+    search_limit_max: int = 30
+    allow_writes: bool = False
+    embedding_provider: str = "fastembed"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_model_version: str | None = None
+    embedding_dimension: int | None = 384
+    embedding_batch_size: int = 64
+    embedding_normalize: bool = True
+    embedding_dimension_mismatch: str = "error"
+    reranker_enabled: bool = True
+    reranker_provider: str = "fastembed"
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    reranker_model_version: str | None = None
+    reranker_top_n: int = 60
+    retrieval_vector_top_n: int = 30
+    retrieval_fts_top_n: int = 30
+    retrieval_rrf_k: int = 60
+    retrieval_graph_expansion_enabled: bool = True
+    retrieval_graph_expansion_hops: int = 1
+    retrieval_final_top_k: int = 10
+    retrieval_include_component_scores: bool = True
+    retrieval_include_debug: bool = False
+    chunking_strategy: str = "markdown_section"
+    chunking_max_tokens: int = 350
+    chunking_overlap_tokens: int = 50
+    chunking_include_heading_path: bool = True
+    chunking_include_frontmatter_in_embedding: bool = True
+    chunking_preserve_code_blocks: bool = True
+    chunking_removed_chunk_policy: str = "mark_removed"
+    privacy_default_sensitivity: str = "internal"
+    privacy_allow_llm_context_default: bool = True
+    privacy_allow_retrieval_default: bool = True
+    privacy_delete_by_scope_requires_confirm: bool = True
+    scoring_weight_reranker: float = 0.45
+    scoring_weight_retrieval_fusion: float = 0.15
+    scoring_weight_vector: float = 0.10
+    scoring_weight_full_text: float = 0.08
+    scoring_weight_temporal: float = 0.07
+    scoring_weight_importance: float = 0.06
+    scoring_weight_confidence: float = 0.04
+    scoring_weight_graph: float = 0.03
+    scoring_weight_user_rating: float = 0.02
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,64 +416,65 @@ def _read_memory_settings(
     config: ConfigurationView,
     base_dir: Path,
 ) -> MemoryPersistenceSettings:
-    provider = _read_provider(config, "memory")
-    memory_section = _read_store_section(config, "memory")
-    adapter_section = _read_mapping(memory_section, "memory_store", path="persistence.memory.memory_store")
-    legacy_section = _read_mapping(memory_section, "config", path="persistence.memory.config")
+    from app.config.view import get_memory_settings
 
-    config_path = _read_optional_path(
-        adapter_section,
-        "config_path",
-        resolve_with=resolve_backend_path,
-        path="persistence.memory.memory_store.config_path",
-    )
-    database_path = _read_optional_path(
-        adapter_section,
-        "database_path",
-        resolve_with=lambda value: resolve_data_path(value, base_dir=base_dir),
-        path="persistence.memory.memory_store.database_path",
-    )
-    legacy_database_path = _read_optional_path(
-        legacy_section,
-        "database_path",
-        resolve_with=resolve_backend_path,
-        path="persistence.memory.config.database_path",
-    )
+    memory = get_memory_settings(config)
 
     default_required = False
-    if provider not in {"", "memory_store"}:
+    if memory.provider not in {"", "memory_store"}:
         default_required = True
 
     return MemoryPersistenceSettings(
-        provider=provider,
-        required=_read_store_required(memory_section, adapter_section, default=default_required),
+        provider=memory.provider,
+        required=memory.required if memory.required is not None else default_required,
         memory_store=MemoryStoreSettings(
-            config_path=config_path,
-            database_path=database_path or legacy_database_path,
-            default_scope=_read_str(
-                adapter_section,
-                "default_scope",
-                "project",
-                path="persistence.memory.memory_store.default_scope",
-            ),
-            search_limit_default=_read_int(
-                adapter_section,
-                "search_limit_default",
-                10,
-                path="persistence.memory.memory_store.search_limit_default",
-            ),
-            search_limit_max=_read_int(
-                adapter_section,
-                "search_limit_max",
-                30,
-                path="persistence.memory.memory_store.search_limit_max",
-            ),
-            allow_writes=_read_bool(
-                adapter_section,
-                "allow_writes",
-                False,
-                path="persistence.memory.memory_store.allow_writes",
-            ),
+            config_path=memory.store.config_path,
+            database_path=memory.store.database.path,
+            schema_version=memory.store.database.schema_version,
+            default_scope=memory.defaults.default_scope,
+            search_limit_default=memory.defaults.top_k,
+            search_limit_max=memory.search.limit_max,
+            allow_writes=memory.lifecycle.allow_writes,
+            embedding_provider=memory.store.embeddings.provider,
+            embedding_model=memory.store.embeddings.model,
+            embedding_model_version=memory.store.embeddings.model_version,
+            embedding_dimension=memory.store.embeddings.dimension,
+            embedding_batch_size=memory.store.embeddings.batch_size,
+            embedding_normalize=memory.store.embeddings.normalize,
+            embedding_dimension_mismatch=memory.store.embeddings.dimension_mismatch,
+            reranker_enabled=memory.store.reranker.enabled,
+            reranker_provider=memory.store.reranker.provider,
+            reranker_model=memory.store.reranker.model,
+            reranker_model_version=memory.store.reranker.model_version,
+            reranker_top_n=memory.store.reranker.top_n,
+            retrieval_vector_top_n=memory.search.vector_top_n,
+            retrieval_fts_top_n=memory.search.fts_top_n,
+            retrieval_rrf_k=memory.search.rrf_k,
+            retrieval_graph_expansion_enabled=memory.search.graph_expansion_enabled,
+            retrieval_graph_expansion_hops=memory.search.graph_expansion_hops,
+            retrieval_final_top_k=memory.search.final_top_k,
+            retrieval_include_component_scores=memory.search.include_component_scores,
+            retrieval_include_debug=memory.search.include_debug,
+            chunking_strategy=memory.chunking.strategy,
+            chunking_max_tokens=memory.chunking.max_tokens,
+            chunking_overlap_tokens=memory.chunking.overlap_tokens,
+            chunking_include_heading_path=memory.chunking.include_heading_path,
+            chunking_include_frontmatter_in_embedding=memory.chunking.include_frontmatter_in_embedding,
+            chunking_preserve_code_blocks=memory.chunking.preserve_code_blocks,
+            chunking_removed_chunk_policy=memory.chunking.removed_chunk_policy,
+            privacy_default_sensitivity=memory.privacy.default_sensitivity,
+            privacy_allow_llm_context_default=memory.privacy.allow_llm_context_default,
+            privacy_allow_retrieval_default=memory.privacy.allow_retrieval_default,
+            privacy_delete_by_scope_requires_confirm=memory.privacy.delete_by_scope_requires_confirm,
+            scoring_weight_reranker=memory.scoring.weights.reranker,
+            scoring_weight_retrieval_fusion=memory.scoring.weights.retrieval_fusion,
+            scoring_weight_vector=memory.scoring.weights.vector,
+            scoring_weight_full_text=memory.scoring.weights.full_text,
+            scoring_weight_temporal=memory.scoring.weights.temporal,
+            scoring_weight_importance=memory.scoring.weights.importance,
+            scoring_weight_confidence=memory.scoring.weights.confidence,
+            scoring_weight_graph=memory.scoring.weights.graph,
+            scoring_weight_user_rating=memory.scoring.weights.user_rating,
         ),
     )
 

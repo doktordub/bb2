@@ -1,0 +1,68 @@
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - filesystem.read_project_file
+
+agents:
+  support_agent:
+    allowed_tools:
+      - filesystem.read_project_file
+
+tooling:
+  enabled: true
+  defaults:
+    timeout_seconds: 30
+    stream_timeout_seconds: 180
+    max_retries: 1
+    max_argument_bytes: 8192
+    max_result_bytes: 262144
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: false
+    discovery_refresh_seconds: 600
+  registry:
+    allow_discovered_tools: false
+    require_configured_allowlist: true
+    tools:
+      filesystem.read_project_file:
+        enabled: true
+        mcp_tool_name: filesystem.read_project_file
+        description: Read a project file through the MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        timeout_seconds: 25
+        max_argument_bytes: 8192
+        max_result_bytes: 262144
+        approval_required: false
+        output_schema_override:
+          type: object
+          properties:
+            content:
+              type: string
+            truncated:
+              type: boolean
+        tags:
+          - filesystem
+        safety_level: read_only
+
+mcp:
+  main:
+    name: fake_streaming
+    enabled: true
+    endpoint: ${env:MCP_MAIN_URL:http://localhost:9001/mcp}
+    transport: sse
+    timeout_seconds: 30
+    stream_timeout_seconds: 180
+    auth:
+      mode: none
+    tool_discovery_enabled: true

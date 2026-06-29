@@ -1,0 +1,38 @@
+memory:
+  enabled: true
+
+orchestration:
+  defaults:
+    strategy: retrieval_augmented
+    fallback_strategy: direct_agent
+  strategies:
+    retrieval_augmented:
+      enabled: true
+      type: retrieval_augmented
+      default_agent: support_agent
+      allowed_usecases:
+        - document_qa
+      llm_profile: local_reasoning
+      memory_enabled: true
+      tools_enabled: false
+      memory:
+        default_limit: 8
+        include_document_chunks: true
+        include_user_memory: true
+  usecases:
+    document_qa:
+      enabled: true
+      description: Answer document questions with retrieval support.
+      strategy: retrieval_augmented
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+      memory:
+        enabled: true
+        include_document_chunks: true
+        default_limit: 8
+
+app:
+  active_usecase: document_qa

@@ -1,0 +1,35 @@
+orchestration:
+  defaults:
+    strategy: router
+    fallback_strategy: direct_agent
+  strategies:
+    router:
+      enabled: true
+      type: router
+      default_agent: support_agent
+      allowed_usecases:
+        - routing_chat
+      llm_profile: local_reasoning
+      tools_enabled: false
+      candidate_strategies:
+        - direct_agent
+    direct_agent:
+      enabled: true
+      type: direct_agent
+      default_agent: support_agent
+      allowed_usecases:
+        - routing_chat
+      llm_profile: local_reasoning
+  usecases:
+    routing_chat:
+      enabled: true
+      description: Route the request before answering.
+      strategy: router
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - support_agent
+      policy_profile: default
+
+app:
+  active_usecase: routing_chat

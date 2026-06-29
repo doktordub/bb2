@@ -1,0 +1,4 @@
+orchestration:
+  defaults:
+    max_turn_duration_seconds: 180
+    max_stream_duration_seconds: 60

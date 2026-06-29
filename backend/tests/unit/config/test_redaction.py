@@ -82,3 +82,43 @@ def test_redact_config_preserves_non_sensitive_sequences() -> None:
         "allowed_tools": ["documents.search", "calculator.run"],
         "fallback_profiles": ("cloud_fast", "local_reasoning"),
     }
+
+
+def test_redact_config_preserves_safe_llm_control_fields() -> None:
+    redacted = redact_config(
+        {
+            "llm": {
+                "providers": {
+                    "custom_reasoner": {
+                        "auth_header": "Authorization",
+                        "auth_token": "secret-token",
+                    }
+                },
+                "profiles": {
+                    "cloud_fast": {
+                        "max_input_tokens": 4096,
+                        "max_output_tokens": 1024,
+                        "max_total_tokens": 8192,
+                    }
+                },
+            }
+        }
+    )
+
+    assert redacted == {
+        "llm": {
+            "providers": {
+                "custom_reasoner": {
+                    "auth_header": "Authorization",
+                    "auth_token": REDACTED_VALUE,
+                }
+            },
+            "profiles": {
+                "cloud_fast": {
+                    "max_input_tokens": 4096,
+                    "max_output_tokens": 1024,
+                    "max_total_tokens": 8192,
+                }
+            },
+        }
+    }

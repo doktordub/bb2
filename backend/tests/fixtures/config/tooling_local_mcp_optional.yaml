@@ -1,0 +1,67 @@
+features:
+  tools_enabled: true
+
+usecases:
+  default_chat:
+    tools:
+      enabled: true
+      allowed_tools:
+        - support.lookup_ticket
+
+agents:
+  support_agent:
+    allowed_tools:
+      - support.lookup_ticket
+
+tooling:
+  enabled: true
+  defaults:
+    timeout_seconds: 60
+    stream_timeout_seconds: 180
+    max_retries: 0
+    max_argument_bytes: 4096
+    max_result_bytes: 65536
+    trace_arguments: false
+    trace_results: false
+    discovery_on_startup: false
+    discovery_refresh_seconds: 900
+  registry:
+    allow_discovered_tools: true
+    require_configured_allowlist: true
+    tools:
+      support.lookup_ticket:
+        enabled: true
+        mcp_tool_name: support.lookup_ticket
+        description: Lookup a support ticket on the configured MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+          agents:
+            - support_agent
+          strategies:
+            - direct_agent
+        timeout_seconds: 20
+        max_result_bytes: 32768
+        approval_required: true
+        tags:
+          - support
+        safety_level: write
+
+mcp:
+  main:
+    name: local_optional
+    enabled: true
+    endpoint: ${env:MCP_MAIN_URL:http://127.0.0.1:9001/mcp}
+    transport: http
+    timeout_seconds: 20
+    stream_timeout_seconds: 60
+    auth:
+      mode: oauth_client_credentials
+      oauth:
+        token_url: ${env:MCP_OAUTH_TOKEN_URL:https://auth.example.local/oauth/token}
+        client_id: ${env:MCP_OAUTH_CLIENT_ID:dummy-client}
+        client_secret: ${env:MCP_OAUTH_CLIENT_SECRET:dummy-key}
+        scopes:
+          - tools.read
+          - tools.execute
+    tool_discovery_enabled: false

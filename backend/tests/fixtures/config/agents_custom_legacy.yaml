@@ -1,0 +1,8 @@
+agents:
+  support_agent:
+    enabled: true
+    module: app.testing.fakes.fake_agent
+    class_name: FakeAgent
+    description: Legacy custom support agent.
+    llm_profile: local_reasoning
+    allowed_tools: []

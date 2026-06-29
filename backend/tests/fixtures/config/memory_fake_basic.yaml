@@ -1,0 +1,12 @@
+memory:
+  enabled: true
+  provider: fake
+  required: false
+  defaults:
+    top_k: 6
+  search:
+    limit_max: 12
+    graph_expansion_enabled: false
+    graph_expansion_hops: 0
+  lifecycle:
+    allow_writes: false

@@ -25,18 +25,28 @@ async def test_sqlite_workflow_state_store_reset_replaces_with_default_state(tmp
             "workflow": {"current_step": "draft", "checkpoint": {"name": "before_reset"}},
         },
     )
-    await store.reset("session-1")
+    reset_result = await store.reset(
+        "session-1",
+        reason="manual_reset",
+        metadata={"trace_id": "trace-reset-1"},
+    )
 
     loaded = await store.load("session-1")
-    assert loaded["session_id"] == "session-1"
-    assert loaded["conversation"] == {"messages": []}
-    assert loaded["workflow"]["current_step"] is None
-    assert loaded["workflow"]["checkpoint"] is None
-    assert loaded["metadata"]["loaded_empty"] is True
+    assert reset_result.session_id == "session-1"
+    assert reset_result.version == 2
+    assert reset_result.reset_generation == 1
+    assert reset_result.cleared_version == 1
+    assert reset_result.deleted is False
+    assert loaded.session_id == "session-1"
+    assert loaded.version == 2
+    assert loaded.state["conversation"] == {"messages": []}
+    assert loaded.state["workflow"]["current_step"] is None
+    assert loaded.state["workflow"]["checkpoint"] is None
+    assert loaded.state["metadata"]["loaded_empty"] is True
 
     with sqlite3.connect(database_path) as connection:
         reset_row = connection.execute(
-            "SELECT reset_generation, cleared_state_version FROM workflow_state_resets WHERE session_id = ?",
+            "SELECT trace_id, reason, reset_generation, cleared_state_version FROM workflow_state_resets WHERE session_id = ?",
             ("session-1",),
         ).fetchone()
         current_row = connection.execute(
@@ -44,9 +54,9 @@ async def test_sqlite_workflow_state_store_reset_replaces_with_default_state(tmp
             ("session-1",),
         ).fetchone()
 
-    assert reset_row == (1, 1)
+    assert reset_row == ("trace-reset-1", "manual_reset", 1, 1)
     assert current_row is not None
-    assert json.loads(current_row[0]) == loaded
+    assert json.loads(current_row[0]) == loaded.state
     assert current_row[1] == 0
     assert current_row[2] is None
     assert current_row[3] is None
@@ -64,11 +74,16 @@ async def test_sqlite_workflow_state_store_delete_reset_mode_removes_current_row
 
     await store.initialize()
     await store.save("session-1", {"workflow": {"current_step": "draft"}})
-    await store.reset("session-1")
+    reset_result = await store.reset("session-1")
 
     loaded = await store.load("session-1")
-    assert loaded["session_id"] == "session-1"
-    assert loaded["metadata"]["loaded_empty"] is True
+    assert reset_result.deleted is True
+    assert reset_result.version is None
+    assert reset_result.reset_generation == 1
+    assert reset_result.cleared_version == 1
+    assert loaded.session_id == "session-1"
+    assert loaded.version is None
+    assert loaded.state["metadata"]["loaded_empty"] is True
 
     with sqlite3.connect(database_path) as connection:
         current_row = connection.execute(
