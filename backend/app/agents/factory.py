@@ -7,6 +7,7 @@ from inspect import isawaitable
 from typing import Any, cast
 
 from app.agents.base import LegacyCompatibleAgent
+from app.agents.builtin_catalog import BuiltinAgentCatalog, load_builtin_agent_catalog
 from app.agents.capabilities import capabilities_from_settings, capability_labels
 from app.agents.models import AgentRunResult
 from app.agents.result_builder import build_run_result, from_legacy_agent_result
@@ -14,39 +15,13 @@ from app.config.view import AgentPluginSettings, AgentsSettings
 from app.contracts.errors import ConfigurationError
 from app.contracts.results import AgentResult
 
-_BUILTIN_AGENT_ENTRYPOINTS: dict[str, tuple[str, str]] = {
-    "general_assistant": (
-        "app.agents.plugins.general_assistant",
-        "GeneralAssistantAgent",
-    ),
-    "document_qa": (
-        "app.agents.plugins.document_qa",
-        "DocumentQaAgent",
-    ),
-    "tool_using": (
-        "app.agents.plugins.tool_using",
-        "ToolUsingAgent",
-    ),
-    "project_agent": (
-        "app.agents.plugins.project_agent",
-        "ProjectAgent",
-    ),
-    "memory_curator": (
-        "app.agents.plugins.memory_curator",
-        "MemoryCuratorAgent",
-    ),
-    "reviewer": (
-        "app.agents.plugins.reviewer",
-        "ReviewerAgent",
-    ),
-}
-
 
 class AgentFactory:
     """Build configured agent instances without importing provider SDKs."""
 
     def __init__(self, *, settings: AgentsSettings) -> None:
         self._settings = settings
+        self._builtin_catalog = load_builtin_agent_catalog()
 
     def build(self, agent_settings: AgentPluginSettings) -> object:
         if not agent_settings.enabled:
@@ -54,7 +29,10 @@ class AgentFactory:
                 f"Disabled agent '{agent_settings.name}' cannot be built."
             )
 
-        agent_class = _resolve_agent_class(agent_settings)
+        agent_class = _resolve_agent_class(
+            agent_settings,
+            builtin_catalog=self._builtin_catalog,
+        )
         instance = _instantiate_agent(agent_class, agent_settings.name)
         _apply_agent_settings(instance, agent_settings)
 
@@ -102,7 +80,11 @@ class _LegacyAgentAdapter(LegacyCompatibleAgent):
         )
 
 
-def _resolve_agent_class(agent_settings: AgentPluginSettings) -> object:
+def _resolve_agent_class(
+    agent_settings: AgentPluginSettings,
+    *,
+    builtin_catalog: BuiltinAgentCatalog,
+) -> object:
     module_name: str | None = None
     class_name: str | None = None
 
@@ -110,9 +92,10 @@ def _resolve_agent_class(agent_settings: AgentPluginSettings) -> object:
         module_name = agent_settings.module
         class_name = agent_settings.class_name
     else:
-        builtin = _BUILTIN_AGENT_ENTRYPOINTS.get(agent_settings.type)
+        builtin = builtin_catalog.get(agent_settings.type)
         if builtin is not None:
-            module_name, class_name = builtin
+            module_name = builtin.module
+            class_name = builtin.class_name
 
     if module_name is None or class_name is None:
         if agent_settings.type == "custom":
@@ -195,6 +178,8 @@ def _apply_agent_settings(agent: object, settings: AgentPluginSettings) -> None:
     _set_attribute(agent, "allowed_tool_intents", settings.allowed_tool_intents)
     _set_attribute(agent, "allowed_memory_scopes", settings.allowed_memory_scopes)
     _set_attribute(agent, "stream_llm_deltas", settings.stream_llm_deltas)
+    _set_attribute(agent, "system_prompt_override", settings.prompts.system_prompt)
+    _set_attribute(agent, "developer_prompt", settings.prompts.developer_prompt)
     _set_attribute(agent, "metadata", metadata)
 
 

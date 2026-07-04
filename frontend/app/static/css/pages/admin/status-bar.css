@@ -1,0 +1,36 @@
+.admin-shell {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.admin-toolbar {
+  display: block;
+}
+
+.admin-status-bar {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.admin-status-bar .workspace-status-bar__item {
+  min-height: 1.6rem;
+}
+
+.admin-status-bar .workspace-status-bar__value {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .admin-status-bar {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-status-bar .workspace-status-bar__item {
+    flex: 1 1 calc(50% - 0.5rem);
+  }
+}

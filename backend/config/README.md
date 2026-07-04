@@ -139,6 +139,9 @@ The backend loads this YAML through the validated loader in `app/config/loader.p
 - `orchestration.usecases.default_chat.allowed_agents`: `[support_agent]`. Agent allowlist for this use case.
 - `orchestration.usecases.default_chat.allowed_strategies`: `[direct_agent, fallback_answer]`. Strategy allowlist for this use case.
 - `orchestration.usecases.default_chat.policy_profile`: `default`. Policy profile applied to this use case.
+- `orchestration.usecases.<name>.memory.allowed_project_ids`: optional named memory-project allowlist. When present, one effective `project_id` must resolve inside this list before retrieval can run. In the canonical app config, `architecture_document_qa` pins retrieval to `[arch_docs]`.
+- `orchestration.usecases.<name>.memory.default_project_id`: optional default project used when the remaining allowlist is still multi-project and the request omits `project_id`. It must be one of `allowed_project_ids`. In the canonical app config, `architecture_document_qa` defaults to `arch_docs`.
+- The docs ingest/search CLIs read these fields when `--project-id` is omitted. In the canonical config, local docs operations therefore resolve to `arch_docs` without inventing a fallback like `docs`.
 
 ## `api`
 
@@ -279,6 +282,9 @@ The backend loads this YAML through the validated loader in `app/config/loader.p
 - `agents.plugins.support_agent.capabilities.self_managed_tools`: `false`. The agent does not manage tools on its own.
 - `agents.plugins.support_agent.allowed_tool_intents`: `[]`. No tool intents are allowed for this agent.
 - `agents.plugins.support_agent.allowed_memory_scopes`: `[project]`. If memory were enabled for this agent later, the safe scope allowlist would currently only permit the `project` scope.
+- `agents.plugins.<name>.memory.allowed_project_ids`: optional named memory-project allowlist for that agent. When present, runtime memory resolution intersects this list with the active use-case list before any search runs. In the canonical app config, `architecture_document_agent` is pinned to `[arch_docs]`.
+- `agents.plugins.<name>.memory.default_project_id`: optional agent-level default project used only when the request omits `project_id` and the intersected allowlist remains multi-project. It must be one of `allowed_project_ids`. In the canonical app config, `architecture_document_agent` defaults to `arch_docs`.
+- Recommended rollout for the docs corpus: ingest or re-ingest under `arch_docs`, verify `architecture_document_qa`, then delete any legacy `docs`-scoped corpus explicitly after verification.
 
 ## `llm.defaults`
 

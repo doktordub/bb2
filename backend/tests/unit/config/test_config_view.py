@@ -10,6 +10,8 @@ from app.config.view import (
     AgentCapabilitySettings,
     AgentContextPolicySettings,
     AgentLimitSettings,
+    AgentMemorySettings,
+    AgentPromptOverrideSettings,
     AgentPluginSettings,
     AgentsSettings,
     ApiDebugRoutesSettings,
@@ -19,6 +21,7 @@ from app.config.view import (
     ApiSseSettings,
     ApiTracingSettings,
     CorsSettings,
+    ConversationContextSettings,
     DeploymentMetricsSettings,
     DeploymentReadinessSettings,
     DeploymentSettings,
@@ -1922,6 +1925,15 @@ def build_orchestration_view() -> ValidatedConfigurationView:
                     "expose_strategy_metadata": True,
                     "expose_chain_of_thought": False,
                     "save_runtime_snapshots": False,
+                    "conversation_context": {
+                        "enabled": True,
+                        "mode": "summary_then_window",
+                        "max_messages": 10,
+                        "max_chars": 6000,
+                        "include_assistant_messages": True,
+                        "summary_threshold_messages": 18,
+                        "summary_max_chars": 1200,
+                    },
                 },
                 "strategies": {
                     "direct_agent": {
@@ -2091,6 +2103,15 @@ def test_validated_config_view_orchestration_helpers_return_typed_settings() -> 
         expose_strategy_metadata=True,
         expose_chain_of_thought=False,
         save_runtime_snapshots=False,
+        conversation_context=ConversationContextSettings(
+            enabled=True,
+            mode="summary_then_window",
+            max_messages=10,
+            max_chars=6000,
+            include_assistant_messages=True,
+            summary_threshold_messages=18,
+            summary_max_chars=1200,
+        ),
     )
 
     direct_strategy = settings.strategies["direct_agent"]
@@ -2156,6 +2177,13 @@ def test_get_orchestration_settings_supports_legacy_compatibility_paths() -> Non
                     "default_agent": "support_agent",
                     "allowed_agents": ["support_agent"],
                     "policy_profile": "default",
+                        "memory": {
+                            "enabled": True,
+                            "include_document_chunks": True,
+                            "default_limit": 8,
+                            "allowed_project_ids": ["arch_docs", "design_docs"],
+                            "default_project_id": "arch_docs",
+                        },
                 }
             },
             "strategies": {
@@ -2174,6 +2202,11 @@ def test_get_orchestration_settings_supports_legacy_compatibility_paths() -> Non
     assert settings.defaults.fallback_strategy == "direct_agent"
     assert settings.strategies["direct_agent"].type == "direct_agent"
     assert settings.usecases["support_chat"].agent == "support_agent"
+    assert settings.usecases["support_chat"].memory.allowed_project_ids == (
+        "arch_docs",
+        "design_docs",
+    )
+    assert settings.usecases["support_chat"].memory.default_project_id == "arch_docs"
 
 
 def test_get_agents_settings_resolves_canonical_agent_configuration() -> None:
@@ -2235,6 +2268,16 @@ def test_get_agents_settings_resolves_canonical_agent_configuration() -> None:
                         },
                         "allowed_tool_intents": ["documents_search"],
                         "allowed_memory_scopes": ["project", "user"],
+                        "memory": {
+                            "search_enabled": True,
+                            "write_enabled": False,
+                            "allowed_project_ids": ["arch_docs", "design_docs"],
+                            "default_project_id": "design_docs",
+                        },
+                        "prompts": {
+                            "system_prompt": "You are a configured support assistant.",
+                            "developer_prompt": "Prefer short answers.",
+                        },
                         "module": "app.testing.fakes.fake_agent",
                         "class_name": "FakeAgent",
                         "metadata": {"tier": "primary"},
@@ -2296,6 +2339,16 @@ def test_get_agents_settings_resolves_canonical_agent_configuration() -> None:
     )
     assert agent.allowed_tool_intents == ("documents_search",)
     assert agent.allowed_memory_scopes == ("project", "user")
+    assert agent.memory == AgentMemorySettings(
+        search_enabled=True,
+        write_enabled=False,
+        allowed_project_ids=("arch_docs", "design_docs"),
+        default_project_id="design_docs",
+    )
+    assert agent.prompts == AgentPromptOverrideSettings(
+        system_prompt="You are a configured support assistant.",
+        developer_prompt="Prefer short answers.",
+    )
     assert agent.module == "app.testing.fakes.fake_agent"
     assert agent.class_name == "FakeAgent"
     assert agent.metadata == {"tier": "primary"}

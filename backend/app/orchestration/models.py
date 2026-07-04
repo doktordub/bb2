@@ -154,21 +154,32 @@ class ConversationMessage:
     role: str
     content: str
     created_at: str | None = None
+    request_id: str | None = None
+    turn_id: str | None = None
+    trace_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "role", _normalize_required_identifier(self.role, field_name="role"))
         object.__setattr__(self, "content", _normalize_text(self.content))
         object.__setattr__(self, "created_at", _normalize_optional_text(self.created_at))
-        object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))
+        object.__setattr__(self, "request_id", _normalize_optional_text(self.request_id))
+        object.__setattr__(self, "turn_id", _normalize_optional_text(self.turn_id))
+        object.__setattr__(self, "trace_id", _normalize_optional_text(self.trace_id))
+        object.__setattr__(self, "metadata", _enrich_conversation_metadata(self))
 
     @classmethod
     def from_mapping(cls, item: Mapping[str, Any]) -> "ConversationMessage":
+        raw_metadata_value = item.get("metadata")
+        raw_metadata: Mapping[str, Any] = raw_metadata_value if isinstance(raw_metadata_value, Mapping) else {}
         return cls(
             role=_normalize_optional_text(item.get("role")) or "assistant",
             content=_normalize_optional_text(item.get("content")) or "",
             created_at=_normalize_optional_text(item.get("created_at")),
-            metadata=sanitize_metadata(item.get("metadata") if isinstance(item.get("metadata"), Mapping) else {}),
+            request_id=_normalize_optional_text(item.get("request_id")) or _normalize_optional_text(raw_metadata.get("request_id")),
+            turn_id=_normalize_optional_text(item.get("turn_id")) or _normalize_optional_text(raw_metadata.get("turn_id")),
+            trace_id=_normalize_optional_text(item.get("trace_id")) or _normalize_optional_text(raw_metadata.get("trace_id")),
+            metadata=sanitize_metadata(raw_metadata),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -178,6 +189,17 @@ class ConversationMessage:
         if self.metadata:
             data["metadata"] = dict(self.metadata)
         return data
+
+
+def _enrich_conversation_metadata(message: ConversationMessage) -> dict[str, Any]:
+    metadata = sanitize_metadata(message.metadata)
+    if message.request_id is not None:
+        metadata.setdefault("request_id", message.request_id)
+    if message.turn_id is not None:
+        metadata.setdefault("turn_id", message.turn_id)
+    if message.trace_id is not None:
+        metadata.setdefault("trace_id", message.trace_id)
+    return metadata
 
 
 @dataclass(frozen=True, slots=True)

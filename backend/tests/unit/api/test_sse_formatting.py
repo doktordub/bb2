@@ -112,6 +112,36 @@ def test_metadata_event_can_be_suppressed() -> None:
     assert encoded is None
 
 
+def test_response_delta_encoding_preserves_significant_whitespace() -> None:
+    settings = ApiSseSettings(
+        heartbeat_seconds=15,
+        send_trace_id_event=False,
+        send_metadata_events=True,
+    )
+
+    leading_space = encode_session_stream_event(
+        SessionStreamEvent(
+            event_type="response.delta",
+            trace_id="trace-123",
+            session_id="session-123",
+            data={"delta": " world"},
+        ),
+        settings=settings,
+    )
+    paragraph_break = encode_session_stream_event(
+        SessionStreamEvent(
+            event_type="response.delta",
+            trace_id="trace-123",
+            session_id="session-123",
+            data={"delta": "\n\n"},
+        ),
+        settings=settings,
+    )
+
+    assert _decode_payload(leading_space) == {"text": " world"}
+    assert _decode_payload(paragraph_break) == {"text": "\n\n"}
+
+
 def _decode_payload(frame: str | None) -> dict[str, object]:
     assert frame is not None
     line = next(item for item in frame.splitlines() if item.startswith("data: "))

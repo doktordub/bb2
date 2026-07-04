@@ -57,6 +57,7 @@ async def post_chat(
         request=request,
         api_settings=api_settings,
         session_settings=session_settings,
+        default_transport="request/response",
     )
     _validate_route_limits(prepared_request, api_settings=api_settings)
     session_context = _to_session_request_context(context)
@@ -128,6 +129,7 @@ async def post_chat_stream(
         request=request,
         api_settings=api_settings,
         session_settings=session_settings,
+        default_transport="streaming",
     )
     _validate_route_limits(prepared_request, api_settings=api_settings)
     session_context = _to_session_request_context(context)
@@ -302,6 +304,7 @@ def _prepare_chat_request(
     request: Request,
     api_settings: ApiSettings,
     session_settings: SessionSettings,
+    default_transport: str,
 ) -> SessionChatRequest:
     resolved_session_id = payload.session_id
     header_name = api_settings.sessions.session_id_header
@@ -341,8 +344,16 @@ def _prepare_chat_request(
         message=payload.message,
         session_id=resolved_session_id,
         usecase=payload.usecase,
-        metadata=payload.metadata,
+        metadata=_with_default_transport(payload.metadata, default_transport=default_transport),
     )
+
+
+def _with_default_transport(metadata: dict[str, object], *, default_transport: str) -> dict[str, object]:
+    resolved = dict(metadata)
+    transport = resolved.get("transport")
+    if not isinstance(transport, str) or not transport.strip():
+        resolved["transport"] = default_transport
+    return resolved
 
 
 def _validate_route_limits(payload: SessionChatRequest, *, api_settings: ApiSettings) -> None:

@@ -3,8 +3,12 @@ from __future__ import annotations
 from app.contracts.memory import MemoryResult, MemoryScope, MemorySearchRequest
 from app.contracts.trace import MEMORY_SEARCH_COMPLETED, MEMORY_SEARCH_STARTED
 from app.memory.adapters.fake import FakeMemoryAdapter
-from app.testing.fakes import FakeTraceStore
-from tests.unit.memory.support import build_context, build_gateway
+from app.testing.fakes import FakePolicyService, FakeTraceStore
+from tests.unit.memory.support import (
+    build_context,
+    build_gateway,
+    build_project_scope_config,
+)
 
 
 async def test_gateway_bounds_results_and_emits_safe_search_traces() -> None:
@@ -49,3 +53,38 @@ async def test_gateway_bounds_results_and_emits_safe_search_traces() -> None:
     assert trace_store.events[1].payload["result_count"] == 1
     assert trace_store.events[1].payload["max_score"] == 0.9
     assert trace_store.events[1].payload["min_score"] == 0.9
+
+
+async def test_gateway_search_resolves_configured_project_scope_and_records_resolution() -> None:
+    adapter = FakeMemoryAdapter(
+        results=[MemoryResult(memory_id="memory-1", text="hello", memory_type="project_fact")]
+    )
+    trace_store = FakeTraceStore()
+    policy = FakePolicyService()
+    gateway = build_gateway(adapter=adapter)
+    context = build_context(
+        project_id=None,
+        usecase="architecture_document_qa",
+        agent_name="architecture_document_agent",
+        trace_store=trace_store,
+        policy=policy,
+        config_values=build_project_scope_config(
+            usecase_name="architecture_document_qa",
+            agent_name="architecture_document_agent",
+            usecase_allowed_project_ids=("arch_docs",),
+            agent_allowed_project_ids=("arch_docs",),
+        ),
+    )
+
+    await gateway.search(
+        MemorySearchRequest(
+            text="hello",
+            scope=MemoryScope(session_id="session-1"),
+        ),
+        context,
+    )
+
+    assert adapter.search_requests[0].scope.project_id == "arch_docs"
+    assert trace_store.events[0].payload["project_scope_resolution"] == "singleton_intersection"
+    assert trace_store.events[1].payload["project_scope_resolution"] == "singleton_intersection"
+    assert policy.requests[0].metadata["project_scope_resolution"] == "singleton_intersection"

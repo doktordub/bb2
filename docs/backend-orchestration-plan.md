@@ -5,6 +5,8 @@
 **Source alignment:** `backend-orchestration-architecture.md`, `backend-session-service-plan.md`, `backend-llm-gateway-plan.md`, `backend-memory-store-adapter-plan.md`, `backend-tooling-mcp-client-plan.md`, and the current backend implementation baseline  
 **Repository rule:** all backend application code lives under `backend/`
 
+Implementation note (2026-07-01): the default direct-agent path now consumes workflow-state continuity through a bounded prior-turn window plus optional persisted `session_summary` compaction, and orchestration trace summaries expose only safe continuity counters rather than raw prompt history.
+
 ---
 
 ## 1. Purpose

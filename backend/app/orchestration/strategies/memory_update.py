@@ -20,6 +20,7 @@ from app.contracts.results import StreamEvent
 from app.orchestration.cancellation import raise_if_cancelled
 from app.orchestration.errors import AgentNotFoundError
 from app.orchestration.events import OrchestrationStreamEvent
+from app.orchestration.message_catalog import default_message_template_service
 from app.orchestration.memory_intents import MemoryCandidate, build_memory_candidate_scope, build_memory_candidates
 from app.orchestration.models import MemoryUpdateSummary
 
@@ -154,7 +155,7 @@ async def _run_strategy(
     if not candidates:
         duration_ms = max(int((perf_counter() - started_at) * 1000), 0)
         return finalize_strategy_result(
-            answer=_NO_CANDIDATE_ANSWER,
+            answer=_no_candidate_answer(),
             agent_name=agent_name,
             llm_profile=None,
             finish_reason="no_memory_updates",
@@ -206,7 +207,7 @@ async def _run_strategy(
                 MemoryUpdateSummary(
                     operation="upsert",
                     status="approval_required",
-                    safe_message=_APPROVAL_REQUIRED_ANSWER,
+                    safe_message=_approval_required_answer(),
                     metadata={
                         "memory_type": memory_write.memory_type,
                         "scope": memory_write.scope.summary(),
@@ -367,8 +368,8 @@ def _answer_text(*, write_count: int, approval_required_count: int) -> str:
     if write_count > 0:
         return f"I stored {write_count} memory update{'s' if write_count != 1 else ''} for future turns."
     if approval_required_count > 0:
-        return _APPROVAL_REQUIRED_ANSWER
-    return _NO_CANDIDATE_ANSWER
+        return _approval_required_answer()
+    return _no_candidate_answer()
 
 
 def _finish_reason(*, write_count: int, approval_required_count: int) -> str:
@@ -393,8 +394,24 @@ def _write_step_message(*, write_count: int, approval_required_count: int) -> st
     if write_count > 0:
         return "Stored durable memory updates through the memory gateway."
     if approval_required_count > 0:
-        return _APPROVAL_REQUIRED_ANSWER
+        return _approval_required_answer()
     return "No durable memory updates were written."
+
+
+def _no_candidate_answer() -> str:
+    return default_message_template_service().get_text(
+        "memory_update",
+        "no_candidate_answer",
+        fallback=_NO_CANDIDATE_ANSWER,
+    )
+
+
+def _approval_required_answer() -> str:
+    return default_message_template_service().get_text(
+        "memory_update",
+        "approval_required_answer",
+        fallback=_APPROVAL_REQUIRED_ANSWER,
+    )
 
 
 def _stream_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

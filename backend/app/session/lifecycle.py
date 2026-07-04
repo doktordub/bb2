@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from app.config.view import ConversationContextSettings
 from app.contracts.context import RequestContext
 from app.contracts.state import (
     DEFAULT_WORKFLOW_STATE_VERSION,
@@ -14,6 +15,7 @@ from app.contracts.state import (
     WorkflowStateRecord,
     default_workflow_state,
 )
+from app.orchestration.conversation_context import refresh_session_summary_metadata
 from app.orchestration.models import ConversationMessage, OrchestrationResult
 from app.orchestration.state_delta import WorkflowStateDelta, apply_workflow_state_delta
 
@@ -56,7 +58,14 @@ def prepare_state_for_chat(
     loaded_empty = record.loaded_empty or bool(metadata.get("loaded_empty", False))
     messages = conversation_messages(normalized_state)
     message_count_before = len(messages)
-    messages.append({"role": "user", "content": request_context.message})
+    messages.append(
+        {
+            "role": "user",
+            "content": request_context.message,
+            "created_at": created_at.isoformat(),
+            "metadata": _user_message_metadata(request_context=request_context, usecase=usecase),
+        }
+    )
     normalized_state["workflow"]["current_step"] = "responding"
     metadata.setdefault("created_at", created_at.isoformat())
     metadata["usecase"] = usecase
@@ -72,6 +81,7 @@ def apply_orchestration_result(
     state: WorkflowStateDocument,
     *,
     result: OrchestrationResult,
+    conversation_context_settings: ConversationContextSettings,
     request_context: RequestContext,
     trace_id: str,
     request_id: str,
@@ -84,6 +94,15 @@ def apply_orchestration_result(
 
     state_delta = result.state_delta or _fallback_state_delta(result)
     updated_state = apply_workflow_state_delta(state, state_delta)
+    _annotate_appended_messages(
+        updated_state,
+        appended_count=len(state_delta.append_messages),
+        usecase=result.usecase,
+        transport=_normalize_transport_label(request_context.metadata.get("transport")),
+        trace_id=trace_id,
+        request_id=request_id,
+        created_at=completed_at,
+    )
     updated_state["workflow"]["current_step"] = "answered"
     updated_state["last_result"] = {
         "agent_name": result.agent_name,
@@ -107,12 +126,18 @@ def apply_orchestration_result(
         metadata["last_client_host"] = client_host
     if user_agent is not None:
         metadata["last_user_agent"] = user_agent
+    refresh_session_summary_metadata(
+        updated_state,
+        settings=conversation_context_settings,
+        updated_at=completed_at.isoformat(),
+    )
     return updated_state
 
 
 def mark_stream_interrupted(
     state: WorkflowStateDocument,
     *,
+    conversation_context_settings: ConversationContextSettings,
     interrupted_at: datetime,
 ) -> WorkflowStateDocument:
     """Record a cancelled stream boundary without exposing raw content elsewhere."""
@@ -121,12 +146,18 @@ def mark_stream_interrupted(
     metadata["stream_status"] = "cancelled"
     metadata["updated_at"] = interrupted_at.isoformat()
     state["workflow"]["current_step"] = "cancelled"
+    refresh_session_summary_metadata(
+        state,
+        settings=conversation_context_settings,
+        updated_at=interrupted_at.isoformat(),
+    )
     return state
 
 
 def mark_stream_failed(
     state: WorkflowStateDocument,
     *,
+    conversation_context_settings: ConversationContextSettings,
     failed_at: datetime,
 ) -> WorkflowStateDocument:
     """Record a failed stream boundary without exposing raw content elsewhere."""
@@ -135,6 +166,11 @@ def mark_stream_failed(
     metadata["stream_status"] = "failed"
     metadata["updated_at"] = failed_at.isoformat()
     state["workflow"]["current_step"] = "failed"
+    refresh_session_summary_metadata(
+        state,
+        settings=conversation_context_settings,
+        updated_at=failed_at.isoformat(),
+    )
     return state
 
 
@@ -206,6 +242,86 @@ def state_message_count(state: WorkflowStateDocument) -> int:
     """Return the visible conversation message count for a workflow-state document."""
 
     return len(conversation_messages(state))
+
+
+def _user_message_metadata(
+    *,
+    request_context: RequestContext,
+    usecase: str,
+) -> dict[str, str]:
+    metadata = {"usecase": usecase}
+    request_id = _normalize_message_identifier(request_context.metadata.get("request_id"))
+    if request_id is not None:
+        metadata["request_id"] = request_id
+        metadata["turn_id"] = request_id
+    trace_id = _normalize_message_identifier(request_context.trace_id)
+    if trace_id is not None:
+        metadata["trace_id"] = trace_id
+    transport = _normalize_transport_label(request_context.metadata.get("transport"))
+    if transport is not None:
+        metadata["transport"] = transport
+    return metadata
+
+
+def _annotate_appended_messages(
+    state: WorkflowStateDocument,
+    *,
+    appended_count: int,
+    usecase: str,
+    transport: str | None,
+    trace_id: str,
+    request_id: str,
+    created_at: datetime,
+) -> None:
+    if appended_count <= 0:
+        return
+
+    messages = conversation_messages(state)
+    for raw_message in messages[-appended_count:]:
+        if not isinstance(raw_message, dict):
+            continue
+
+        created_value = raw_message.get("created_at")
+        if not isinstance(created_value, str) or not created_value.strip():
+            raw_message["created_at"] = created_at.isoformat()
+
+        metadata = raw_message.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            raw_message["metadata"] = metadata
+
+        metadata.setdefault("usecase", usecase)
+        if transport is not None:
+            metadata.setdefault("transport", transport)
+        metadata.setdefault("request_id", request_id)
+        metadata.setdefault("turn_id", request_id)
+        metadata.setdefault("trace_id", trace_id)
+        if raw_message.get("role") == "assistant":
+            metadata.setdefault("trace_id", trace_id)
+
+
+def _normalize_transport_label(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    token = normalized.casefold().replace("-", "_").replace("/", "_").replace(" ", "_")
+    if token in {"request_response", "non_streaming"}:
+        return "request/response"
+    if token == "streaming":
+        return "streaming"
+    return normalized
+
+
+def _normalize_message_identifier(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    return normalized or None
 
 
 def _fallback_state_delta(result: OrchestrationResult) -> WorkflowStateDelta:

@@ -114,6 +114,9 @@ class CapabilitiesService:
                 "list_enabled": self._list_enabled(chat_enabled=chat_enabled),
                 "delete_enabled": self._delete_enabled(chat_enabled=chat_enabled),
                 "client_session_id_enabled": api_settings.sessions.accept_client_session_id,
+                "continuity_enabled": self._continuity_enabled(chat_enabled=chat_enabled),
+                "continuity_mode": self._continuity_mode(chat_enabled=chat_enabled),
+                "summary_compaction_enabled": self._summary_compaction_enabled(chat_enabled=chat_enabled),
             },
             "usecases": [
                 {
@@ -181,6 +184,9 @@ class CapabilitiesService:
                     "list_enabled": False,
                     "delete_enabled": False,
                     "client_session_id_enabled": api_settings.sessions.accept_client_session_id,
+                    "continuity_enabled": False,
+                    "continuity_mode": "disabled",
+                    "summary_compaction_enabled": False,
                 },
                 "usecases": [],
                 "agents": [],
@@ -294,6 +300,24 @@ class CapabilitiesService:
             and self._session_settings.management.delete_enabled
             and self._has_provider("persistence.workflow_state.provider")
         )
+
+    def _continuity_enabled(self, *, chat_enabled: bool) -> bool:
+        if not chat_enabled:
+            return False
+        settings = get_orchestration_settings(self._config).defaults.conversation_context
+        return settings.enabled and self._has_provider("persistence.workflow_state.provider")
+
+    def _continuity_mode(self, *, chat_enabled: bool) -> str:
+        if not self._continuity_enabled(chat_enabled=chat_enabled):
+            return "disabled"
+        settings = get_orchestration_settings(self._config).defaults.conversation_context
+        return settings.mode
+
+    def _summary_compaction_enabled(self, *, chat_enabled: bool) -> bool:
+        if not self._continuity_enabled(chat_enabled=chat_enabled):
+            return False
+        settings = get_orchestration_settings(self._config).defaults.conversation_context
+        return settings.summary_max_chars > 0 and settings.summary_threshold_messages >= settings.max_messages
 
     def _restart_enabled(self, *, api_settings: ApiSettings) -> bool:
         return (

@@ -63,6 +63,9 @@ def test_capabilities_route_returns_frontend_safe_flags(
                 "list_enabled": False,
                 "delete_enabled": False,
                 "client_session_id_enabled": True,
+                "continuity_enabled": False,
+                "continuity_mode": "disabled",
+                "summary_compaction_enabled": False,
             },
             "usecases": [
                 {

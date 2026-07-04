@@ -12,7 +12,7 @@ from app.agents.errors import AgentMemoryCandidateError, AgentOutputParseError, 
 from app.agents.models import AgentCapabilities, AgentRunRequest, AgentRunResult, AgentWarning
 from app.agents.plugins.base_llm_agent import BaseLlmAgent
 from app.agents.policy import require_capability_allowed, require_capability_policy
-from app.agents.prompts import build_prompt_messages, limit_prompt_sections
+from app.agents.prompts import build_prompt_messages, limit_prompt_sections, resolve_prompt_text
 from app.agents.result_builder import build_run_result, build_usage_summary
 from app.agents.trace_helpers import build_llm_trace_summary, build_memory_candidate_trace_summary, build_prompt_trace_summary, build_request_trace_summary, build_result_trace_summary
 from app.contracts.context import OrchestrationContext
@@ -248,17 +248,25 @@ class MemoryCuratorAgent(BaseLlmAgent):
             ),
             PromptSection(
                 title="Response contract",
-                body=(
-                    'Return JSON only with {"memory_candidates": [{"text": "...", '
-                    '"memory_type": "...", "scope": "...", "reason": "..."}]}. '
-                    "Return an empty list when nothing durable should be stored."
+                body=resolve_prompt_text(
+                    "memory_curator",
+                    "response_contract",
+                    fallback=(
+                        'Return JSON only with {"memory_candidates": [{"text": "...", '
+                        '"memory_type": "...", "scope": "...", "reason": "..."}]}. '
+                        "Return an empty list when nothing durable should be stored."
+                    ),
                 ),
             ),
             PromptSection(
                 title="Curation rules",
-                body=(
-                    "Keep only durable user or project facts, preferences, or follow-up details. "
-                    "Do not include secrets, credentials, hidden reasoning, or one-off task steps."
+                body=resolve_prompt_text(
+                    "memory_curator",
+                    "curation_rules",
+                    fallback=(
+                        "Keep only durable user or project facts, preferences, or follow-up details. "
+                        "Do not include secrets, credentials, hidden reasoning, or one-off task steps."
+                    ),
                 ),
             ),
         )

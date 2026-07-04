@@ -1,0 +1,20 @@
+.chat-workspace-shell--composer-pinned .panel-side {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.panel-dismiss {
+  display: none;
+}
+
+.panel-drawer-backdrop {
+  display: none;
+}
+
+.panel-drawer:focus {
+  outline: none;
+}
+
+.has-chat-drawer {
+  overflow: hidden;
+}

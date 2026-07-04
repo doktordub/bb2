@@ -152,14 +152,29 @@ async def test_stream_chat_uses_runtime_stream_and_saves_once_on_completion() ->
     assert len(workflow_state.save_calls) == 1
     assert workflow_state.save_calls[0].expected_version is None
     assert workflow_state.states["session_stream_1"]["conversation"]["messages"] == [
-        {"role": "user", "content": "stream this"},
+        {
+            "role": "user",
+            "content": "stream this",
+            "created_at": "2026-06-27T16:00:00+00:00",
+            "metadata": {
+                "usecase": "default_chat",
+                "request_id": "request-session-stream-0001",
+                "turn_id": "request-session-stream-0001",
+                "trace_id": "trace-session-stream-0001",
+            },
+        },
         {
             "role": "assistant",
             "content": "Echo: stream this",
+            "created_at": "2026-06-27T16:00:01+00:00",
             "metadata": {
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "request_id": "request-session-stream-0001",
+                "turn_id": "request-session-stream-0001",
+                "trace_id": "trace-session-stream-0001",
+                "usecase": "default_chat",
             },
         },
     ]
@@ -344,14 +359,29 @@ async def test_stream_chat_can_use_real_llm_gateway_streaming_path() -> None:
     }
     assert events[4].data["finish_reason"] == "completed"
     assert workflow_state.states["session_stream_llm"]["conversation"]["messages"] == [
-        {"role": "user", "content": "stream the llm gateway result"},
+        {
+            "role": "user",
+            "content": "stream the llm gateway result",
+            "created_at": "2026-06-27T17:00:00+00:00",
+            "metadata": {
+                "usecase": "default_chat",
+                "request_id": "request-session-stream-0001",
+                "turn_id": "request-session-stream-0001",
+                "trace_id": "trace-session-stream-0001",
+            },
+        },
         {
             "role": "assistant",
             "content": "fake response",
+            "created_at": "2026-06-27T17:00:01+00:00",
             "metadata": {
                 "agent_name": "support_agent",
                 "strategy_name": "direct_agent",
                 "llm_profile": "fake_streaming",
+                "request_id": "request-session-stream-0001",
+                "turn_id": "request-session-stream-0001",
+                "trace_id": "trace-session-stream-0001",
+                "usecase": "default_chat",
             },
         },
     ]

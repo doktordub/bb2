@@ -13,6 +13,7 @@ from app.agents.models import (
 from app.agents.result_builder import build_run_request_from_context, to_legacy_agent_result
 from app.contracts.context import OrchestrationContext, RequestContext
 from app.orchestration.memory_intents import MemoryCandidate
+from app.orchestration.models import ConversationMessage
 from app.orchestration.prompt_inputs import PromptSection
 from app.orchestration.tool_intents import ToolIntent
 from app.testing.fakes import (
@@ -54,12 +55,20 @@ def test_agent_run_request_sanitizes_metadata_and_context_items() -> None:
         project_id="project_1",
         usecase="support",
         message="Summarize the current architecture",
+        conversation_history=(
+            ConversationMessage(
+                role="user",
+                content="prior turn",
+                metadata={"request_id": "request-1", "turn_id": "turn-1"},
+            ),
+        ),
         context_items=(PromptSection(title="Context", body="bounded context"),),
         available_tools=("documents.search",),
         metadata={"safe": "ok", "raw_prompt": "blocked"},
     )
 
     assert request.available_tools == ("documents.search",)
+    assert request.conversation_history[0].metadata["request_id"] == "request-1"
     assert request.context_items[0].title == "Context"
     assert request.metadata == {"safe": "ok"}
 

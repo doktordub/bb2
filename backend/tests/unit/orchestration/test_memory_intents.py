@@ -97,6 +97,10 @@ def test_build_memory_search_intent_uses_runtime_scope_and_strategy_defaults() -
 
     assert intent.scope.project_id == "project_1"
     assert intent.scope.tenant_id == "tenant_1"
+    assert intent.scope.user_id is None
+    assert intent.scope.session_id is None
+    assert intent.scope.agent_name is None
+    assert intent.scope.usecase is None
     assert intent.limit == 2
     assert intent.include_document_chunks is True
 

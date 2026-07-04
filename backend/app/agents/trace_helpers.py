@@ -29,6 +29,11 @@ def build_request_trace_summary(
             "has_task": request.task is not None,
             "constraint_count": len(request.constraints),
             "llm_profile": request.llm_profile,
+            "conversation_history_enabled": request.metadata.get("conversation_history_enabled"),
+            "conversation_history_turn_count": request.metadata.get("conversation_history_turn_count"),
+            "conversation_history_truncated": request.metadata.get("conversation_history_truncated"),
+            "session_summary_used": request.metadata.get("session_summary_used"),
+            "current_turn_deduped": request.metadata.get("current_turn_deduped"),
         }
     )
 

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Help | {{ frontend_app_name }}{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/help/index.css', v=static_version) }}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell page-shell--wide container-xxl workspace-shell help-shell">
+  {% if help_content.exists %}
+  <section class="info-card help-toolbar-card">
+    <div>
+      <p class="eyebrow">Help workspace</p>
+      <p class="eyebrow">Configured source</p>
+      <p class="meta-value help-source">{{ help_content.source_path.as_posix() }}</p>
+      <h2>{{ help_content.title }}</h2>
+      <p class="help-summary">{{ help_content.summary }}</p>
+    </div>
+    <label class="field-group help-search-field" for="help-search">
+      <span class="field-label">Search the guide</span>
+      <input id="help-search" class="form-control" type="search" placeholder="Filter headings, notes, and code" data-help-search>
+      <span class="hint" data-help-search-status>Search headings, paragraphs, lists, and code snippets in the training guide.</span>
+    </label>
+  </section>
+
+  <div class="help-layout">
+    <aside class="info-card help-sidebar-card">
+      <div class="help-sidebar-sticky">
+        <p class="eyebrow">Contents</p>
+        <nav aria-label="Table of contents">
+          <ol class="help-toc">
+            {% for heading in help_content.toc %}
+            <li class="help-toc__item help-toc__item--level-{{ heading.level }}">
+              <a class="help-toc__link" href="#{{ heading.anchor }}" data-help-toc-link>{{ heading.text }}</a>
+            </li>
+            {% endfor %}
+          </ol>
+        </nav>
+      </div>
+    </aside>
+
+    <article class="info-card help-rendered-card">
+      <div class="help-rendered" data-help-content>{{ help_content.html | safe }}</div>
+    </article>
+  </div>
+  {% else %}
+  <article class="info-card help-card help-card--missing">
+    <p class="eyebrow">Help workspace</p>
+    <p class="eyebrow">Configured source</p>
+    <p class="meta-value help-source">{{ help_content.source_path.as_posix() }}</p>
+    <h2>{{ help_content.title }}</h2>
+    <p class="help-summary">{{ help_content.summary }}</p>
+    <div class="help-note">
+      <strong>Unavailable:</strong> The frontend stays read-only and renders a safe empty state until the configured Markdown file exists.
+    </div>
+  </article>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/help/index.js', v=static_version) }}"></script>
+{% endblock %}

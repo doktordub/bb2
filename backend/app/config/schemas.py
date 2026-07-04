@@ -119,6 +119,30 @@ class UseCaseMemoryConfig(StrictConfigModel):
     enabled: bool = True
     include_document_chunks: bool = True
     default_limit: int = Field(default=10, ge=1, le=100)
+    allowed_project_ids: list[str] = Field(default_factory=list)
+    default_project_id: str | None = None
+
+    @field_validator("allowed_project_ids")
+    @classmethod
+    def normalize_allowed_project_ids(cls, value: list[str]) -> list[str]:
+        return _normalize_name_list(value, field_name="allowed_project_ids")
+
+    @field_validator("default_project_id")
+    @classmethod
+    def normalize_default_project_id(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_default_project_id(self) -> "UseCaseMemoryConfig":
+        if (
+            self.default_project_id is not None
+            and self.allowed_project_ids
+            and self.default_project_id not in self.allowed_project_ids
+        ):
+            raise ValueError(
+                "default_project_id must be one of allowed_project_ids when an allowlist is configured"
+            )
+        return self
 
 
 class UseCaseToolConfig(StrictConfigModel):
@@ -153,6 +177,34 @@ class StrategyConfig(StrictConfigModel):
         return _normalize_orchestration_strategy_type(value)
 
 
+class OrchestrationConversationContextConfig(StrictConfigModel):
+    enabled: bool = False
+    mode: str = "window"
+    max_messages: int = Field(default=12, ge=1, le=200)
+    max_chars: int = Field(default=12000, ge=256, le=200000)
+    include_assistant_messages: bool = True
+    summary_threshold_messages: int = Field(default=24, ge=1, le=500)
+    summary_max_chars: int = Field(default=2000, ge=128, le=40000)
+
+    @field_validator("mode")
+    @classmethod
+    def normalize_mode(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        allowed = {"window", "summary_then_window"}
+        if normalized not in allowed:
+            supported = ", ".join(sorted(allowed))
+            raise ValueError(f"mode must be one of: {supported}")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_summary_threshold(self) -> "OrchestrationConversationContextConfig":
+        if self.summary_threshold_messages < self.max_messages:
+            raise ValueError(
+                "summary_threshold_messages must be greater than or equal to max_messages"
+            )
+        return self
+
+
 class OrchestrationDefaultsConfig(StrictConfigModel):
     strategy: str | None = None
     fallback_strategy: str | None = None
@@ -172,6 +224,9 @@ class OrchestrationDefaultsConfig(StrictConfigModel):
     expose_strategy_metadata: bool = True
     expose_chain_of_thought: bool = False
     save_runtime_snapshots: bool = False
+    conversation_context: OrchestrationConversationContextConfig = Field(
+        default_factory=OrchestrationConversationContextConfig
+    )
 
     @model_validator(mode="after")
     def validate_durations(self) -> "OrchestrationDefaultsConfig":
@@ -359,6 +414,30 @@ class AgentDefaultsConfig(StrictConfigModel):
 class AgentMemoryConfig(StrictConfigModel):
     search_enabled: bool = True
     write_enabled: bool = False
+    allowed_project_ids: list[str] = Field(default_factory=list)
+    default_project_id: str | None = None
+
+    @field_validator("allowed_project_ids")
+    @classmethod
+    def normalize_allowed_project_ids(cls, value: list[str]) -> list[str]:
+        return _normalize_name_list(value, field_name="allowed_project_ids")
+
+    @field_validator("default_project_id")
+    @classmethod
+    def normalize_default_project_id(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_default_project_id(self) -> "AgentMemoryConfig":
+        if (
+            self.default_project_id is not None
+            and self.allowed_project_ids
+            and self.default_project_id not in self.allowed_project_ids
+        ):
+            raise ValueError(
+                "default_project_id must be one of allowed_project_ids when an allowlist is configured"
+            )
+        return self
 
 
 class AgentPromptConfig(StrictConfigModel):

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#071018">
+    <title>{% block title %}{{ frontend_app_name }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css', v=static_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base/index.css', v=static_version) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/index.css', v=static_version) }}">
+    {% block extra_styles %}{% endblock %}
+  </head>
+  <body class="app-shell" data-page="{{ active_page|default('shell') }}" data-ui-shell="operational" data-ui-api-base="/ui-api" data-frontend-admin-enabled="{{ 'true' if frontend_settings.frontend_admin_enabled else 'false' }}" data-frontend-debug-traces-enabled="{{ 'true' if frontend_settings.frontend_debug_traces_enabled else 'false' }}" data-frontend-restart-enabled="{{ 'true' if frontend_settings.frontend_restart_enabled else 'false' }}">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    {% include "partials/navbar.html" %}
+    <noscript>
+      <div class="noscript-banner">JavaScript is required for live backend status, theme persistence, and mobile navigation.</div>
+    </noscript>
+    <main id="main-content" class="app-main app-main--workspace" tabindex="-1">
+      {% block content %}{% endblock %}
+    </main>
+    {% include "partials/toast_container.html" %}
+    <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js', v=static_version) }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/core/app-shell.js', v=static_version) }}"></script>
+    {% block extra_scripts %}{% endblock %}
+  </body>
+</html>

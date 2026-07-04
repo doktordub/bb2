@@ -1190,7 +1190,11 @@ def _serialize_internal_scope(scope: MemoryScope) -> dict[str, Any]:
     if normalized.tags:
         payload["tags"] = list(normalized.tags)
     if normalized.metadata:
-        payload["metadata"] = dict(normalized.metadata)
+        metadata = dict(normalized.metadata)
+        metadata.pop("project_scope_resolution", None)
+        metadata.pop("project_scope_allowed_count", None)
+        if metadata:
+            payload["metadata"] = metadata
     return payload
 
 

@@ -20,6 +20,8 @@ from app.agents.models import (
 from app.contracts.context import OrchestrationContext
 from app.contracts.results import AgentResult
 from app.memory.redaction import truncate_text
+from app.orchestration.conversation_context import build_conversation_context_window
+from app.orchestration.models import ConversationMessage
 from app.orchestration.memory_intents import MemoryCandidate
 from app.orchestration.models import sanitize_metadata
 from app.orchestration.prompt_inputs import PromptSection
@@ -32,6 +34,7 @@ def build_run_request_from_context(
     agent_name: str | None = None,
     llm_profile: str | None = None,
     strategy_name: str | None = None,
+    conversation_history: Sequence[ConversationMessage] | None = None,
     context_items: Sequence[PromptContextItem] = (),
     tool_context: Sequence[ToolContextItem] = (),
     available_tools: Sequence[str] = (),
@@ -43,6 +46,30 @@ def build_run_request_from_context(
     """Build a bounded structured request from the orchestration context."""
 
     runtime = context.runtime
+    resolved_session_summary = _optional_text(context.metadata.get("session_summary"))
+    if conversation_history is None:
+        history_window = build_conversation_context_window(context)
+        resolved_conversation_history = history_window.messages
+        resolved_session_summary = history_window.session_summary or resolved_session_summary
+        history_metadata = {
+            "conversation_history_enabled": history_window.enabled,
+            "conversation_history_turn_count": len(history_window.messages),
+            "conversation_history_truncated": history_window.truncated,
+            "current_turn_deduped": history_window.current_turn_deduped,
+            "session_summary_used": history_window.session_summary_used,
+        }
+    else:
+        resolved_conversation_history = tuple(conversation_history)
+        history_metadata = {
+            "conversation_history_enabled": bool(resolved_conversation_history),
+            "conversation_history_turn_count": len(resolved_conversation_history),
+            "session_summary_used": resolved_session_summary is not None,
+        }
+
+    request_metadata = dict(metadata or {})
+    for key, value in history_metadata.items():
+        request_metadata.setdefault(key, value)
+
     return AgentRunRequest(
         trace_id=context.request.trace_id or ("trace_unavailable" if runtime is None else runtime.trace_id),
         session_id=context.request.session_id,
@@ -56,14 +83,15 @@ def build_run_request_from_context(
             or _optional_text(context.runtime_metadata.get("strategy_name"))
             or _optional_text(context.runtime_metadata.get("strategy"))
         ),
-        session_summary=_optional_text(context.metadata.get("session_summary")),
+        session_summary=resolved_session_summary,
+        conversation_history=resolved_conversation_history,
         context_items=tuple(context_items),
         tool_context=tuple(tool_context),
         available_tools=tuple(available_tools) or _resolve_available_tools(context, agent_name=agent_name),
         task=task,
         constraints=tuple(item for item in constraints if _optional_text(item) is not None),
         output_format=output_format,
-        metadata=sanitize_metadata(metadata),
+        metadata=sanitize_metadata(request_metadata),
     )
 
 

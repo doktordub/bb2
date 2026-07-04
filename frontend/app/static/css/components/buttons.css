@@ -1,0 +1,91 @@
+.btn-shell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.78rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 100%),
+    var(--bg-panel);
+  color: var(--text-main);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.btn-shell:hover,
+.btn-shell:focus-visible {
+  border-color: var(--border-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    rgba(78, 195, 200, 0.08);
+  color: var(--text-strong);
+}
+
+.btn-shell[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    rgba(78, 195, 200, 0.12);
+}
+
+.btn-shell--compact {
+  min-height: 2rem;
+  padding-inline: 0.7rem;
+}
+
+.btn-shell--accent {
+  border-color: rgba(78, 195, 200, 0.3);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    rgba(78, 195, 200, 0.14);
+}
+
+.btn-shell--accent:hover,
+.btn-shell--accent:focus-visible {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    rgba(78, 195, 200, 0.2);
+}
+
+.theme-toggle__swatch {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-warm) 100%);
+  box-shadow: 0 0 0 0.18rem rgba(78, 195, 200, 0.16);
+}
+
+.hero-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.hero-pill,
+.panel-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.58rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-highlight);
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.action-link {
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .theme-toggle {
+    flex: 1 1 auto;
+  }
+}

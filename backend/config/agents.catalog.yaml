@@ -1,0 +1,19 @@
+builtin_agents:
+  general_assistant:
+    module: app.agents.plugins.general_assistant
+    class_name: GeneralAssistantAgent
+  document_qa:
+    module: app.agents.plugins.document_qa
+    class_name: DocumentQaAgent
+  tool_using:
+    module: app.agents.plugins.tool_using
+    class_name: ToolUsingAgent
+  project_agent:
+    module: app.agents.plugins.project_agent
+    class_name: ProjectAgent
+  memory_curator:
+    module: app.agents.plugins.memory_curator
+    class_name: MemoryCuratorAgent
+  reviewer:
+    module: app.agents.plugins.reviewer
+    class_name: ReviewerAgent

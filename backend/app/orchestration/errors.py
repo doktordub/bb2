@@ -147,7 +147,7 @@ def normalize_orchestration_error(error: BaseException) -> OrchestrationError:
     if isinstance(error, TimeoutError):
         return OrchestrationTimeoutError()
     if isinstance(error, PolicyDeniedError):
-        return StrategyPolicyDeniedError()
+        return StrategyPolicyDeniedError(str(error))
     if isinstance(error, ConfigurationError):
         return OrchestrationDisabledError()
     if isinstance(error, GatewayError):

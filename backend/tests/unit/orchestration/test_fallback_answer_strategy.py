@@ -4,6 +4,7 @@ import pytest
 
 from app.config.view import get_orchestration_settings
 from app.contracts.context import OrchestrationContext, RequestContext
+from app.orchestration.message_catalog import clear_message_catalog_cache
 from app.orchestration.limits import OrchestrationLimitTracker
 from app.orchestration.strategies.fallback_answer import FallbackAnswerStrategy
 from app.testing.fakes import (
@@ -131,3 +132,46 @@ async def test_fallback_answer_strategy_returns_static_message_when_no_llm_profi
     assert result.metadata["fallback_used"] is True
     assert result.metadata["answer_source"] == "static"
     assert llm.requests == []
+
+
+@pytest.mark.asyncio
+async def test_fallback_answer_strategy_uses_message_catalog_when_strategy_message_is_missing(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "messages.yaml"
+    path.write_text(
+        "messages:\n"
+        "  fallback_answer:\n"
+        "    default_message: Catalog fallback answer.\n"
+        "  memory_update:\n"
+        "    no_candidate_answer: Missing candidate.\n"
+        "    approval_required_answer: Approval needed.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APP_MESSAGES_CONFIG_PATH", str(path))
+    clear_message_catalog_cache()
+
+    config = build_config(llm_profile=None)
+    config.values["orchestration"]["strategies"]["fallback_answer"].pop("message", None)
+    context = build_context(config, llm=FakeLLMGateway(response_text="unused"))
+
+    result = await FallbackAnswerStrategy().run(context=context, agents=[])
+
+    assert result.answer == "Catalog fallback answer."
+
+
+@pytest.mark.asyncio
+async def test_fallback_answer_strategy_uses_code_fallback_when_message_catalog_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_MESSAGES_CONFIG_PATH", "missing/messages.yaml")
+    clear_message_catalog_cache()
+
+    config = build_config(llm_profile=None)
+    config.values["orchestration"]["strategies"]["fallback_answer"].pop("message", None)
+    context = build_context(config, llm=FakeLLMGateway(response_text="unused"))
+
+    result = await FallbackAnswerStrategy().run(context=context, agents=[])
+
+    assert result.answer == "I could not complete the full workflow, but here is the safest answer I can provide."

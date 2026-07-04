@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal, cast
 
 from app.agents.models import AgentOutputFormat, AgentRunRequest, AgentTask
+from app.agents.prompt_catalog import default_prompt_template_service
 from app.contracts.llm import LLMMessage
 from app.memory.redaction import truncate_text
+from app.orchestration.models import ConversationMessage
 from app.orchestration.prompt_inputs import (
     PromptSection,
     build_prompt_messages as build_orchestration_prompt_messages,
@@ -56,11 +59,12 @@ def build_prompt_sections(
     request: AgentRunRequest,
     *,
     extra_sections: Sequence[PromptSection] = (),
+    include_session_summary: bool = True,
 ) -> tuple[PromptSection, ...]:
     """Build bounded prompt sections from a structured request."""
 
     sections: list[PromptSection] = []
-    if request.session_summary is not None:
+    if include_session_summary and request.session_summary is not None:
         sections.append(PromptSection(title="Session summary", body=request.session_summary))
     sections.extend(request.context_items)
     sections.extend(request.tool_context)
@@ -92,19 +96,65 @@ def build_prompt_messages(
 ) -> list[LLMMessage]:
     """Build provider-neutral prompt messages from a structured request."""
 
+    prior_messages: list[LLMMessage] = []
+    if request.session_summary is not None:
+        prior_messages.append(
+            LLMMessage(
+                role="user",
+                content=PromptSection(title="Session summary", body=request.session_summary).render(),
+            )
+        )
+    prior_messages.extend(_build_conversation_history_messages(request.conversation_history))
+
     return build_orchestration_prompt_messages(
         user_request=request.message,
-        sections=build_prompt_sections(request, extra_sections=extra_sections),
+        sections=build_prompt_sections(
+            request,
+            extra_sections=extra_sections,
+            include_session_summary=False,
+        ),
         system_prompt=system_prompt,
+        prior_messages=tuple(prior_messages),
     )
 
 
 def resolve_system_prompt(prompt_profile: str | None) -> str | None:
     """Resolve a built-in safe system prompt for the requested prompt profile."""
 
-    if prompt_profile is None:
-        return None
-    return _SYSTEM_PROMPTS.get(prompt_profile)
+    return default_prompt_template_service().resolve_system_prompt(
+        prompt_profile,
+        fallback_profiles=_SYSTEM_PROMPTS,
+    )
+
+
+def resolve_prompt_text(
+    section: str,
+    key: str,
+    *,
+    fallback: str,
+) -> str:
+    """Resolve a catalog-backed prompt template with a code fallback."""
+
+    return default_prompt_template_service().get_text(
+        section,
+        key,
+        fallback=fallback,
+    )
+
+
+def resolve_prompt_lines(
+    section: str,
+    key: str,
+    *,
+    fallback: Sequence[str],
+) -> tuple[str, ...]:
+    """Resolve a catalog-backed prompt line list with a code fallback."""
+
+    return default_prompt_template_service().get_lines(
+        section,
+        key,
+        fallback=fallback,
+    )
 
 
 def render_task(task: AgentTask) -> str:
@@ -180,10 +230,29 @@ def _truncate_prompt_section(section: PromptSection, *, max_chars: int) -> Promp
     )
 
 
+def _build_conversation_history_messages(
+    history: Sequence[ConversationMessage],
+) -> tuple[LLMMessage, ...]:
+    messages: list[LLMMessage] = []
+    for item in history:
+        role = item.role.strip().lower()
+        if role not in {"user", "assistant", "system", "tool"}:
+            continue
+        messages.append(
+            LLMMessage(
+                role=cast(Literal["user", "assistant", "system", "tool"], role),
+                content=item.content,
+            )
+        )
+    return tuple(messages)
+
+
 __all__ = [
     "build_prompt_messages",
     "build_prompt_sections",
     "limit_prompt_sections",
+    "resolve_prompt_lines",
+    "resolve_prompt_text",
     "render_output_format",
     "render_task",
     "resolve_system_prompt",

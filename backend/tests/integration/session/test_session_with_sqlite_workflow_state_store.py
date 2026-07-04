@@ -146,24 +146,40 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
     loaded = await workflow_state.load("session_sqlite_1")
     assert loaded.version == 2
     assert loaded.state["conversation"]["messages"] == [
-        {"role": "user", "content": "hello sqlite"},
+        {
+            "role": "user",
+            "content": "hello sqlite",
+            "created_at": "2026-06-27T15:00:00+00:00",
+            "metadata": {"usecase": "default_chat"},
+        },
         {
             "role": "assistant",
             "content": "Echo: hello sqlite",
+            "created_at": "2026-06-27T15:00:01+00:00",
             "metadata": {
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "trace_id": "trace-sqlite-0001",
+                "usecase": "default_chat",
             },
         },
-        {"role": "user", "content": "second turn"},
+        {
+            "role": "user",
+            "content": "second turn",
+            "created_at": "2026-06-27T15:05:00+00:00",
+            "metadata": {"usecase": "default_chat"},
+        },
         {
             "role": "assistant",
             "content": "Echo: second turn",
+            "created_at": "2026-06-27T15:05:01+00:00",
             "metadata": {
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "trace_id": "trace-sqlite-0002",
+                "usecase": "default_chat",
             },
         },
     ]

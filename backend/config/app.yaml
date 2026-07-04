@@ -19,6 +19,7 @@ deployment:
   readiness:
     enabled: true
 
+# Orchestration runtime owns one user turn. It chooses how work should happen, not what every domain-specific response should say.
 orchestration:
   enabled: true
   defaults:
@@ -32,7 +33,7 @@ orchestration:
     max_tool_loop_iterations: 3
     max_context_bytes: 64000
     max_turn_duration_seconds: 120
-    max_stream_duration_seconds: 300
+    max_stream_duration_seconds: 360
     emit_step_events: true
     emit_tool_events: true
     emit_memory_events: true
@@ -40,7 +41,15 @@ orchestration:
     expose_strategy_metadata: true
     expose_chain_of_thought: false
     save_runtime_snapshots: false
-  strategies:
+    conversation_context:
+      enabled: true
+      mode: window
+      max_messages: 12
+      max_chars: 12000
+      include_assistant_messages: true
+      summary_threshold_messages: 24
+      summary_max_chars: 2000
+  strategies: # Strategies define the shape of a turn. They decide whether to answer directly, retrieve memory first, call tools, route among agents, update memory, or produce a fallback.
     direct_agent:
       enabled: true
       type: direct_agent
@@ -54,14 +63,31 @@ orchestration:
       tools_enabled: false
       stream_llm_deltas: true
       expose_strategy_metadata: true
+    retrieval_augmented:
+      enabled: true
+      type: retrieval_augmented
+      description: Search memory for relevant document context before answering.
+      default_agent: architecture_document_agent
+      allowed_usecases:
+        - architecture_document_qa
+      llm_profile: local_reasoning
+      memory_enabled: true
+      memory_write_enabled: false
+      tools_enabled: false
+      stream_llm_deltas: true
+      expose_strategy_metadata: true
+      memory:
+        default_limit: 8
+        include_document_chunks: true
+        include_user_memory: true
     bounded_planner:
-      enabled: false
+      enabled: true
       type: bounded_planner
       default_agent: support_agent
       planner_llm_profile: local_reasoning
       executor_llm_profile: local_reasoning
       memory_enabled: true
-      memory_write_enabled: false
+      memory_write_enabled: true
       tools_enabled: true
       max_plan_steps: 4
       max_execute_steps: 4
@@ -71,7 +97,7 @@ orchestration:
       stream_strategy_events: true
       expose_strategy_metadata: true
     memory_update:
-      enabled: false
+      enabled: true
       type: memory_update
       default_agent: support_agent
       llm_profile: local_reasoning
@@ -88,6 +114,7 @@ orchestration:
       message: I could not complete the full workflow, but here is the safest answer I can provide.
       allowed_usecases:
         - default_chat
+        - architecture_document_qa
       expose_strategy_metadata: true
   usecases:
     default_chat:
@@ -102,6 +129,29 @@ orchestration:
         - direct_agent
         - fallback_answer
       policy_profile: default
+    architecture_document_qa:
+      enabled: true
+      display_name: Architecture Document Q&A
+      description: Answer questions using retrieved architecture document context.
+      strategy: retrieval_augmented
+      agent: architecture_document_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - architecture_document_agent
+      allowed_strategies:
+        - retrieval_augmented
+        - fallback_answer
+      policy_profile: default
+      memory:
+        enabled: true
+        include_document_chunks: true
+        default_limit: 8
+        allowed_project_ids:
+          - arch_docs
+        default_project_id: arch_docs
+      tools:
+        enabled: false
+        allowed_tools: []
 
 api:
   enabled: true
@@ -148,6 +198,7 @@ api:
     send_trace_id_event: true
     send_metadata_events: true
 
+# The session layer owns the conversation/runtime lifecycle but not model/tool/memory behavior. A user's short-term conversation/runtime continuity.
 session:
   enabled: true
   identifiers:
@@ -207,7 +258,7 @@ features:
   trace_enabled: true
 
 tooling:
-  enabled: false
+  enabled: true
   defaults:
     timeout_seconds: 60
     stream_timeout_seconds: 300
@@ -223,6 +274,10 @@ tooling:
     require_configured_allowlist: true
     tools: {}
 
+# Agents provide task-specific intelligence. Strategies decide the workflow; agents perform task-specific answer/review/extraction behavior.
+# Agents may call LLMs through LLMGateway, memory through MemoryGateway, and tools through ToolGateway only when their contract and policy allow it
+# A strategy controls workflow shape. An agent controls task-specific intelligence.
+# An agent is a role or behavior. A plugin is the implementation that makes the role available.
 agents:
   defaults:
     enabled: true
@@ -231,6 +286,11 @@ agents:
     strict_prompt_profile_validation: false
     known_prompt_profiles:
       - general_assistant_v1
+      - document_qa_v1
+      - tool_using_v1
+      - project_agent_v1
+      - memory_curator_v1
+      - reviewer_v1
     max_prompt_context_bytes: 32000
     max_output_chars: 12000
     max_tool_intents: 3
@@ -240,7 +300,7 @@ agents:
     max_self_managed_memory_searches: 0
     allow_self_managed_tools: false
     allow_self_managed_memory: false
-    allow_memory_write: false
+    allow_memory_write: true
   plugins:
     support_agent:
       enabled: true
@@ -261,8 +321,41 @@ agents:
         self_managed_memory: false
         self_managed_tools: false
       allowed_tool_intents: []
+      allowed_memory_scopes: []
+    architecture_document_agent:
+      enabled: true
+      type: document_qa
+      display_name: Architecture Document Agent
+      description: Answers questions using retrieved architecture documents.
+      llm_profile: local_reasoning
+      prompt_profile: document_qa_v1
+      capabilities:
+        answer: true
+        review: false
+        stream: true
+        memory_read: true
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: false
+        tool_execute: false
+        self_managed_memory: false
+        self_managed_tools: false
+      context_policy:
+        require_context_for_grounded_claims: true
+        cite_context_labels: true
+        max_context_items: 6
+        max_context_bytes: 12000
+        allow_untrusted_context_instructions: false
+      allowed_tool_intents: []
       allowed_memory_scopes:
         - project
+        - usecase
+      memory:
+        search_enabled: true
+        write_enabled: false
+        allowed_project_ids:
+          - arch_docs
+        default_project_id: arch_docs
 
 llm:
   defaults:
@@ -295,14 +388,17 @@ llm:
       allowed_for:
         usecases:
           - default_chat
+          - architecture_document_qa
         agents:
           - support_agent
+          - architecture_document_agent
         strategies:
           - direct_agent
+          - retrieval_augmented
       fallback_profiles: []
 
 memory:
-  enabled: false
+  enabled: true
   provider: memory_store
   required: false
   defaults:
@@ -311,8 +407,8 @@ memory:
     include_agent_memories: true
     include_document_chunks: true
     include_graph_context: true
-    max_result_chars: 1200
-    max_total_context_chars: 8000
+    max_result_chars: 8000
+    max_total_context_chars: 16000
     trace_query_capture: none
     trace_result_content_capture: none
   store:
@@ -363,7 +459,7 @@ memory:
       graph: 0.03
       user_rating: 0.02
   lifecycle:
-    allow_writes: false
+    allow_writes: true
     default_ttl_days: null
     contradiction_policy: keep_both_mark_conflict
     supersede_policy: mark_previous_superseded
@@ -446,13 +542,15 @@ persistence:
       capture_tool_payloads: summaries_only
       capture_memory_queries: summaries_only
       retention:
-        enabled: false
+        enabled: true
         keep_days: 30
         cleanup_batch_size: 1000
+
+# Policy is implemented as a cross-cutting runtime layer. It does not execute actions. It decides whether actions are allowed, denied, or approval-required.
 policy:
   enabled: true
-  mode: enforce
-  default_decision: deny
+  mode: report_only # enforce
+  default_decision: allow # deny
   fail_closed: true
   default_profile: default
   profiles:
@@ -461,21 +559,24 @@ policy:
       deny_unknown_tools: true
       deny_unknown_llm_profiles: true
       require_memory_scope: true
-      allow_memory_writes: false
-      allow_write_tools: false
+      allow_memory_writes: true
+      allow_write_tools: true
       allow_destructive_tools: false
       allow_external_side_effect_tools: false
       allow_approval_required_tools: false
       usecases:
         allowed:
           - default_chat
+          - architecture_document_qa
       strategies:
         allowed:
           - direct_agent
+          - retrieval_augmented
           - fallback_answer
       agents:
         allowed:
           - support_agent
+          - architecture_document_agent
       llm:
         allowed_profiles:
           - local_reasoning
@@ -484,6 +585,8 @@ policy:
       memory:
         allowed_read_scopes:
           - project
+          - user  # when project_id is absent, usecase runs memory search in user scope
+          - usecase
         allowed_write_scopes: []
       tools:
         allowed_tools: []

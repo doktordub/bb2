@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
+from app.agents.prompts import resolve_prompt_text
 from app.contracts.agents import AgentPlugin
 from app.contracts.context import OrchestrationContext
 from app.contracts.llm import LLMRequest
@@ -14,6 +15,7 @@ from app.contracts.results import OrchestrationResult as LegacyOrchestrationResu
 from app.contracts.results import StreamEvent
 from app.orchestration.errors import normalize_orchestration_error
 from app.orchestration.events import OrchestrationStreamEvent
+from app.orchestration.message_catalog import default_message_template_service
 from app.orchestration.prompt_inputs import PromptSection, build_prompt_messages
 from app.orchestration.strategy_steps import build_step_summary, finalize_strategy_result, run_llm_completion_step
 
@@ -160,10 +162,14 @@ def _build_fallback_messages(
     sections = [
         PromptSection(
             title="Fallback guidance",
-            body=(
-                "Provide a short, safe fallback answer. Acknowledge uncertainty when needed, "
-                "do not mention internal errors, and do not imply that unavailable memory, tools, "
-                "or side effects succeeded."
+            body=resolve_prompt_text(
+                "fallback_answer",
+                "guidance",
+                fallback=(
+                    "Provide a short, safe fallback answer. Acknowledge uncertainty when needed, "
+                    "do not mention internal errors, and do not imply that unavailable memory, tools, "
+                    "or side effects succeeded."
+                ),
             ),
         ),
         PromptSection(
@@ -182,9 +188,13 @@ def _build_fallback_messages(
     return build_prompt_messages(
         user_request=message,
         sections=sections,
-        system_prompt=(
-            "You are generating a safe fallback answer for a partially degraded workflow. "
-            "Keep the answer concise, honest about limitations, and free of internal implementation details."
+        system_prompt=resolve_prompt_text(
+            "fallback_answer",
+            "llm_system_prompt",
+            fallback=(
+                "You are generating a safe fallback answer for a partially degraded workflow. "
+                "Keep the answer concise, honest about limitations, and free of internal implementation details."
+            ),
         ),
     )
 
@@ -211,7 +221,11 @@ def _resolve_llm_profile(context: OrchestrationContext) -> str | None:
 def _static_message(context: OrchestrationContext) -> str:
     if context.strategy_settings is not None and context.strategy_settings.message is not None:
         return context.strategy_settings.message
-    return _DEFAULT_FALLBACK_MESSAGE
+    return default_message_template_service().get_text(
+        "fallback_answer",
+        "default_message",
+        fallback=_DEFAULT_FALLBACK_MESSAGE,
+    )
 
 
 def _safe_answer_text(value: object, fallback: str) -> str:

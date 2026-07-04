@@ -2,8 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from app.agents.builtin_catalog import clear_builtin_agent_catalog_cache
 from app.config.loader import load_validated_config
 from app.contracts.errors import ConfigurationError
+from app.orchestration.message_catalog import clear_message_catalog_cache
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "config"
 BASE_FIXTURE_PATH = FIXTURES_DIR / "valid_minimal.yaml"
@@ -338,6 +340,44 @@ def test_load_validated_config_rejects_invalid_orchestration_fixture_configurati
     ("override_body", "expected_message"),
     [
         (
+            "orchestration:\n"
+            "  defaults:\n"
+            "    conversation_context:\n"
+            "      mode: broken_mode\n",
+            "orchestration.defaults.conversation_context.mode",
+        ),
+        (
+            "orchestration:\n"
+            "  defaults:\n"
+            "    conversation_context:\n"
+            "      max_messages: 12\n"
+            "      summary_threshold_messages: 8\n",
+            "summary_threshold_messages must be greater than or equal to max_messages",
+        ),
+    ],
+)
+def test_load_validated_config_rejects_invalid_conversation_context_configuration(
+    tmp_path: Path,
+    override_body: str,
+    expected_message: str,
+) -> None:
+    override_path = tmp_path / "invalid_conversation_context.yaml"
+    override_path.write_text(override_body, encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(
+            BASE_FIXTURE_PATH,
+            override_path=override_path,
+            env={},
+        )
+
+    assert expected_message in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("override_body", "expected_message"),
+    [
+        (
             "memory:\n"
             "  enabled: false\n"
             "orchestration:\n"
@@ -566,3 +606,171 @@ def test_load_validated_config_rejects_deployment_profile_mismatch(tmp_path: Pat
         )
 
     assert "deployment.profile must match app.environment." in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("override_body", "expected_message"),
+    [
+        (
+            "orchestration:\n"
+            "  usecases:\n"
+            "    support_chat:\n"
+            "      memory:\n"
+            "        allowed_project_ids:\n"
+            "          - arch_docs\n"
+            "        default_project_id: design_docs\n",
+            "default_project_id must be one of allowed_project_ids",
+        ),
+        (
+            "agents:\n"
+            "  plugins:\n"
+            "    support_agent:\n"
+            "      memory:\n"
+            "        allowed_project_ids:\n"
+            "          - arch_docs\n"
+            "        default_project_id: design_docs\n",
+            "default_project_id must be one of allowed_project_ids",
+        ),
+        (
+            "orchestration:\n"
+            "  usecases:\n"
+            "    support_chat:\n"
+            "      strategy: direct_agent\n"
+            "      agent: support_agent\n"
+            "      allowed_agents:\n"
+            "        - support_agent\n"
+            "      policy_profile: default\n"
+            "      memory:\n"
+            "        allowed_project_ids:\n"
+            "          - arch_docs\n"
+            "agents:\n"
+            "  plugins:\n"
+            "    support_agent:\n"
+            "      memory:\n"
+            "        allowed_project_ids:\n"
+            "          - design_docs\n",
+            "do not share any allowed memory project_ids",
+        ),
+    ],
+)
+def test_load_validated_config_rejects_invalid_memory_project_scope_configuration(
+    tmp_path: Path,
+    override_body: str,
+    expected_message: str,
+) -> None:
+    override_path = tmp_path / "invalid_memory_projects.yaml"
+    override_path.write_text(override_body, encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(
+            BASE_FIXTURE_PATH,
+            override_path=override_path,
+            env={},
+        )
+
+    assert expected_message in str(exc_info.value)
+
+
+def test_load_validated_config_rejects_blank_agent_prompt_override(tmp_path: Path) -> None:
+    override_path = tmp_path / "invalid_agent_prompts.yaml"
+    override_path.write_text(
+        "agents:\n"
+        "  plugins:\n"
+        "    support_agent:\n"
+        "      prompts:\n"
+        "        system_prompt: '   '\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(
+            BASE_FIXTURE_PATH,
+            override_path=override_path,
+            env={},
+        )
+
+    assert "prompts.system_prompt" in str(exc_info.value)
+
+
+def test_load_validated_config_allows_strict_prompt_validation_with_explicit_override(
+    tmp_path: Path,
+) -> None:
+    override_path = tmp_path / "valid_agent_prompts.yaml"
+    override_path.write_text(
+        "agents:\n"
+        "  defaults:\n"
+        "    strict_prompt_profile_validation: true\n"
+        "  plugins:\n"
+        "    support_agent:\n"
+        "      prompt_profile: null\n"
+        "      prompts:\n"
+        "        system_prompt: Use the explicit configured prompt.\n",
+        encoding="utf-8",
+    )
+
+    config = load_validated_config(
+        BASE_FIXTURE_PATH,
+        override_path=override_path,
+        env={},
+    )
+
+    assert config.agents.plugins["support_agent"].prompts.system_prompt == "Use the explicit configured prompt."
+
+
+def test_load_validated_config_rejects_invalid_message_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "messages.yaml"
+    path.write_text(
+        "messages:\n"
+        "  fallback_answer:\n"
+        "    default_message: '   '\n"
+        "  memory_update:\n"
+        "    no_candidate_answer: ok\n"
+        "    approval_required_answer: ok\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APP_MESSAGES_CONFIG_PATH", str(path))
+    clear_message_catalog_cache()
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(BASE_FIXTURE_PATH, env={})
+
+    assert "messages.fallback_answer.default_message" in str(exc_info.value)
+
+
+def test_load_validated_config_rejects_invalid_builtin_agent_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "agents.catalog.yaml"
+    path.write_text(
+        "builtin_agents:\n"
+        "  general_assistant:\n"
+        "    module: app.agents.plugins.general_assistant\n"
+        "    class_name: MissingAgent\n"
+        "  document_qa:\n"
+        "    module: app.agents.plugins.document_qa\n"
+        "    class_name: DocumentQaAgent\n"
+        "  tool_using:\n"
+        "    module: app.agents.plugins.tool_using\n"
+        "    class_name: ToolUsingAgent\n"
+        "  project_agent:\n"
+        "    module: app.agents.plugins.project_agent\n"
+        "    class_name: ProjectAgent\n"
+        "  memory_curator:\n"
+        "    module: app.agents.plugins.memory_curator\n"
+        "    class_name: MemoryCuratorAgent\n"
+        "  reviewer:\n"
+        "    module: app.agents.plugins.reviewer\n"
+        "    class_name: ReviewerAgent\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APP_BUILTIN_AGENTS_CATALOG_PATH", str(path))
+    clear_builtin_agent_catalog_cache()
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(BASE_FIXTURE_PATH, env={})
+
+    assert "Built-in agent class 'MissingAgent'" in str(exc_info.value)

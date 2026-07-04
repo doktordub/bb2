@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.orchestration.models import ConversationMessage
 from app.orchestration.memory_intents import MemoryCandidate
 from app.orchestration.models import sanitize_metadata
 from app.orchestration.prompt_inputs import PromptSection
@@ -200,6 +201,7 @@ class AgentRunRequest:
     llm_profile: str | None = None
     strategy_name: str | None = None
     session_summary: str | None = None
+    conversation_history: tuple[ConversationMessage, ...] = ()
     context_items: tuple[PromptContextItem, ...] = ()
     tool_context: tuple[ToolContextItem, ...] = ()
     available_tools: tuple[str, ...] = ()
@@ -218,6 +220,7 @@ class AgentRunRequest:
         object.__setattr__(self, "llm_profile", _optional_text(self.llm_profile))
         object.__setattr__(self, "strategy_name", _optional_text(self.strategy_name))
         object.__setattr__(self, "session_summary", _optional_text(self.session_summary))
+        object.__setattr__(self, "conversation_history", tuple(self.conversation_history))
         object.__setattr__(self, "available_tools", _normalize_tool_names(self.available_tools))
         object.__setattr__(self, "constraints", _normalize_text_tuple(self.constraints))
         object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))

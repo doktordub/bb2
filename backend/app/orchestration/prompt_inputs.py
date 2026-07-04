@@ -36,10 +36,16 @@ def build_prompt_messages(
     user_request: str,
     sections: Sequence[PromptSection] = (),
     system_prompt: str | None = None,
+    prior_messages: Sequence[LLMMessage] = (),
 ) -> list[LLMMessage]:
     messages: list[LLMMessage] = []
     if system_prompt is not None:
         messages.append(LLMMessage(role="system", content=_normalize_text(system_prompt)))
+
+    for message in prior_messages:
+        if not isinstance(message, LLMMessage):
+            raise TypeError("Prior prompt messages must be LLMMessage values.")
+        messages.append(message)
 
     user_parts: list[str] = []
     rendered_sections = render_prompt_sections(sections)

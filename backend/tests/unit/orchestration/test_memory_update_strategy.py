@@ -4,6 +4,7 @@ import pytest
 
 from app.config.view import get_orchestration_settings
 from app.contracts.context import OrchestrationContext, RequestContext
+from app.orchestration.message_catalog import clear_message_catalog_cache
 from app.orchestration.limits import OrchestrationLimitTracker
 from app.orchestration.strategies.memory_update import MemoryUpdateStrategy
 from app.testing.fakes import (
@@ -152,3 +153,72 @@ async def test_memory_update_strategy_respects_write_limit_for_explicit_candidat
     assert result.metadata["candidate_count"] == 2
     assert result.metadata["memory_write_count"] == 1
     assert result.metadata["skipped_candidate_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_memory_update_strategy_returns_no_candidate_message_when_no_durable_memory_is_found() -> None:
+    config = build_config()
+    context = build_context(
+        config,
+        message="Thanks for the update.",
+        metadata={"memory_candidates": []},
+    )
+
+    result = await MemoryUpdateStrategy().run(context=context, agents=[])
+
+    assert result.answer == "I did not find any durable memory to store from that request."
+    assert result.metadata["candidate_count"] == 0
+    assert result.metadata["memory_write_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_memory_update_strategy_uses_message_catalog_for_safe_messages(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "messages.yaml"
+    path.write_text(
+        "messages:\n"
+        "  fallback_answer:\n"
+        "    default_message: Catalog fallback answer.\n"
+        "  memory_update:\n"
+        "    no_candidate_answer: Catalog says nothing to store.\n"
+        "    approval_required_answer: Catalog says approval is required.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("APP_MESSAGES_CONFIG_PATH", str(path))
+    clear_message_catalog_cache()
+
+    config = build_config()
+    no_candidate_context = build_context(
+        config,
+        message="Thanks for the update.",
+        metadata={"memory_candidates": []},
+    )
+
+    no_candidate_result = await MemoryUpdateStrategy().run(
+        context=no_candidate_context,
+        agents=[],
+    )
+
+    assert no_candidate_result.answer == "Catalog says nothing to store."
+
+    approval_context = build_context(
+        config,
+        message="Remember that phase 5 is active.",
+        metadata={
+            "memory_candidates": [
+                {
+                    "text": "phase 5 is active",
+                    "memory_type": "project_fact",
+                    "scope": "project",
+                }
+            ]
+        },
+        policy=FakePolicyService(approval_required_actions={"memory.upsert"}),
+    )
+
+    approval_result = await MemoryUpdateStrategy().run(context=approval_context, agents=[])
+
+    assert approval_result.answer == "Catalog says approval is required."
+    assert approval_result.memory_updates[0]["safe_message"] == "Catalog says approval is required."

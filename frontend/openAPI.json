@@ -1,0 +1,1655 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "pluggable-agentic-ai-backend",
+    "description": "Thin REST and SSE backend boundary for chat, session, health, and capabilities routes.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get Health",
+        "operationId": "get_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "Get Capabilities",
+        "operationId": "get_capabilities_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Post Chat",
+        "description": "Handle a non-streaming chat request through the session-service boundary.",
+        "operationId": "post_chat_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/stream": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Post Chat Stream",
+        "description": "Handle a streaming chat request through the session-service boundary.",
+        "operationId": "post_chat_stream_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}/reset": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Reset Session",
+        "description": "Clear workflow state for one session through the session-service boundary.",
+        "operationId": "reset_session_sessions__session_id__reset_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}/history": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Get Session History",
+        "description": "Return safe bounded history for one session through the session-service boundary.",
+        "operationId": "get_session_history_sessions__session_id__history_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "List Sessions",
+        "description": "Return safe bounded session summaries through the session-service boundary.",
+        "operationId": "list_sessions_sessions_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "Delete Session",
+        "description": "Delete one session through the session-service boundary.",
+        "operationId": "delete_session_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDeleteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug/traces/{trace_id}": {
+      "get": {
+        "tags": [
+          "debug"
+        ],
+        "summary": "Get Debug Trace",
+        "operationId": "get_debug_trace_debug_traces__trace_id__get",
+        "parameters": [
+          {
+            "name": "trace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trace Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Debug Trace Debug Traces  Trace Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug/traces": {
+      "get": {
+        "tags": [
+          "debug"
+        ],
+        "summary": "Search Debug Traces",
+        "operationId": "search_debug_traces_debug_traces_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "errors_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Errors Only"
+            }
+          },
+          {
+            "name": "usecase",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Usecase"
+            }
+          },
+          {
+            "name": "event_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Name"
+            }
+          },
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Search Debug Traces Debug Traces Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/restart": {
+      "post": {
+        "tags": [
+          "debug"
+        ],
+        "summary": "Request Restart",
+        "operationId": "request_restart_restart_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentCapabilities": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "streaming_supported": {
+            "type": "boolean",
+            "title": "Streaming Supported"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "display_name",
+          "type",
+          "streaming_supported"
+        ],
+        "title": "AgentCapabilities",
+        "description": "Frontend-safe agent descriptor surfaced through capabilities."
+      },
+      "CapabilitiesResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CapabilitiesResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "CapabilitiesResponse",
+        "description": "Stable public response envelope for backend capabilities."
+      },
+      "CapabilitiesResponseData": {
+        "properties": {
+          "chat": {
+            "$ref": "#/components/schemas/ChatCapabilities"
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/SessionCapabilities"
+          },
+          "usecases": {
+            "items": {
+              "$ref": "#/components/schemas/UseCaseCapability"
+            },
+            "type": "array",
+            "title": "Usecases"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilities"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "debug": {
+            "$ref": "#/components/schemas/DebugCapabilities"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/ToolingCapabilities"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryCapabilities"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/LLMCapabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chat",
+          "sessions",
+          "debug",
+          "tools",
+          "memory",
+          "llm"
+        ],
+        "title": "CapabilitiesResponseData",
+        "description": "Frontend-safe capabilities response payload."
+      },
+      "ChatCapabilities": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "streaming_enabled": {
+            "type": "boolean",
+            "title": "Streaming Enabled"
+          },
+          "max_message_chars": {
+            "type": "integer",
+            "title": "Max Message Chars"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "streaming_enabled",
+          "max_message_chars"
+        ],
+        "title": "ChatCapabilities",
+        "description": "Frontend-safe chat capability flags."
+      },
+      "ChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "usecase": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usecase"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest",
+        "description": "Public request payload for non-streaming and streaming chat endpoints."
+      },
+      "ChatResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChatResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "session_id",
+          "data"
+        ],
+        "title": "ChatResponse",
+        "description": "Stable public response envelope for chat operations."
+      },
+      "ChatResponseData": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "agent_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Name"
+          },
+          "strategy_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Name"
+          },
+          "llm_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Profile"
+          },
+          "tool_calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Tool Calls"
+          },
+          "memory_updates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Memory Updates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "ChatResponseData",
+        "description": "Response body for chat results."
+      },
+      "DebugCapabilities": {
+        "properties": {
+          "trace_routes_enabled": {
+            "type": "boolean",
+            "title": "Trace Routes Enabled"
+          },
+          "restart_enabled": {
+            "type": "boolean",
+            "title": "Restart Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_routes_enabled"
+        ],
+        "title": "DebugCapabilities",
+        "description": "Frontend-safe debug-route capability flags."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          },
+          "service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "backend": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Backend"
+          },
+          "api": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Api"
+          },
+          "workflow_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Workflow State"
+          },
+          "trace": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trace"
+          },
+          "memory": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Memory"
+          },
+          "llm": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Llm"
+          },
+          "mcp": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Mcp"
+          },
+          "orchestration": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Orchestration"
+          },
+          "checks": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "description": "Frontend-safe health response DTO."
+      },
+      "LLMCapabilities": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "default_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Profile"
+          },
+          "streaming_supported": {
+            "type": "boolean",
+            "title": "Streaming Supported"
+          },
+          "structured_output_supported": {
+            "type": "boolean",
+            "title": "Structured Output Supported"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "streaming_supported",
+          "structured_output_supported"
+        ],
+        "title": "LLMCapabilities",
+        "description": "Frontend-safe LLM capability flags."
+      },
+      "MemoryCapabilities": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "search_available": {
+            "type": "boolean",
+            "title": "Search Available"
+          },
+          "ingest_available": {
+            "type": "boolean",
+            "title": "Ingest Available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "configured",
+          "search_available",
+          "ingest_available"
+        ],
+        "title": "MemoryCapabilities",
+        "description": "Frontend-safe memory capability flags."
+      },
+      "ResetSessionRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "title": "ResetSessionRequest",
+        "description": "Public request payload for session reset."
+      },
+      "ResetSessionResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ResetSessionResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "session_id",
+          "data"
+        ],
+        "title": "ResetSessionResponse",
+        "description": "Stable public response envelope for session reset."
+      },
+      "ResetSessionResponseData": {
+        "properties": {
+          "reset": {
+            "type": "boolean",
+            "title": "Reset"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reset",
+          "message"
+        ],
+        "title": "ResetSessionResponseData",
+        "description": "Response body for session reset."
+      },
+      "RestartResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RestartResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "data"
+        ],
+        "title": "RestartResponse",
+        "description": "Stable public response envelope for backend restart requests."
+      },
+      "RestartResponseData": {
+        "properties": {
+          "restart_requested": {
+            "type": "boolean",
+            "title": "Restart Requested"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "requested_at": {
+            "type": "string",
+            "title": "Requested At"
+          },
+          "signal_path": {
+            "type": "string",
+            "title": "Signal Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "restart_requested",
+          "request_id",
+          "requested_at",
+          "signal_path"
+        ],
+        "title": "RestartResponseData",
+        "description": "Response body for accepted restart requests."
+      },
+      "SessionCapabilities": {
+        "properties": {
+          "reset_enabled": {
+            "type": "boolean",
+            "title": "Reset Enabled"
+          },
+          "history_enabled": {
+            "type": "boolean",
+            "title": "History Enabled",
+            "default": false
+          },
+          "list_enabled": {
+            "type": "boolean",
+            "title": "List Enabled",
+            "default": false
+          },
+          "delete_enabled": {
+            "type": "boolean",
+            "title": "Delete Enabled",
+            "default": false
+          },
+          "client_session_id_enabled": {
+            "type": "boolean",
+            "title": "Client Session Id Enabled"
+          },
+          "continuity_enabled": {
+            "type": "boolean",
+            "title": "Continuity Enabled",
+            "default": false
+          },
+          "continuity_mode": {
+            "type": "string",
+            "title": "Continuity Mode",
+            "default": "disabled"
+          },
+          "summary_compaction_enabled": {
+            "type": "boolean",
+            "title": "Summary Compaction Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "reset_enabled",
+          "client_session_id_enabled"
+        ],
+        "title": "SessionCapabilities",
+        "description": "Frontend-safe session capability flags."
+      },
+      "SessionDeleteResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SessionDeleteResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "session_id",
+          "data"
+        ],
+        "title": "SessionDeleteResponse",
+        "description": "Stable public response envelope for session deletion."
+      },
+      "SessionDeleteResponseData": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted",
+          "message"
+        ],
+        "title": "SessionDeleteResponseData",
+        "description": "Response body for session deletion."
+      },
+      "SessionHistoryMessageData": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "SessionHistoryMessageData",
+        "description": "Frontend-safe message projection for session history."
+      },
+      "SessionHistoryResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SessionHistoryResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "session_id",
+          "data"
+        ],
+        "title": "SessionHistoryResponse",
+        "description": "Stable public response envelope for session history."
+      },
+      "SessionHistoryResponseData": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/SessionHistoryMessageData"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          }
+        },
+        "type": "object",
+        "required": [
+          "truncated"
+        ],
+        "title": "SessionHistoryResponseData",
+        "description": "Response body for session history."
+      },
+      "SessionListResponse": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SessionListResponseData"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "data"
+        ],
+        "title": "SessionListResponse",
+        "description": "Stable public response envelope for session listing."
+      },
+      "SessionListResponseData": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummaryData"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "limit",
+          "has_more"
+        ],
+        "title": "SessionListResponseData",
+        "description": "Response body for session listing."
+      },
+      "SessionSummaryData": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "usecase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usecase"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity At"
+          },
+          "reset_count": {
+            "type": "integer",
+            "title": "Reset Count"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "status",
+          "reset_count",
+          "message_count"
+        ],
+        "title": "SessionSummaryData",
+        "description": "Frontend-safe session summary DTO."
+      },
+      "ToolingCapabilities": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "streaming_supported": {
+            "type": "boolean",
+            "title": "Streaming Supported"
+          },
+          "total_tools": {
+            "type": "integer",
+            "title": "Total Tools"
+          },
+          "approval_required_tools": {
+            "type": "integer",
+            "title": "Approval Required Tools"
+          },
+          "safety_levels": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Safety Levels"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transport"
+          },
+          "discovery_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discovery Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "configured",
+          "streaming_supported",
+          "total_tools",
+          "approval_required_tools"
+        ],
+        "title": "ToolingCapabilities",
+        "description": "Frontend-safe tool-gateway capability flags."
+      },
+      "UseCaseCapability": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "strategy_type": {
+            "type": "string",
+            "title": "Strategy Type"
+          },
+          "streaming_supported": {
+            "type": "boolean",
+            "title": "Streaming Supported"
+          },
+          "memory_enabled": {
+            "type": "boolean",
+            "title": "Memory Enabled"
+          },
+          "tools_enabled": {
+            "type": "boolean",
+            "title": "Tools Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "display_name",
+          "strategy_type",
+          "streaming_supported",
+          "memory_enabled",
+          "tools_enabled"
+        ],
+        "title": "UseCaseCapability",
+        "description": "Frontend-safe description of one logical use case."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "chat",
+      "description": "Chat request/response routes."
+    },
+    {
+      "name": "foundation",
+      "description": "Backend health and capabilities routes."
+    }
+  ]
+}

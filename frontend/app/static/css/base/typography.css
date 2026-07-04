@@ -1,0 +1,97 @@
+a {
+  color: inherit;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 30;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+.brand-title {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brand-caption {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brand-caption,
+.hint,
+.meta-label,
+.eyebrow,
+.meta-value,
+.lede,
+.placeholder-stack p,
+.info-card p,
+.error-shell p,
+.mobile-nav-panel__meta,
+.status-chip__label {
+  color: var(--text-muted);
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+}
+
+.page-header h1,
+.error-shell h1,
+.info-card h2,
+.panel-header h2,
+.message-card h3,
+.info-card h3 {
+  margin-top: 0;
+  color: var(--text-strong);
+  font-family: var(--font-display);
+}
+
+.page-header h1 {
+  margin-bottom: 0.5rem;
+  font-size: clamp(1.55rem, 3vw, 2.35rem);
+}
+
+.lede,
+.placeholder-stack p,
+.info-card p,
+.error-shell p {
+  line-height: 1.6;
+}
+
+.meta-label {
+  margin-bottom: 0.2rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.meta-value {
+  margin-top: 0;
+  word-break: break-word;
+  font-family: var(--font-mono);
+}
+
+.workspace-status-bar__value,
+.workspace-status-bar__label,
+.tab-strip__button,
+.tab-strip__link {
+  overflow-wrap: anywhere;
+}

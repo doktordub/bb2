@@ -57,6 +57,14 @@ def build_memory_policy_request(
         "memory_write": action in _MEMORY_WRITE_ACTIONS,
         "memory_admin": action in _MEMORY_ADMIN_ACTIONS,
     }
+    project_scope_resolution = _optional_text(scope.metadata.get("project_scope_resolution"))
+    if project_scope_resolution is not None:
+        metadata["project_scope_resolution"] = project_scope_resolution
+    project_scope_allowed_count = _read_positive_int(
+        scope.metadata.get("project_scope_allowed_count")
+    )
+    if project_scope_allowed_count is not None:
+        metadata["project_scope_allowed_count"] = project_scope_allowed_count
     if memory_write is not None:
         metadata.update(
             {
@@ -248,3 +256,11 @@ def _optional_text(value: object) -> str | None:
 
 def _read_bool(value: object, default: bool) -> bool:
     return value if isinstance(value, bool) else default
+
+
+def _read_positive_int(value: object) -> int | None:
+    if not isinstance(value, int):
+        return None
+    if value <= 0:
+        return None
+    return value

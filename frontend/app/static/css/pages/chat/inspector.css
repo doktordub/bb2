@@ -1,0 +1,96 @@
+.inspector-utility {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  box-shadow: var(--shadow-panel);
+}
+
+.inspector-summary,
+.inspector-list,
+.inspector-stack,
+.inspector-future-details__body {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.inspector-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.inspector-list li {
+  color: var(--text-main);
+}
+
+.compact-card__actions .btn {
+  min-height: 1.5rem;
+  padding-block: 0.2rem;
+  padding-inline: 0.5rem;
+  font-size: 0.72rem;
+}
+
+.inspector-card {
+  box-shadow: none;
+  padding: 0.78rem 0.85rem;
+  gap: 0.55rem;
+}
+
+.inspector-card--future {
+  opacity: 0.86;
+}
+
+.inspector-card h3,
+.inspector-future-note h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.inspector-card .eyebrow {
+  margin-bottom: 0.2rem;
+}
+
+.inspector-card .compact-card__actions {
+  margin-top: 0.1rem;
+}
+
+.inspector-summary p,
+.inspector-future-note p {
+  margin: 0;
+}
+
+.inspector-trace-actions .btn {
+  flex: 1 1 auto;
+}
+
+.inspector-future-details {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.25rem 0.25rem 0.4rem;
+}
+
+.inspector-future-details summary {
+  cursor: pointer;
+  padding: 0.35rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.inspector-future-details[open] summary {
+  margin-bottom: 0.35rem;
+}
+
+.inspector-future-note {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.inspector-future-note:first-child {
+  border-top: 0;
+}

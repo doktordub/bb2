@@ -60,6 +60,7 @@ This document follows the established backend rules:
 - Memory trace events must be safe, bounded, and redacted.
 - Raw memory/document content must not be logged or traced by default.
 - Memory scope, user scope, project scope, and privacy controls must be enforced before read/write/delete operations.
+- Named project allowlists and defaults are configuration-owned at the use-case and agent layers; runtime memory operations resolve one effective `project_id` before adapter access rather than fanning one request across multiple projects.
 - Search results returned to agents should be relevant memory records or document chunks, not entire documents by default.
 
 ---

@@ -1,0 +1,117 @@
+.page-hero {
+  padding: 0.95rem 1.05rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(78, 195, 200, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.page-hero--compact {
+  padding-block: 0.85rem;
+}
+
+.card-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.panel,
+.info-card,
+.message-card {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%),
+    var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.panel,
+.info-card,
+.message-card,
+.error-shell {
+  padding: 0.9rem;
+}
+
+.panel--dense,
+.info-card--dense,
+.compact-card {
+  padding: 0.75rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.panel-header__cluster {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.panel-header__cluster .hint {
+  margin: 0;
+}
+
+.panel-center {
+  min-height: 26rem;
+}
+
+.placeholder-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.compact-card--soft {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 100%);
+}
+
+.message-card-user {
+  border-color: rgba(104, 231, 219, 0.28);
+}
+
+.message-card-assistant {
+  border-color: rgba(74, 153, 255, 0.26);
+}
+
+.detail-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.detail-list dt {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.detail-list dd {
+  margin: 0;
+  color: var(--text-main);
+  text-align: right;
+  font-family: var(--font-mono);
+}

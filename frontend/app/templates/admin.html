@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Admin | {{ frontend_app_name }}{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/admin/index.css', v=static_version) }}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell page-shell--wide container-xxl workspace-shell admin-shell">
+  <header class="admin-toolbar" aria-label="Admin workspace controls">
+    <div class="workspace-status-bar admin-status-bar" aria-label="Admin runtime summary">
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Health</span>
+        <span class="state-pill state-pill--checking" data-admin-health-pill>Health: Checking</span>
+      </div>
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Debug</span>
+        <span class="state-pill state-pill--checking" data-admin-debug-pill>Debug traces: Checking</span>
+      </div>
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Restart</span>
+        <span class="state-pill state-pill--checking" data-admin-restart-pill>Restart: Hidden</span>
+      </div>
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Service</span>
+        <span class="workspace-status-bar__value" data-admin-service-name>Loading</span>
+      </div>
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Environment</span>
+        <span class="workspace-status-bar__value" data-admin-service-environment>Loading</span>
+      </div>
+      <div class="workspace-status-bar__item">
+        <span class="workspace-status-bar__label">Version</span>
+        <span class="workspace-status-bar__value" data-admin-service-version>Loading</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="tab-strip admin-tab-strip" role="tablist" aria-label="Admin sections" data-admin-tablist>
+    <button class="tab-strip__button is-active" type="button" role="tab" id="admin-tab-health" aria-selected="true" aria-controls="admin-panel-health" tabindex="0" data-admin-tab="health">Health</button>
+    <button class="tab-strip__button" type="button" role="tab" id="admin-tab-capabilities" aria-selected="false" aria-controls="admin-panel-capabilities" tabindex="-1" data-admin-tab="capabilities">Capabilities</button>
+    <button class="tab-strip__button" type="button" role="tab" id="admin-tab-debug" aria-selected="false" aria-controls="admin-panel-debug" tabindex="-1" data-admin-tab="debug">Debug</button>
+    <button class="tab-strip__button" type="button" role="tab" id="admin-tab-runtime" aria-selected="false" aria-controls="admin-panel-runtime" tabindex="-1" data-admin-tab="runtime">Runtime</button>
+  </div>
+
+  <section class="admin-tab-panel is-active" id="admin-panel-health" role="tabpanel" aria-labelledby="admin-tab-health" tabindex="0" data-admin-panel="health">
+    <div class="card-grid admin-card-grid admin-card-grid--health">
+      <article class="info-card info-card--wide">
+        <p class="eyebrow">Backend health</p>
+        <h2>Health snapshot</h2>
+        <dl class="detail-list">
+          <div class="detail-row">
+            <dt>Overall status</dt>
+            <dd data-admin-overall-status>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Service</dt>
+            <dd data-admin-service-name-detail>Loading</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Version</dt>
+            <dd data-admin-service-version-detail>Loading</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Environment</dt>
+            <dd data-admin-service-environment-detail>Loading</dd>
+          </div>
+        </dl>
+        <details class="admin-json-shell">
+          <summary>Raw health payload</summary>
+          <pre class="admin-json-view" data-admin-health-json>Health payload will appear here.</pre>
+        </details>
+      </article>
+
+      <article class="info-card">
+        <p class="eyebrow">Subsystems</p>
+        <h2>Service readiness</h2>
+        <ul class="admin-list" data-admin-subsystems>
+          <li class="admin-list__item">Health data will load here.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="admin-panel-capabilities" role="tabpanel" aria-labelledby="admin-tab-capabilities" tabindex="0" data-admin-panel="capabilities" hidden>
+    <div class="card-grid admin-card-grid admin-card-grid--capabilities">
+      <article class="info-card">
+        <p class="eyebrow">Chat</p>
+        <h2>Capability snapshot</h2>
+        <dl class="detail-list">
+          <div class="detail-row">
+            <dt>Composer</dt>
+            <dd data-admin-chat-enabled>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Streaming</dt>
+            <dd data-admin-chat-streaming>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Message limit</dt>
+            <dd data-admin-chat-limit>Checking</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="info-card">
+        <p class="eyebrow">Sessions</p>
+        <h2>Session controls</h2>
+        <dl class="detail-list">
+          <div class="detail-row">
+            <dt>List</dt>
+            <dd data-admin-session-list>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>History</dt>
+            <dd data-admin-session-history>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Reset</dt>
+            <dd data-admin-session-reset>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Delete</dt>
+            <dd data-admin-session-delete>Checking</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="info-card info-card--wide">
+        <p class="eyebrow">Use cases and agents</p>
+        <h2>Catalog</h2>
+        <div class="admin-catalog">
+          <section>
+            <h3>Use cases</h3>
+            <ul class="admin-list" data-admin-usecases>
+              <li class="admin-list__item">Use cases will load here.</li>
+            </ul>
+          </section>
+          <section>
+            <h3>Agents</h3>
+            <ul class="admin-list" data-admin-agents>
+              <li class="admin-list__item">Agents will load here.</li>
+            </ul>
+          </section>
+        </div>
+        <details class="admin-json-shell">
+          <summary>Raw capabilities payload</summary>
+          <pre class="admin-json-view" data-admin-capabilities-json>Capability payload will appear here.</pre>
+        </details>
+      </article>
+
+      <article class="info-card">
+        <p class="eyebrow">Tools, memory, and LLM</p>
+        <h2>Backend features</h2>
+        <dl class="detail-list">
+          <div class="detail-row">
+            <dt>Tools</dt>
+            <dd data-admin-tools-status>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Approvals</dt>
+            <dd data-admin-tools-approvals>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>Memory</dt>
+            <dd data-admin-memory-status>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>LLM profile</dt>
+            <dd data-admin-llm-profile>Checking</dd>
+          </div>
+          <div class="detail-row">
+            <dt>LLM streaming</dt>
+            <dd data-admin-llm-streaming>Checking</dd>
+          </div>
+        </dl>
+      </article>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="admin-panel-debug" role="tabpanel" aria-labelledby="admin-tab-debug" tabindex="0" data-admin-panel="debug" hidden>
+    <div class="card-grid admin-card-grid admin-card-grid--debug">
+      <article id="trace-access" class="info-card">
+        <p class="eyebrow">Debug traces</p>
+        <h2>Trace access</h2>
+        <p data-admin-debug-copy>Checking trace routing status.</p>
+        <div class="admin-inline-actions">
+          <span class="state-pill state-pill--checking" data-admin-trace-pill>Checking</span>
+          <button class="btn btn-shell btn-shell--compact" type="button" data-admin-trace-button disabled>Load recent traces</button>
+        </div>
+      </article>
+
+      <article class="info-card info-card--wide">
+        <p class="eyebrow">Trace search</p>
+        <h2>Debug trace lookup</h2>
+        <form class="admin-search-grid" data-admin-trace-form novalidate>
+          <label class="field-group" for="admin-trace-id">
+            <span class="field-label">Trace ID</span>
+            <input id="admin-trace-id" class="form-control" name="trace_id" type="text" placeholder="trace_..." data-admin-trace-id>
+          </label>
+          <label class="field-group" for="admin-trace-status">
+            <span class="field-label">Status</span>
+            <input id="admin-trace-status" class="form-control" name="status" type="text" placeholder="completed, failed, started" data-admin-trace-status>
+          </label>
+          <label class="field-group" for="admin-trace-usecase">
+            <span class="field-label">Use case</span>
+            <input id="admin-trace-usecase" class="form-control" name="usecase" type="text" placeholder="default_chat" data-admin-trace-usecase>
+          </label>
+          <label class="field-group" for="admin-trace-event-name">
+            <span class="field-label">Event name</span>
+            <input id="admin-trace-event-name" class="form-control" name="event_name" type="text" placeholder="request_received" data-admin-trace-event-name>
+          </label>
+          <label class="field-group" for="admin-trace-event-type">
+            <span class="field-label">Event type</span>
+            <input id="admin-trace-event-type" class="form-control" name="event_type" type="text" placeholder="request, llm, tool" data-admin-trace-event-type>
+          </label>
+          <label class="field-group" for="admin-trace-limit">
+            <span class="field-label">Limit</span>
+            <input id="admin-trace-limit" class="form-control" name="limit" type="number" min="1" max="200" value="10" data-admin-trace-limit>
+          </label>
+          <label class="field-group admin-checkbox-field" for="admin-trace-errors-only">
+            <input id="admin-trace-errors-only" class="form-check-input" name="errors_only" type="checkbox" data-admin-trace-errors-only>
+            <span>Errors only</span>
+          </label>
+          <div class="admin-search-actions">
+            <button class="btn btn-shell btn-shell--compact btn-shell--accent" type="submit" data-admin-trace-submit disabled>Search traces</button>
+            <button class="btn btn-shell btn-shell--compact" type="button" data-admin-trace-reset disabled>Clear filters</button>
+          </div>
+        </form>
+        <p class="hint" data-admin-trace-summary>Trace search stays disabled until debug trace routes are available.</p>
+        <div class="admin-trace-layout">
+          <section>
+            <h3>Results</h3>
+            <ul class="admin-list admin-trace-results" data-admin-trace-results>
+              <li class="admin-list__item">Trace search results will load here.</li>
+            </ul>
+          </section>
+          <section>
+            <div class="admin-trace-detail-header">
+              <div>
+                <h3>Trace detail</h3>
+                <p class="hint" data-admin-trace-detail-summary>Choose a trace result or paste a trace ID to inspect the event timeline.</p>
+              </div>
+              <button class="btn btn-shell btn-shell--compact" type="button" data-admin-trace-detail-copy disabled>Copy JSON</button>
+            </div>
+            <dl class="detail-list admin-trace-detail-list">
+              <div class="detail-row">
+                <dt>Trace ID</dt>
+                <dd data-admin-detail-trace-id>Unavailable</dd>
+              </div>
+              <div class="detail-row">
+                <dt>Status</dt>
+                <dd data-admin-detail-status>Unavailable</dd>
+              </div>
+              <div class="detail-row">
+                <dt>Duration</dt>
+                <dd data-admin-detail-duration>Unavailable</dd>
+              </div>
+              <div class="detail-row">
+                <dt>Events</dt>
+                <dd data-admin-detail-events>Unavailable</dd>
+              </div>
+              <div class="detail-row">
+                <dt>Use case</dt>
+                <dd data-admin-detail-usecase>Unavailable</dd>
+              </div>
+            </dl>
+            <ul class="admin-list admin-trace-events" data-admin-trace-events>
+              <li class="admin-list__item">Trace events will load here.</li>
+            </ul>
+            <details class="admin-json-shell">
+              <summary>Raw trace payload</summary>
+              <pre class="admin-json-view" data-admin-trace-json>Trace detail JSON will appear here.</pre>
+            </details>
+          </section>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="admin-panel-runtime" role="tabpanel" aria-labelledby="admin-tab-runtime" tabindex="0" data-admin-panel="runtime" hidden>
+    <div class="card-grid admin-card-grid admin-card-grid--runtime">
+      <article class="info-card" data-admin-restart-card hidden>
+        <p class="eyebrow">Restart control</p>
+        <h2>Restart readiness</h2>
+        <p data-admin-restart-copy>Restart is enabled only when both frontend configuration and backend capability allow it.</p>
+        <div class="admin-inline-actions">
+          <span class="state-pill state-pill--unknown" data-admin-restart-card-pill>Not available</span>
+          <button class="btn btn-shell btn-shell--compact" type="button" data-admin-restart-button disabled aria-haspopup="dialog">Request restart</button>
+        </div>
+        <p class="hint" data-admin-restart-receipt>Restart requests remain hidden unless both frontend config and backend capabilities allow them.</p>
+        <details class="admin-json-shell">
+          <summary>Restart response</summary>
+          <pre class="admin-json-view" data-admin-restart-json>No restart request has been made.</pre>
+        </details>
+      </article>
+
+      <article class="info-card">
+        <p class="eyebrow">Operational notes</p>
+        <h2>Runtime guidance</h2>
+        <ul class="admin-list">
+          <li class="admin-list__item">Use restart only after checking health and the latest trace timeline.</li>
+          <li class="admin-list__item">Keep future runtime toggles in this panel so destructive controls stay isolated from health and debug.</li>
+          <li class="admin-list__item">Deep links from chat traces land on the Debug tab automatically when a trace id is present.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <dialog class="admin-dialog" data-admin-restart-dialog aria-labelledby="admin-restart-dialog-title" aria-describedby="admin-restart-dialog-description">
+    <form method="dialog" class="admin-dialog__content">
+      <p class="eyebrow">Confirm restart</p>
+      <h2 id="admin-restart-dialog-title">Request backend restart?</h2>
+      <p class="lede" id="admin-restart-dialog-description">This posts to the frontend proxy, which then requests a backend restart. Use only when the runtime is safe to recycle.</p>
+      <div class="admin-inline-actions">
+        <button class="btn btn-shell btn-shell--compact" value="cancel" type="submit">Cancel</button>
+        <button class="btn btn-shell btn-shell--compact btn-shell--accent" value="confirm" type="submit" data-admin-restart-confirm>Confirm restart</button>
+      </div>
+    </form>
+  </dialog>
+</section>
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/admin/index.js', v=static_version) }}"></script>
+{% endblock %}
+{% endblock %}

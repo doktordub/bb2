@@ -1,0 +1,6 @@
+messages:
+  fallback_answer:
+    default_message: I could not complete the full workflow, but here is the safest answer I can provide.
+  memory_update:
+    no_candidate_answer: I did not find any durable memory to store from that request.
+    approval_required_answer: This memory update requires approval before I can store it.

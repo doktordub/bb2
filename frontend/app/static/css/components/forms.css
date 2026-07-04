@@ -1,0 +1,14 @@
+.nav-link-shell:focus-visible,
+.btn-shell:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+.mobile-nav-panel:focus-visible,
+.shell-dialog:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 0.24rem rgba(104, 231, 219, 0.24);
+}
+
+[role="tabpanel"]:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 0.24rem rgba(104, 231, 219, 0.18);
+}

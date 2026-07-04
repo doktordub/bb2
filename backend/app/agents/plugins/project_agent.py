@@ -8,7 +8,7 @@ from app.agents.errors import AgentInputValidationError
 from app.agents.models import AgentCapabilities, AgentRunRequest, AgentRunResult
 from app.agents.plugins.tool_using import ToolUsingAgent
 from app.agents.policy import require_project_scope
-from app.agents.prompts import limit_prompt_sections
+from app.agents.prompts import limit_prompt_sections, resolve_prompt_text
 from app.agents.result_builder import build_run_result
 from app.contracts.context import OrchestrationContext
 from app.orchestration.prompt_inputs import PromptSection
@@ -98,10 +98,14 @@ class ProjectAgent(ToolUsingAgent):
         sections.append(
             PromptSection(
                 title="Project rules",
-                body=(
-                    "Stay within the active project scope, use only provided project context, "
-                    "and request only logical backend tools from the allowlist when more project "
-                    "evidence is needed. Never claim direct file or repository access."
+                body=resolve_prompt_text(
+                    "project_agent",
+                    "project_rules",
+                    fallback=(
+                        "Stay within the active project scope, use only provided project context, "
+                        "and request only logical backend tools from the allowlist when more project "
+                        "evidence is needed. Never claim direct file or repository access."
+                    ),
                 ),
             )
         )

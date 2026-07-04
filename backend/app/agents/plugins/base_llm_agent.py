@@ -34,6 +34,13 @@ _DEFAULT_MAX_LLM_CALLS = 1
 _DEFAULT_MAX_OUTPUT_CHARS = 12_000
 
 
+def _read_optional_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 class BaseLlmAgent(LegacyCompatibleAgent):
     """Small shared helper for one-shot LLM-backed agent behaviors."""
 
@@ -42,6 +49,8 @@ class BaseLlmAgent(LegacyCompatibleAgent):
     stream_llm_deltas = True
     limits: object | None = None
     context_policy: object | None = None
+    system_prompt_override: str | None = None
+    developer_prompt: str | None = None
 
     def __init__(self, name: str | None = None, component: str | None = None) -> None:
         if name is not None:
@@ -417,10 +426,22 @@ class BaseLlmAgent(LegacyCompatibleAgent):
         """Build provider-neutral LLM messages from the structured agent request."""
 
         try:
+            extra_sections = list(
+                self.build_extra_prompt_sections(request=request, context=context)
+            )
+            developer_prompt = _read_optional_text(self.developer_prompt)
+            if developer_prompt is not None:
+                extra_sections.insert(
+                    0,
+                    PromptSection(
+                        title="Developer instructions",
+                        body=developer_prompt,
+                    ),
+                )
             return build_prompt_messages(
                 request,
                 system_prompt=self.build_system_prompt(request=request, context=context),
-                extra_sections=self.build_extra_prompt_sections(request=request, context=context),
+                extra_sections=tuple(extra_sections),
             )
         except (TypeError, ValueError) as exc:
             raise AgentPromptBuildError(
@@ -437,6 +458,9 @@ class BaseLlmAgent(LegacyCompatibleAgent):
 
         _ = request
         _ = context
+        explicit_system_prompt = _read_optional_text(self.system_prompt_override)
+        if explicit_system_prompt is not None:
+            return explicit_system_prompt
         return resolve_system_prompt(self.prompt_profile)
 
     def build_extra_prompt_sections(

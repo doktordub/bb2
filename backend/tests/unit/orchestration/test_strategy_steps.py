@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from app.config.view import get_orchestration_settings
+from app.config.view import ValidatedConfigurationView, get_orchestration_settings
 from app.contracts.context import OrchestrationContext, RequestContext
 from app.contracts.llm import LLMMessage, LLMRequest
-from app.contracts.memory import MemoryResult, MemorySearchRequest
+from app.contracts.memory import MemoryResult, MemoryScope, MemorySearchRequest
+from app.memory.adapters.fake import FakeMemoryAdapter
 from app.contracts.tools import ToolDefinition, ToolExecutionRequest, ToolExecutionResult, ToolResultContent, ToolResultSummary, ToolScopes
 from app.orchestration.limits import OrchestrationLimitTracker
 from app.orchestration.models import OrchestrationRuntimeContext
 from app.orchestration.strategy_steps import finalize_strategy_result, run_llm_completion_step, run_memory_search_step, run_tool_call_step
+from app.policy.service import DefaultPolicyService
 from app.testing.fakes import (
     FakeConfigurationView,
     FakeLLMGateway,
@@ -18,6 +20,7 @@ from app.testing.fakes import (
     FakeToolGateway,
     FakeTraceStore,
 )
+from tests.unit.memory.support import build_gateway, build_project_scope_config
 
 
 def build_config() -> FakeConfigurationView:
@@ -154,6 +157,121 @@ async def test_run_memory_search_step_records_policy_and_summary() -> None:
     assert summary.result_count == 1
     assert context.limits is not None and context.limits.memory_searches_used == 1
     assert context.policy.requests[0].action == "memory.search"
+
+
+@pytest.mark.asyncio
+async def test_run_memory_search_step_resolves_project_scope_before_real_policy_check() -> None:
+    values = build_project_scope_config(
+        usecase_name="architecture_document_qa",
+        agent_name="architecture_document_agent",
+        strategy_name="retrieval_augmented",
+        strategy_type="retrieval_augmented",
+        usecase_allowed_project_ids=("arch_docs",),
+        usecase_default_project_id="arch_docs",
+        agent_allowed_project_ids=("arch_docs",),
+        agent_default_project_id="arch_docs",
+    )
+    values["orchestration"]["enabled"] = True
+    values["orchestration"]["defaults"].update(
+        {
+            "max_steps": 8,
+            "max_tool_calls": 2,
+            "max_memory_searches": 3,
+            "max_llm_calls": 6,
+            "max_turn_duration_seconds": 120,
+            "max_stream_duration_seconds": 300,
+        }
+    )
+    values["orchestration"]["strategies"]["retrieval_augmented"].update(
+        {
+            "allowed_usecases": ["architecture_document_qa"],
+            "memory_enabled": True,
+            "tools_enabled": False,
+            "memory": {
+                "default_limit": 2,
+                "include_document_chunks": True,
+                "include_user_memory": True,
+            },
+        }
+    )
+    values["policy"] = {
+        "default_profile": "default",
+        "profiles": {
+            "default": {
+                "enabled": True,
+                "deny_unknown_tools": True,
+                "deny_unknown_llm_profiles": True,
+                "require_memory_scope": True,
+                "allow_memory_writes": True,
+                "memory": {
+                    "allowed_read_scopes": ["project", "user", "usecase"],
+                    "allowed_write_scopes": [],
+                },
+            }
+        },
+    }
+    config = ValidatedConfigurationView(values)
+    settings = get_orchestration_settings(config)
+    strategy_settings = settings.strategies["retrieval_augmented"]
+    limits = OrchestrationLimitTracker.from_settings(settings, strategy_settings)
+    limits.mark_turn_started()
+    adapter = FakeMemoryAdapter(
+        results=[
+            MemoryResult(
+                memory_id="memory_1",
+                text="Architecture guidance for the backend memory scope.",
+                memory_type="document_chunk",
+            )
+        ]
+    )
+    context = OrchestrationContext(
+        request=RequestContext(
+            user_id="user_1",
+            session_id="session_1",
+            message="Summarize the architecture",
+            usecase="architecture_document_qa",
+            trace_id="trace_1",
+        ),
+        llm=FakeLLMGateway(response_text="unused"),
+        memory=build_gateway(adapter=adapter, default_scope="project", limit_max=8),
+        state=None,
+        tools=FakeToolGateway(),
+        trace=FakeTraceStore(),
+        policy=DefaultPolicyService(config),
+        config=config,
+        runtime_metadata={
+            "agent_name": "architecture_document_agent",
+            "strategy_name": "retrieval_augmented",
+            "usecase_name": "architecture_document_qa",
+        },
+        runtime=OrchestrationRuntimeContext(
+            request_id="request_1",
+            trace_id="trace_1",
+            session_id="session_1",
+            user_id="user_1",
+            project_id=None,
+        ),
+        settings=settings,
+        strategy_settings=strategy_settings,
+        limits=limits,
+    )
+
+    result, summary = await run_memory_search_step(
+        context,
+        component="orchestration.strategy.retrieval_augmented",
+        request=MemorySearchRequest(
+            text=context.request.message,
+            scope=MemoryScope(),
+            limit=2,
+            include_document_chunks=True,
+        ),
+        agent_name="architecture_document_agent",
+        strategy_name="retrieval_augmented",
+    )
+
+    assert len(result.results) == 1
+    assert summary.result_count == 1
+    assert adapter.search_requests[0].scope.project_id == "arch_docs"
 
 
 @pytest.mark.asyncio

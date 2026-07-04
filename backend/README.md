@@ -154,6 +154,19 @@ The following observability concerns remain intentionally deferred:
 - OpenTelemetry or other distributed tracing integration
 - provider-specific telemetry enrichments
 
+## Chat Continuity
+
+Same-session chat continuity now relies on workflow-state conversation messages under `backend/app/session/` and `backend/app/orchestration/`, not on durable `memory_store` reads.
+
+The current default behavior is:
+
+- short sessions inject bounded prior raw `user` and `assistant` turns directly into the prompt
+- longer sessions add a deterministic `session_summary` rollup stored in workflow-state metadata when the raw history window crosses the configured threshold or must be truncated
+- continuity remains available even if the durable memory gateway is unavailable
+- the built-in `support_agent` remains a direct-answer agent and does not perform durable memory retrieval by default
+
+The canonical continuity settings live under `orchestration.defaults.conversation_context` in `backend/config/app.yaml`, and the public capabilities route exposes whether continuity is enabled plus the active continuity mode without exposing conversation text.
+
 ## Persistence Freeze
 
 The following persistence surfaces are now the stable handoff boundary for later backend phases:

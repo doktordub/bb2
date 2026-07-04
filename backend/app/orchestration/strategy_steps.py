@@ -10,7 +10,7 @@ from app.agents.models import AgentOutputFormat, AgentRunResult, AgentTask
 from app.contracts.agents import AgentHandle, AgentPlugin, build_run_request_from_context
 from app.contracts.context import OrchestrationContext
 from app.contracts.llm import LLMRequest, LLMResponse
-from app.contracts.memory import MemorySearchRequest, MemorySearchResult, MemoryWrite, MemoryWriteResult
+from app.contracts.memory import MemoryScope, MemorySearchRequest, MemorySearchResult, MemoryWrite, MemoryWriteResult
 from app.contracts.policy import PolicyRequest
 from app.contracts.tools import ToolDefinition, ToolExecutionRequest, ToolExecutionResult
 from app.orchestration.limits import OrchestrationLimitTracker
@@ -64,13 +64,20 @@ async def run_memory_search_step(
 ) -> tuple[MemorySearchResult, MemorySearchSummary]:
     limits = require_limits(context, component=component)
     limits.consume_memory_search()
+    policy_scope_memory = _resolved_memory_search_policy_scope(context, request.scope)
+    policy_scope = _policy_scope_with_memory(
+        context,
+        agent_name=agent_name,
+        strategy_name=strategy_name,
+        memory_scope=policy_scope_memory,
+    )
     await context.policy.require_allowed(
         PolicyRequest(
             action="memory.search",
             component=component,
             resource="retrieval_context",
-            scope=_policy_scope(context, agent_name=agent_name, strategy_name=strategy_name),
-            metadata={"scope": request.scope.summary()},
+            scope=policy_scope,
+            metadata={"scope": policy_scope_memory.summary()},
         ),
         context,
     )
@@ -93,12 +100,18 @@ async def run_memory_write_step(
     limits = require_limits(context, component=component)
     limits.consume_step()
     limits.consume_memory_write()
+    policy_scope = _policy_scope_with_memory(
+        context,
+        agent_name=agent_name,
+        strategy_name=strategy_name,
+        memory_scope=memory_write.scope,
+    )
     await context.policy.require_allowed(
         PolicyRequest(
             action="memory.upsert",
             component=component,
             resource=memory_write.memory_type,
-            scope=_policy_scope(context, agent_name=agent_name, strategy_name=strategy_name),
+            scope=policy_scope,
             metadata={"scope": memory_write.scope.summary()},
         ),
         context,
@@ -371,6 +384,48 @@ def _policy_scope(
         "agent_name": agent_name,
         "strategy_name": strategy_name,
     }
+
+
+def _policy_scope_with_memory(
+    context: OrchestrationContext,
+    *,
+    agent_name: str | None,
+    strategy_name: str,
+    memory_scope: MemoryScope,
+) -> dict[str, Any]:
+    scope = _policy_scope(
+        context,
+        agent_name=agent_name,
+        strategy_name=strategy_name,
+    )
+    summary = memory_scope.summary()
+    scope_type = _read_optional_text(summary.get("scope_type")) or "global"
+    usecase_name = _read_optional_text(memory_scope.usecase) or context.request.usecase
+    scope.update(
+        {
+            "memory_scope": scope_type,
+            "tenant_id": memory_scope.tenant_id,
+            "project_id": memory_scope.project_id,
+            "user_id": memory_scope.user_id,
+            "session_id": memory_scope.session_id,
+            "usecase": usecase_name,
+            "source_id": memory_scope.source_id,
+            "document_id": memory_scope.document_id,
+            "tags": list(memory_scope.tags),
+        }
+    )
+    return {key: value for key, value in scope.items() if value is not None}
+
+
+def _resolved_memory_search_policy_scope(
+    context: OrchestrationContext,
+    scope: MemoryScope,
+) -> MemoryScope:
+    from app.config.view import get_memory_settings
+    from app.memory.scopes import resolve_memory_scope
+
+    default_scope = get_memory_settings(context.config).defaults.default_scope
+    return resolve_memory_scope(scope, context=context, default_scope=default_scope)
 
 
 def _memory_write_safe_message(

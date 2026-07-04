@@ -105,28 +105,54 @@ def test_chat_route_persists_real_workflow_state_through_default_session_service
     assert row[2] == "answered"
 
     state = json.loads(row[3])
-    assert state["conversation"]["messages"] == [
-        {"role": "user", "content": "hello default session service"},
-        {
-            "role": "assistant",
-            "content": "fake response",
-            "metadata": {
-                "agent_name": "support_agent",
-                "strategy_name": "direct_agent",
-                "llm_profile": "fake_basic",
-            },
-        },
-        {"role": "user", "content": "second turn"},
-        {
-            "role": "assistant",
-            "content": "fake response",
-            "metadata": {
-                "agent_name": "support_agent",
-                "strategy_name": "direct_agent",
-                "llm_profile": "fake_basic",
-            },
-        },
-    ]
+    messages = state["conversation"]["messages"]
+    assert len(messages) == 4
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "hello default session service"
+    assert isinstance(messages[0].get("created_at"), str)
+    assert messages[0]["metadata"] == {
+        "transport": "request/response",
+        "usecase": "default_chat",
+        "request_id": "trace-walk-0001",
+        "turn_id": "trace-walk-0001",
+        "trace_id": "trace-walk-0001",
+    }
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "fake response"
+    assert isinstance(messages[1].get("created_at"), str)
+    assert messages[1]["metadata"] == {
+        "agent_name": "support_agent",
+        "strategy_name": "direct_agent",
+        "llm_profile": "fake_basic",
+        "request_id": "trace-walk-0001",
+        "turn_id": "trace-walk-0001",
+        "trace_id": "trace-walk-0001",
+        "transport": "request/response",
+        "usecase": "default_chat",
+    }
+    assert messages[2]["role"] == "user"
+    assert messages[2]["content"] == "second turn"
+    assert isinstance(messages[2].get("created_at"), str)
+    assert messages[2]["metadata"] == {
+        "transport": "request/response",
+        "usecase": "default_chat",
+        "request_id": "trace-walk-0002",
+        "turn_id": "trace-walk-0002",
+        "trace_id": "trace-walk-0002",
+    }
+    assert messages[3]["role"] == "assistant"
+    assert messages[3]["content"] == "fake response"
+    assert isinstance(messages[3].get("created_at"), str)
+    assert messages[3]["metadata"] == {
+        "agent_name": "support_agent",
+        "strategy_name": "direct_agent",
+        "llm_profile": "fake_basic",
+        "request_id": "trace-walk-0002",
+        "turn_id": "trace-walk-0002",
+        "trace_id": "trace-walk-0002",
+        "transport": "request/response",
+        "usecase": "default_chat",
+    }
     assert state["last_result"] == {
         "agent_name": "support_agent",
         "strategy_name": "direct_agent",

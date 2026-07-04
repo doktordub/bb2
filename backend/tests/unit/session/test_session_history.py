@@ -16,6 +16,7 @@ from app.config.view import (
 )
 from app.session.errors import SessionHistoryDisabledError
 from app.session.mapping import build_session_request_context
+from app.session.history import normalize_visible_history_role, project_safe_message_metadata
 from app.session.service import DefaultSessionService
 from app.testing.fakes.fake_clock import FakeClock
 from app.testing.fakes.fake_config import FakeConfigurationView
@@ -159,3 +160,23 @@ async def test_get_history_raises_when_history_is_disabled() -> None:
             limit=10,
             context=_build_context(),
         )
+
+
+def test_history_helpers_keep_only_safe_roles_and_metadata() -> None:
+    assert normalize_visible_history_role(
+        "assistant",
+        include_system_messages=False,
+        include_tool_summaries=False,
+    ) == "assistant"
+    assert normalize_visible_history_role(
+        "tool",
+        include_system_messages=False,
+        include_tool_summaries=False,
+    ) is None
+    assert project_safe_message_metadata(
+        {
+            "trace_id": "trace-1",
+            "usecase": "default_chat",
+            "token": "secret",
+        }
+    ) == {"trace_id": "trace-1", "usecase": "default_chat"}

@@ -1,0 +1,70 @@
+<aside id="inspector-drawer" class="panel panel-side inspector-panel panel-drawer panel-drawer--inspector" data-panel-drawer="inspector" aria-labelledby="inspector-heading" tabindex="-1">
+  <div class="panel-header">
+    <div class="panel-header__cluster">
+      <h4 id="inspector-heading">INSPECTOR</h4>
+      <p class="hint">Detailed execution context stays here while the top status bar carries the live runtime essentials.</p>
+    </div>
+    <button class="btn btn-shell btn-shell--compact panel-dismiss" type="button" data-chat-panel-dismiss aria-label="Close inspector panel">Close</button>
+  </div>
+
+  <div class="inspector-stack">
+    <article class="info-card compact-card compact-card--soft inspector-card inspector-card--active">
+      <p class="eyebrow">Execution</p>
+      <h5>Runtime detail</h5>
+      <p class="hint" data-trace-placeholder>Trace ids appear after the first backend response.</p>
+      <div class="compact-card__actions inspector-trace-actions">
+        <button class="btn btn-shell btn-shell--compact" type="button" data-copy-trace-button disabled>Copy trace ID</button>
+        <button class="btn btn-shell btn-shell--compact" type="button" data-open-trace-button disabled>Open in Admin</button>
+      </div>
+      <div class="inspector-summary" data-execution-summary>
+        <p>Agent, strategy, and profile metadata will render here after the first connected chat response.</p>
+      </div>
+    </article>
+    <article class="info-card compact-card compact-card--soft inspector-card inspector-card--active">
+      <p class="eyebrow">Tools</p>
+      <h5>Tool activity</h5>
+      <div class="inspector-summary" data-tool-summary>
+        <p>No tool calls yet.</p>
+      </div>
+    </article>
+    <article class="info-card compact-card compact-card--soft inspector-card inspector-card--active">
+      <p class="eyebrow">Memory</p>
+      <h5>Memory activity</h5>
+      <div class="inspector-summary" data-memory-summary>
+        <p>No memory updates yet.</p>
+      </div>
+    </article>
+    <article class="info-card compact-card compact-card--soft inspector-card inspector-card--active">
+      <p class="eyebrow">Capabilities</p>
+      <h5>Capability detail</h5>
+      <div class="inspector-summary" data-capabilities-summary>
+        <p>Capability details load from the backend contract during shell initialization.</p>
+      </div>
+    </article>
+    <article class="info-card compact-card compact-card--soft inspector-card inspector-card--active">
+      <p class="eyebrow">Retry</p>
+      <h5>Failed request recovery</h5>
+      <p data-retry-summary>No failed requests to retry.</p>
+      <div class="compact-card__actions">
+        <button class="btn btn-shell btn-shell--compact" type="button" data-retry-button disabled>Retry last message</button>
+      </div>
+    </article>
+    <details class="inspector-future-details" data-inspector-future hidden>
+      <summary>Future placeholders</summary>
+      <div class="inspector-future-details__body">
+        <section class="inspector-future-note">
+          <h5>Approvals</h5>
+          <p data-approvals-summary>Approvals are not available yet.</p>
+        </section>
+        <section class="inspector-future-note">
+          <h5>Future views</h5>
+          <p data-future-views-summary>Artifacts, plans, and future side views will appear here in later phases.</p>
+        </section>
+        <section class="inspector-future-note">
+          <h5>Action queue</h5>
+          <p data-action-queue-summary>No queued approvals, exports, or generated artifacts yet.</p>
+        </section>
+      </div>
+    </details>
+  </div>
+</aside>

@@ -5,6 +5,8 @@
 **Source alignment:** `backend-session-service-architecture.md`, `backend-api-plan.md`, `backend-persistence-plan.md`, and the current backend implementation baseline  
 **Repository rule:** all backend application code lives under `backend/`
 
+Implementation note (2026-07-01): same-session continuity now stays bounded through workflow-state-backed raw turn reuse plus deterministic session-summary compaction during completed, cancelled, and failed stream finalization paths; this remains independent of durable memory retrieval.
+
 ---
 
 ## 1. Purpose

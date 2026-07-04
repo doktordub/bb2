@@ -5,7 +5,9 @@ import os
 
 import pytest
 
+from app.agents.builtin_catalog import clear_builtin_agent_catalog_cache, load_builtin_agent_catalog
 from app.config.loader import YamlConfigurationLoader, load_prepared_config, load_validated_config
+from app.orchestration.message_catalog import clear_message_catalog_cache, load_message_catalog
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "config"
 
@@ -87,6 +89,19 @@ def test_load_validated_config_parses_valid_full_fixture() -> None:
     assert config.observability.max_trace_payload_chars == 12000
     assert config.observability.metrics_enabled is True
     assert config.health.include_component_details is True
+
+
+def test_default_external_catalogs_exist_and_parse() -> None:
+    clear_builtin_agent_catalog_cache()
+    clear_message_catalog_cache()
+
+    builtin_catalog = load_builtin_agent_catalog(validate_entrypoints=True)
+    message_catalog = load_message_catalog()
+
+    assert builtin_catalog.get("general_assistant") is not None
+    assert message_catalog.get_text("fallback_answer", "default_message").startswith(
+        "I could not complete"
+    )
 
 
 async def test_yaml_configuration_loader_returns_validated_view() -> None:

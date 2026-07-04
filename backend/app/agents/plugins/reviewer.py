@@ -12,7 +12,7 @@ from app.agents.errors import AgentOutputParseError, AgentReviewError, normalize
 from app.agents.models import AgentCapabilities, AgentReviewResult, AgentRunRequest, AgentRunResult, AgentWarning
 from app.agents.plugins.base_llm_agent import BaseLlmAgent
 from app.agents.policy import require_capability_allowed, require_capability_policy
-from app.agents.prompts import build_prompt_messages, limit_prompt_sections
+from app.agents.prompts import build_prompt_messages, limit_prompt_sections, resolve_prompt_lines, resolve_prompt_text
 from app.agents.result_builder import build_run_result, build_usage_summary
 from app.agents.trace_helpers import build_llm_trace_summary, build_prompt_trace_summary, build_request_trace_summary, build_result_trace_summary, build_review_trace_summary
 from app.contracts.context import OrchestrationContext
@@ -224,10 +224,14 @@ class ReviewerAgent(BaseLlmAgent):
         context: OrchestrationContext,
     ) -> tuple[PromptSection, ...]:
         _ = context
-        criteria = request.constraints or (
-            "Check correctness against provided context.",
-            "Call out important omissions or risks.",
-            "Keep findings short and actionable.",
+        criteria = request.constraints or resolve_prompt_lines(
+            "reviewer",
+            "default_criteria",
+            fallback=(
+                "Check correctness against provided context.",
+                "Call out important omissions or risks.",
+                "Keep findings short and actionable.",
+            ),
         )
         return (
             PromptSection(
@@ -236,17 +240,25 @@ class ReviewerAgent(BaseLlmAgent):
             ),
             PromptSection(
                 title="Response contract",
-                body=(
-                    'Return JSON only with {"passed": true|false, "score": 0.0-1.0, '
-                    '"findings": ["..."], "suggested_revision": "..."}. '
-                    "Use a small bounded findings list and omit suggested_revision when not needed."
+                body=resolve_prompt_text(
+                    "reviewer",
+                    "response_contract",
+                    fallback=(
+                        'Return JSON only with {"passed": true|false, "score": 0.0-1.0, '
+                        '"findings": ["..."], "suggested_revision": "..."}. '
+                        "Use a small bounded findings list and omit suggested_revision when not needed."
+                    ),
                 ),
             ),
             PromptSection(
                 title="Review rules",
-                body=(
-                    "Do not reveal chain-of-thought or hidden scratchpads. Return only safe findings, "
-                    "an optional score, and an optional suggested revision."
+                body=resolve_prompt_text(
+                    "reviewer",
+                    "review_rules",
+                    fallback=(
+                        "Do not reveal chain-of-thought or hidden scratchpads. Return only safe findings, "
+                        "an optional score, and an optional suggested revision."
+                    ),
                 ),
             ),
         )

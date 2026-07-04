@@ -1,0 +1,115 @@
+.help-rendered {
+  color: var(--text-default);
+  line-height: 1.68;
+}
+
+.help-rendered > :first-child {
+  margin-top: 0;
+}
+
+.help-rendered h1,
+.help-rendered h2,
+.help-rendered h3,
+.help-rendered h4,
+.help-rendered h5,
+.help-rendered h6 {
+  margin-top: 1.7rem;
+  margin-bottom: 0.75rem;
+  scroll-margin-top: 6rem;
+}
+
+.help-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.help-inline-button,
+.help-code-copy {
+  white-space: nowrap;
+}
+
+.help-rendered p,
+.help-rendered ul,
+.help-rendered ol,
+.help-rendered blockquote,
+.help-rendered pre,
+.help-rendered table {
+  margin-bottom: 0.85rem;
+}
+
+.help-rendered ul,
+.help-rendered ol {
+  padding-left: 1.35rem;
+}
+
+.help-rendered blockquote {
+  padding: 0.72rem 0.9rem;
+  border-left: 3px solid rgba(92, 196, 255, 0.45);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--surface-soft);
+}
+
+.help-code-block {
+  position: relative;
+}
+
+.help-rendered pre {
+  padding: 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-code);
+  overflow-x: auto;
+}
+
+.help-rendered code {
+  font-size: 0.95em;
+}
+
+.help-code-copy {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+}
+
+.help-rendered table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.help-rendered th,
+.help-rendered td {
+  padding: 0.68rem 0.78rem;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+
+.help-rendered th {
+  color: var(--text-strong);
+  background: var(--surface-soft);
+}
+
+.help-rendered a {
+  color: var(--color-accent);
+}
+
+.help-card--missing {
+  min-height: 16rem;
+}
+
+.help-note {
+  color: var(--text-muted);
+  margin-top: 0.9rem;
+  padding: 0.82rem 0.92rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+}
+
+.help-search-hidden {
+  display: none !important;
+}

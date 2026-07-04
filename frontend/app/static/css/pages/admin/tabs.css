@@ -1,0 +1,23 @@
+.admin-tab-strip {
+  align-items: stretch;
+}
+
+.admin-tab-panel {
+  display: none;
+  min-height: 0;
+}
+
+.admin-tab-panel.is-active {
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .admin-tab-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-tab-strip .tab-strip__button {
+    min-height: 2.2rem;
+  }
+}

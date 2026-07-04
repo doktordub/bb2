@@ -781,14 +781,11 @@ def _build_memory_scope(
     *,
     agent_name: str | None,
 ) -> MemoryScope:
+    _ = agent_name
     runtime = context.runtime
     return MemoryScope(
-        user_id=context.request.user_id,
         project_id=runtime.project_id if runtime is not None else None,
         tenant_id=runtime.tenant_id if runtime is not None else None,
-        session_id=context.request.session_id,
-        agent_name=agent_name,
-        usecase=context.request.usecase,
     )
 
 

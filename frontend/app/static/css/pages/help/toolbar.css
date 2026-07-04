@@ -1,0 +1,46 @@
+.help-shell {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.help-card {
+  max-width: 760px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 100%),
+    var(--bg-panel);
+}
+
+.help-toolbar-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.help-source {
+  margin-bottom: 0.8rem;
+}
+
+.help-summary {
+  font-size: 0.98rem;
+}
+
+.help-search-field {
+  align-self: stretch;
+}
+
+@media (max-width: 1080px) {
+  .help-toolbar-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .help-toolbar-card {
+    padding: 0.78rem;
+  }
+
+  .help-search-field {
+    min-width: 0;
+  }
+}

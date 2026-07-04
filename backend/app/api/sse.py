@@ -51,7 +51,7 @@ def encode_session_stream_event(
         )
 
     if event.event_type == "response.delta":
-        text = _as_text(event.data.get("text") or event.data.get("delta"))
+        text = _as_delta_text(event.data.get("text") or event.data.get("delta"))
         if text is None:
             return None
         return encode_sse(event.event_type, {"text": text})
@@ -215,3 +215,11 @@ def _as_text(value: object) -> str | None:
     if not normalized:
         return None
     return normalized
+
+
+def _as_delta_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if value == "":
+        return None
+    return value

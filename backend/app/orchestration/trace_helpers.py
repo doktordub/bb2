@@ -45,14 +45,23 @@ def build_fallback_trace_payload(
 
 
 def build_completed_trace_payload(result: OrchestrationResult) -> dict[str, Any]:
-    return sanitize_metadata(
-        {
-            "finish_reason": result.finish_reason,
-            "tool_call_count": len(result.tool_calls),
-            "memory_update_count": len(result.memory_updates),
-            "fallback_used": bool(result.metadata.get("fallback_used", False)),
-        }
-    )
+    payload: dict[str, Any] = {
+        "finish_reason": result.finish_reason,
+        "tool_call_count": len(result.tool_calls),
+        "memory_update_count": len(result.memory_updates),
+        "fallback_used": bool(result.metadata.get("fallback_used", False)),
+    }
+    for key in (
+        "conversation_history_enabled",
+        "conversation_history_turn_count",
+        "conversation_history_truncated",
+        "session_summary_used",
+        "current_turn_deduped",
+    ):
+        value = result.metadata.get(key)
+        if value is not None:
+            payload[key] = value
+    return sanitize_metadata(payload)
 
 
 def build_failure_trace_payload() -> dict[str, Any]:

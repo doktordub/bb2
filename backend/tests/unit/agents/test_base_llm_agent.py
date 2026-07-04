@@ -88,6 +88,22 @@ async def test_base_llm_agent_uses_runtime_profile_and_records_safe_traces() -> 
 
 
 @pytest.mark.asyncio
+async def test_base_llm_agent_honors_explicit_prompt_overrides_before_profile_lookup() -> None:
+    context, llm, _ = build_context(response_text="override answer")
+    agent = HarnessAgent(name="support_agent")
+    agent.default_llm_profile = "agent_profile"
+    agent.limits = SimpleNamespace(max_output_chars=200, max_llm_calls=1)
+    agent.system_prompt_override = "Use the explicit configured system prompt."
+    agent.developer_prompt = "Respond with one sentence."
+
+    await agent.run(context)
+
+    assert llm.requests[0].messages[0].content == "Use the explicit configured system prompt."
+    assert "Developer instructions" in str(llm.requests[0].messages[-1].content)
+    assert "Respond with one sentence." in str(llm.requests[0].messages[-1].content)
+
+
+@pytest.mark.asyncio
 async def test_base_llm_agent_stream_can_suppress_llm_delta_events() -> None:
     context, _, _ = build_context(response_text="streamed answer")
     agent = HarnessAgent(name="support_agent")

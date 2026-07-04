@@ -156,9 +156,16 @@ async def test_retrieval_strategy_searches_memory_and_returns_safe_summary() -> 
     assert result.llm_profile == "retrieval_profile"
     assert len(memory.search_requests) == 1
     assert memory.search_requests[0].scope.project_id == "project_1"
+    assert memory.search_requests[0].scope.user_id is None
+    assert memory.search_requests[0].scope.session_id is None
+    assert memory.search_requests[0].scope.agent_name is None
+    assert memory.search_requests[0].scope.usecase is None
     assert llm.requests[0].profile == "retrieval_profile"
     assert "Retrieved context:" in llm.requests[0].messages[0].content
     assert [step["step_type"] for step in result.metadata["steps"]] == ["memory_search", "agent"]
     assert result.metadata["memory_searches"][0]["result_count"] == 1
     assert "strategy registry" not in str(result.metadata)
     assert [request.action for request in policy.requests] == ["memory.search", "agent.invoke"]
+    assert policy.requests[0].scope["memory_scope"] == "project"
+    assert policy.requests[0].scope["project_id"] == "project_1"
+    assert policy.requests[0].scope["usecase"] == "document_chat"

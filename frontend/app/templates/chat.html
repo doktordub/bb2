@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Chat | {{ frontend_app_name }}{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/chat/index.css', v=static_version) }}">
+{% endblock %}
+
+{% block content %}
+<section class="page-shell page-shell--wide container-xxl workspace-shell chat-workspace-shell" data-chat-workspace>
+  <div class="workspace-status-bar chat-status-bar" data-panels-visible="false" aria-label="Chat runtime status">
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Health</span>
+      <span class="state-pill state-pill--checking" data-chat-health-pill>Checking</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Mode</span>
+      <span class="state-pill state-pill--checking" data-chat-mode-pill>Checking</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Composer</span>
+      <span class="state-pill state-pill--checking" data-chat-capability-pill>Checking</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Session</span>
+      <span class="workspace-status-bar__value" data-chat-session-label>Awaiting session</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Use case</span>
+      <span class="workspace-status-bar__value" data-chat-usecase-label>Not selected</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Trace</span>
+      <span class="workspace-status-bar__value" data-chat-trace-label>Pending</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Agent</span>
+      <span class="workspace-status-bar__value" data-chat-agent-label>Pending</span>
+    </div>
+    <div class="workspace-status-bar__item">
+      <span class="workspace-status-bar__label">Strategy</span>
+      <span class="workspace-status-bar__value" data-chat-strategy-label>Pending</span>
+    </div>
+    <div class="session-kpis session-kpis--status-bar" data-chat-session-kpis-slot>
+      <div class="workspace-status-bar__item session-kpi session-kpi--status-bar">
+        <span class="workspace-status-bar__label">List</span>
+        <span class="state-pill state-pill--checking" data-session-list-pill>Checking</span>
+      </div>
+      <div class="workspace-status-bar__item session-kpi session-kpi--status-bar">
+        <span class="workspace-status-bar__label">History</span>
+        <span class="state-pill state-pill--checking" data-session-history-pill>Checking</span>
+      </div>
+    </div>
+    <div class="workspace-status-bar__item chat-status-bar__item--panels">
+      <span class="workspace-status-bar__label">Panels</span>
+      <div class="chat-shell-toolbar__buttons">
+        <button class="btn btn-shell btn-shell--compact" type="button" data-chat-panel-open="sessions" aria-controls="sessions-drawer" aria-expanded="false" aria-haspopup="dialog">Sessions</button>
+        <button class="btn btn-shell btn-shell--compact" type="button" data-chat-panel-open="inspector" aria-controls="inspector-drawer" aria-expanded="false" aria-haspopup="dialog">Inspector</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-drawer-backdrop" data-chat-drawer-backdrop hidden></div>
+  <p class="visually-hidden" data-chat-live-region role="status" aria-live="polite" aria-atomic="true"></p>
+
+  <div class="workspace-grid workspace-grid--chat">
+    {% include "partials/session_list.html" %}
+    <section class="panel panel-center chat-panel" aria-labelledby="conversation-heading">
+      <div class="chat-panel__header">
+        <div class="panel-header__cluster">
+          <h4 id="conversation-heading">CONVERSATION</h4>
+          <p class="hint">Streaming replies stay in the thread. When streaming is unavailable, the workspace falls back to request/response automatically.</p>
+          <div class="conversation-header-row" aria-label="Conversation metadata">
+            <p class="conversation-header-row__title">Active conversation</p>
+            <div class="conversation-header-row__meta">
+              <button class="btn btn-shell btn-shell--compact chat-layout-toggle" type="button" data-composer-pin-toggle aria-pressed="true">Composer pinned</button>
+              <span class="state-pill state-pill--checking" data-streaming-badge>Mode unavailable</span>
+              <span class="composer-counter" data-char-counter>0 / --</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="conversation-layout" data-conversation-shell>
+        <section class="conversation-thread-shell" data-conversation-viewport aria-live="polite">
+          <article class="conversation-placeholder conversation-placeholder--soft" data-chat-loading-state>
+            <p class="eyebrow">Conversation</p>
+            <h5>Loading</h5>
+            <p data-chat-loading-copy>loading...</p>
+          </article>
+          <article class="conversation-placeholder conversation-placeholder--empty" data-chat-empty-state hidden>
+            <p class="eyebrow">No active chat</p>
+            <h5>No active chat</h5>
+            <p data-chat-empty-copy>Select a use case, review the inspector details, and send a message to start or resume a backend session.</p>
+          </article>
+
+          <section class="conversation-thread" data-conversation-thread hidden aria-live="off" aria-label="Conversation messages"></section>
+
+          <article class="conversation-placeholder conversation-placeholder--soft" data-history-truncated-card hidden>
+            <p class="eyebrow">History limit</p>
+            <h5>Conversation truncated</h5>
+            <p data-history-truncated-copy>The backend returned only the most recent history window for this session.</p>
+          </article>
+        </section>
+      </div>
+
+      <form class="composer-shell" data-chat-composer novalidate aria-describedby="chat-composer-hint">
+        <div class="composer-shell__top">
+          <label class="field-group composer-shell__field composer-shell__field--select" for="chat-usecase">
+            <span class="field-label">Use case</span>
+            <select id="chat-usecase" class="form-select shell-select" name="usecase" data-usecase-select disabled>
+              <option>Loading capabilities...</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field-group" for="chat-message">
+          <span class="field-label">Message</span>
+          <textarea id="chat-message" class="form-control composer-textarea" name="message" rows="5" data-chat-input disabled placeholder="Loading chat capabilities..."></textarea>
+        </label>
+
+        <div class="composer-shell__footer">
+          <p class="hint" id="chat-composer-hint" data-composer-hint>Enter sends. Shift+Enter inserts a newline. The composer unlocks after capability checks complete.</p>
+          <div class="composer-shell__actions">
+            <button class="btn btn-shell btn-shell--compact" type="button" data-stop-button disabled>Stop stream</button>
+            <button class="btn btn-shell btn-shell--compact" type="button" data-copy-last-message-button disabled>Copy reply</button>
+            <button class="btn btn-shell btn-shell--compact btn-shell--accent composer-shell__send" type="submit" data-send-button disabled>Send</button>
+          </div>
+        </div>
+      </form>
+    </section>
+    {% include "partials/right_panel.html" %}
+  </div>
+
+  <dialog class="shell-dialog" data-chat-confirm-dialog aria-labelledby="chat-confirm-title" aria-describedby="chat-confirm-body">
+    <form method="dialog" class="shell-dialog__content">
+      <p class="eyebrow">Confirm action</p>
+      <h2 id="chat-confirm-title">Confirm request</h2>
+      <p class="lede" id="chat-confirm-body">Review the action before continuing.</p>
+      <div class="shell-dialog__actions">
+        <button class="btn btn-shell btn-shell--compact" type="submit" value="cancel" data-chat-confirm-cancel>Cancel</button>
+        <button class="btn btn-shell btn-shell--compact btn-shell--accent" type="submit" value="confirm" data-chat-confirm-confirm>Confirm</button>
+      </div>
+    </form>
+  </dialog>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/chat/index.js', v=static_version) }}"></script>
+{% endblock %}

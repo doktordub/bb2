@@ -90,18 +90,31 @@ def test_stream_route_finalizes_workflow_state_in_real_app(
     assert current_row is not None
     assert current_row[0] == 2
     saved_state = json.loads(current_row[1])
-    assert saved_state["conversation"]["messages"] == [
-        {"role": "user", "content": "stream route"},
-        {
-            "role": "assistant",
-            "content": "fake response",
-            "metadata": {
-                "agent_name": "support_agent",
-                "strategy_name": "direct_agent",
-                "llm_profile": "fake_streaming",
-            },
-        },
-    ]
+    messages = saved_state["conversation"]["messages"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "stream route"
+    assert isinstance(messages[0].get("created_at"), str)
+    assert messages[0]["metadata"] == {
+        "transport": "streaming",
+        "usecase": "default_chat",
+        "request_id": "trace-api-stream-0001",
+        "turn_id": "trace-api-stream-0001",
+        "trace_id": "trace-api-stream-0001",
+    }
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "fake response"
+    assert isinstance(messages[1].get("created_at"), str)
+    assert messages[1]["metadata"] == {
+        "agent_name": "support_agent",
+        "strategy_name": "direct_agent",
+        "llm_profile": "fake_streaming",
+        "request_id": "trace-api-stream-0001",
+        "turn_id": "trace-api-stream-0001",
+        "trace_id": "trace-api-stream-0001",
+        "transport": "streaming",
+        "usecase": "default_chat",
+    }
 
 
 def test_history_route_returns_safe_messages_after_chat(
@@ -133,18 +146,31 @@ def test_history_route_returns_safe_messages_after_chat(
     assert history.status_code == 200
     assert history.headers["x-trace-id"] == "trace-api-history-read-0001"
     assert history.headers["x-session-id"] == "session_api_history_1"
-    assert history.json() == {
-        "schema_version": "1.0",
-        "trace_id": "trace-api-history-read-0001",
-        "session_id": "session_api_history_1",
-        "data": {
-            "messages": [
-                {"role": "user", "content": "history me", "created_at": None, "metadata": {"message_chars": 10}},
-                {"role": "assistant", "content": "fake response", "created_at": None, "metadata": {"message_chars": 13}},
-            ],
-            "truncated": False,
-        },
-        "metadata": {"limit": 2, "returned_count": 2},
+    payload = history.json()
+    assert payload["schema_version"] == "1.0"
+    assert payload["trace_id"] == "trace-api-history-read-0001"
+    assert payload["session_id"] == "session_api_history_1"
+    assert payload["metadata"] == {"limit": 2, "returned_count": 2}
+    assert payload["data"]["truncated"] is False
+    messages = payload["data"]["messages"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "history me"
+    assert isinstance(messages[0]["created_at"], str)
+    assert messages[0]["metadata"] == {
+        "message_chars": 10,
+        "trace_id": "trace-api-history-chat-0001",
+        "transport": "request/response",
+        "usecase": "default_chat",
+    }
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "fake response"
+    assert isinstance(messages[1]["created_at"], str)
+    assert messages[1]["metadata"] == {
+        "message_chars": 13,
+        "trace_id": "trace-api-history-chat-0001",
+        "transport": "request/response",
+        "usecase": "default_chat",
     }
 
 

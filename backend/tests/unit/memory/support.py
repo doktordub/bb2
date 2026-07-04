@@ -71,6 +71,9 @@ def build_context(
     *,
     user_id: str = "user-1",
     project_id: str | None = "project-1",
+    usecase: str = "support",
+    agent_name: str = "assistant_agent",
+    config_values: dict[str, Any] | None = None,
     trace_store: FakeTraceStore | None = None,
     policy: FakePolicyService | None = None,
     runtime_metadata: dict[str, object] | None = None,
@@ -84,7 +87,7 @@ def build_context(
             user_id=user_id,
             session_id="session-1",
             message="hello world",
-            usecase="support",
+            usecase=usecase,
             trace_id="trace-1",
             metadata=metadata,
         ),
@@ -94,14 +97,73 @@ def build_context(
         tools=FakeToolGateway(),
         trace=trace_store or FakeTraceStore(),
         policy=policy or FakePolicyService(),
-        config=FakeConfigurationView({}),
+        config=FakeConfigurationView(config_values or {}),
         runtime_metadata={
-            "agent_name": "assistant_agent",
+            "agent_name": agent_name,
             "strategy_name": "default_strategy",
-            "usecase_name": "support",
+            "usecase_name": usecase,
             **dict(runtime_metadata or {}),
         },
     )
+
+
+def build_project_scope_config(
+    *,
+    usecase_name: str,
+    agent_name: str,
+    strategy_name: str = "default_strategy",
+    strategy_type: str = "retrieval_augmented",
+    usecase_allowed_project_ids: tuple[str, ...] = (),
+    usecase_default_project_id: str | None = None,
+    agent_allowed_project_ids: tuple[str, ...] = (),
+    agent_default_project_id: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "app": {"active_usecase": usecase_name},
+        "orchestration": {
+            "defaults": {
+                "strategy": strategy_name,
+                "fallback_strategy": strategy_name,
+            },
+            "strategies": {
+                strategy_name: {
+                    "enabled": True,
+                    "type": strategy_type,
+                    "default_agent": agent_name,
+                }
+            },
+            "usecases": {
+                usecase_name: {
+                    "enabled": True,
+                    "strategy": strategy_name,
+                    "agent": agent_name,
+                    "allowed_agents": [agent_name],
+                    "policy_profile": "default",
+                    "memory": {
+                        "enabled": True,
+                        "include_document_chunks": True,
+                        "default_limit": 8,
+                        "allowed_project_ids": list(usecase_allowed_project_ids),
+                        "default_project_id": usecase_default_project_id,
+                    },
+                }
+            },
+        },
+        "agents": {
+            "plugins": {
+                agent_name: {
+                    "enabled": True,
+                    "type": "general_assistant",
+                    "memory": {
+                        "search_enabled": True,
+                        "write_enabled": False,
+                        "allowed_project_ids": list(agent_allowed_project_ids),
+                        "default_project_id": agent_default_project_id,
+                    },
+                }
+            }
+        },
+    }
 
 
 def build_gateway(

@@ -567,6 +567,7 @@ def _validate_tooling_config(errors: list[str], *, config: BackendConfig) -> Non
 def _validate_orchestration_config(errors: list[str], *, config: BackendConfig) -> None:
     from app.config.view import (
         ValidatedConfigurationView,
+        get_agents_settings,
         get_memory_settings,
         get_orchestration_settings,
         get_tooling_settings,
@@ -576,6 +577,7 @@ def _validate_orchestration_config(errors: list[str], *, config: BackendConfig) 
 
     try:
         settings = get_orchestration_settings(view)
+        agent_settings = get_agents_settings(view)
         memory_settings = get_memory_settings(view)
         tooling_settings = get_tooling_settings(view)
     except ConfigurationError as exc:
@@ -771,8 +773,25 @@ def _validate_orchestration_config(errors: list[str], *, config: BackendConfig) 
                 f"Use case '{usecase_name}' must include its selected strategy '{usecase.strategy}' in allowed_strategies."
             )
 
+        agent_names = set(usecase.allowed_agents)
+        if usecase.agent is not None:
+            agent_names.add(usecase.agent)
+        for agent_name in sorted(agent_names):
+            agent = agent_settings.plugins.get(agent_name)
+            if agent is None:
+                continue
+            _validate_memory_project_intersection(
+                errors,
+                usecase_name=usecase.name,
+                usecase_allowed_project_ids=usecase.memory.allowed_project_ids,
+                agent_name=agent.name,
+                agent_allowed_project_ids=agent.memory.allowed_project_ids,
+            )
+
 
 def _validate_agents_config(errors: list[str], *, config: BackendConfig) -> None:
+    from app.agents.builtin_catalog import BuiltinAgentCatalogError, load_builtin_agent_catalog
+    from app.agents.prompt_catalog import PromptCatalogError, catalog_prompt_profiles
     from app.config.view import (
         ValidatedConfigurationView,
         get_agents_settings,
@@ -790,6 +809,35 @@ def _validate_agents_config(errors: list[str], *, config: BackendConfig) -> None
         errors.append(str(exc))
         return
 
+    try:
+        prompt_catalog_profiles = set(catalog_prompt_profiles())
+    except PromptCatalogError as exc:
+        errors.append(str(exc))
+        return
+
+    try:
+        builtin_catalog = load_builtin_agent_catalog(validate_entrypoints=True)
+    except BuiltinAgentCatalogError as exc:
+        errors.append(str(exc))
+        return
+
+    from app.orchestration.message_catalog import MessageCatalogError, load_message_catalog
+
+    try:
+        load_message_catalog()
+    except MessageCatalogError as exc:
+        errors.append(str(exc))
+        return
+
+    unknown_known_profiles = sorted(
+        set(settings.known_prompt_profiles) - prompt_catalog_profiles
+    )
+    if unknown_known_profiles:
+        errors.append(
+            "agents.defaults.known_prompt_profiles contains unknown prompt profile(s): "
+            + ", ".join(unknown_known_profiles)
+        )
+
     mcp_tool_name_to_logical_name = {
         tool.mcp_tool_name: tool_name
         for tool_name, tool in tooling_settings.registry.tools.items()
@@ -805,14 +853,32 @@ def _validate_agents_config(errors: list[str], *, config: BackendConfig) -> None
         if not agent.enabled:
             continue
 
+        if agent.type != "custom" and builtin_catalog.get(agent.type) is None:
+            errors.append(
+                f"Built-in agent type '{agent.type}' is not defined in the built-in agent catalog."
+            )
+
         if settings.strict_prompt_profile_validation:
-            if agent.prompt_profile is None:
+            if (
+                agent.prompt_profile is None
+                and agent.prompts.system_prompt is None
+                and agent.prompts.developer_prompt is None
+            ):
                 errors.append(
-                    f"Agent '{agent_name}' requires prompt_profile when strict prompt validation is enabled."
+                    f"Agent '{agent_name}' requires prompt_profile or prompts.system_prompt or prompts.developer_prompt when strict prompt validation is enabled."
                 )
-            elif agent.prompt_profile not in set(settings.known_prompt_profiles):
+            elif agent.prompt_profile is not None and agent.prompt_profile not in set(settings.known_prompt_profiles):
                 errors.append(
                     f"Agent '{agent_name}' references unknown prompt profile '{agent.prompt_profile}'."
+                )
+
+        for label, value in {
+            "prompts.system_prompt": agent.prompts.system_prompt,
+            "prompts.developer_prompt": agent.prompts.developer_prompt,
+        }.items():
+            if value is not None and not value.strip():
+                errors.append(
+                    f"Agent '{agent_name}' {label} must not be blank."
                 )
 
         if "*" in agent.allowed_tool_intents:
@@ -901,6 +967,25 @@ def _validate_agents_config(errors: list[str], *, config: BackendConfig) -> None
                 errors.append(
                     f"Agent '{agent_name}' enables self-managed memory without a positive max_self_managed_memory_searches limit."
                 )
+
+
+def _validate_memory_project_intersection(
+    errors: list[str],
+    *,
+    usecase_name: str,
+    usecase_allowed_project_ids: tuple[str, ...],
+    agent_name: str,
+    agent_allowed_project_ids: tuple[str, ...],
+) -> None:
+    if not usecase_allowed_project_ids or not agent_allowed_project_ids:
+        return
+
+    if set(usecase_allowed_project_ids).intersection(agent_allowed_project_ids):
+        return
+
+    errors.append(
+        f"Use case '{usecase_name}' and agent '{agent_name}' do not share any allowed memory project_ids."
+    )
 
 
 def _validate_orchestration_tool_names(

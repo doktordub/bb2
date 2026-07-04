@@ -154,19 +154,44 @@ async def test_default_session_service_loads_runs_and_saves_once() -> None:
     assert orchestrator.run_calls[0].request.usecase == "support_chat"
     assert orchestrator.run_calls[0].request.metadata["client"] == "web"
     assert orchestrator.run_calls[0].state["conversation"]["messages"] == [
-        {"role": "user", "content": "persist this"},
+        {
+            "role": "user",
+            "content": "persist this",
+            "created_at": "2026-06-27T12:00:00+00:00",
+            "metadata": {
+                "usecase": "support_chat",
+                "request_id": "request-session-handle-0001",
+                "turn_id": "request-session-handle-0001",
+                "trace_id": "trace-session-handle-0001",
+            },
+        },
     ]
 
     saved_state = workflow_state.states["session_abc"]
     assert saved_state["conversation"]["messages"] == [
-        {"role": "user", "content": "persist this"},
+        {
+            "role": "user",
+            "content": "persist this",
+            "created_at": "2026-06-27T12:00:00+00:00",
+            "metadata": {
+                "usecase": "support_chat",
+                "request_id": "request-session-handle-0001",
+                "turn_id": "request-session-handle-0001",
+                "trace_id": "trace-session-handle-0001",
+            },
+        },
         {
             "role": "assistant",
             "content": "Echo: persist this",
+            "created_at": "2026-06-27T12:00:01+00:00",
             "metadata": {
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "request_id": "request-session-handle-0001",
+                "turn_id": "request-session-handle-0001",
+                "trace_id": "trace-session-handle-0001",
+                "usecase": "support_chat",
             },
         },
     ]
@@ -376,14 +401,29 @@ async def test_default_session_service_can_run_through_real_llm_gateway_path() -
     assert result.strategy_name == "direct_agent"
     assert result.llm_profile == "fake_basic"
     assert workflow_state.states["session_llm_gateway"]["conversation"]["messages"] == [
-        {"role": "user", "content": "route this through llm gateway"},
+        {
+            "role": "user",
+            "content": "route this through llm gateway",
+            "created_at": "2026-06-27T14:00:00+00:00",
+            "metadata": {
+                "usecase": "default_chat",
+                "request_id": "request-session-handle-0001",
+                "turn_id": "request-session-handle-0001",
+                "trace_id": "trace-session-handle-0001",
+            },
+        },
         {
             "role": "assistant",
             "content": "fake response",
+            "created_at": "2026-06-27T14:00:01+00:00",
             "metadata": {
                 "agent_name": "support_agent",
                 "strategy_name": "direct_agent",
                 "llm_profile": "fake_basic",
+                "request_id": "request-session-handle-0001",
+                "turn_id": "request-session-handle-0001",
+                "trace_id": "trace-session-handle-0001",
+                "usecase": "default_chat",
             },
         },
     ]

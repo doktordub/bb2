@@ -1,1 +1,1 @@
-{"client_host":"127.0.0.1","graceful_shutdown_requested":true,"reason":null,"request_id":"restart_657246c702bd4f9c8c70a931c367c806","requested_at":"2026-06-28T23:40:53.367264+00:00","requested_by":"local_user","route_path":"/restart","trace_id":"trace_bd23af0a05fc4bfb9cc4079fc5636698"}
+{"client_host":"127.0.0.1","graceful_shutdown_requested":true,"reason":null,"request_id":"restart_767df733f1db4b41a2bafbd40febb4d8","requested_at":"2026-07-03T20:44:03.137471+00:00","requested_by":"local_user","route_path":"/restart","trace_id":"trace_cea503f91e3d48e98cd84e0341a1ac26"}

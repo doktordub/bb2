@@ -136,14 +136,29 @@ async def test_default_session_service_streaming_finalizes_once_with_sqlite_stor
     loaded = await workflow_state.load("session_sqlite_stream_1")
     assert loaded.version == 1
     assert loaded.state["conversation"]["messages"] == [
-        {"role": "user", "content": "sqlite stream"},
+        {
+            "role": "user",
+            "content": "sqlite stream",
+            "created_at": "2026-06-27T18:00:00+00:00",
+            "metadata": {
+                "usecase": "default_chat",
+                "request_id": "trace-sqlite-stream-0001",
+                "turn_id": "trace-sqlite-stream-0001",
+                "trace_id": "trace-sqlite-stream-0001",
+            },
+        },
         {
             "role": "assistant",
             "content": "Echo: sqlite stream",
+            "created_at": "2026-06-27T18:00:01+00:00",
             "metadata": {
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "request_id": "trace-sqlite-stream-0001",
+                "turn_id": "trace-sqlite-stream-0001",
+                "trace_id": "trace-sqlite-stream-0001",
+                "usecase": "default_chat",
             },
         },
     ]

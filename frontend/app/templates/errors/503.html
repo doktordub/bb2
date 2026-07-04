@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Backend Unavailable | {{ frontend_app_name }}{% endblock %}
+
+{% block content %}
+<section class="error-shell">
+  <p class="eyebrow">503</p>
+  <h1>Backend unavailable</h1>
+  <p>{{ error_message }}</p>
+  <p><a class="action-link" href="{{ url_for('pages.chat') }}">Return to chat</a></p>
+</section>
+{% endblock %}

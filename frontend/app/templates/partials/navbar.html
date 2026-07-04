@@ -1,0 +1,51 @@
+<header class="app-header">
+  <div class="container-fluid app-header__inner">
+    <a class="brand-link" href="{{ url_for('pages.chat') }}" aria-label="Open chat workspace">
+      <img class="brand-mark" src="{{ url_for('static', filename='img/brand-mark.svg', v=static_version) }}" alt="">
+      <span class="brand-copy">
+        <span class="brand-title">{{ frontend_app_name }}</span>
+        <span class="brand-caption">Agent workflow shell</span>
+      </span>
+    </a>
+
+    <nav class="desktop-nav" aria-label="Primary">
+      <a class="nav-link-shell{% if active_page == 'chat' %} is-active{% endif %}" href="{{ url_for('pages.chat') }}"{% if active_page == 'chat' %} aria-current="page"{% endif %}>Chat</a>
+      {% if frontend_settings.frontend_admin_enabled %}
+      <a class="nav-link-shell{% if active_page == 'admin' %} is-active{% endif %}" href="{{ url_for('pages.admin') }}"{% if active_page == 'admin' %} aria-current="page"{% endif %}>Admin</a>
+      {% endif %}
+      <a class="nav-link-shell{% if active_page == 'help' %} is-active{% endif %}" href="{{ url_for('pages.help_page') }}"{% if active_page == 'help' %} aria-current="page"{% endif %}>Help</a>
+    </nav>
+
+    <div class="app-header__controls">
+      {% include "partials/status_badge.html" %}
+      <button class="btn btn-shell btn-shell--compact theme-toggle" type="button" data-theme-cycle-button aria-label="Cycle color theme">
+        <span class="theme-toggle__swatch" aria-hidden="true"></span>
+        <span class="theme-toggle__label" data-theme-label>Theme: Auto</span>
+      </button>
+      <button class="btn btn-shell btn-shell--compact nav-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobile-nav-panel" aria-haspopup="dialog">
+        Menu
+      </button>
+    </div>
+  </div>
+
+  <div class="mobile-nav-backdrop" data-mobile-nav-backdrop hidden></div>
+  <div id="mobile-nav-panel" class="mobile-nav-panel" data-mobile-nav-panel hidden tabindex="-1">
+    <div class="mobile-nav-panel__header">
+      <div>
+        <p class="eyebrow">Navigation</p>
+        <h2>Workspace</h2>
+      </div>
+      <button class="btn btn-shell btn-shell--compact" type="button" data-mobile-nav-dismiss>Close</button>
+    </div>
+    <nav class="mobile-nav" aria-label="Mobile primary">
+      <a class="nav-link-shell{% if active_page == 'chat' %} is-active{% endif %}" href="{{ url_for('pages.chat') }}" data-mobile-nav-dismiss{% if active_page == 'chat' %} aria-current="page"{% endif %}>Chat</a>
+      {% if frontend_settings.frontend_admin_enabled %}
+      <a class="nav-link-shell{% if active_page == 'admin' %} is-active{% endif %}" href="{{ url_for('pages.admin') }}" data-mobile-nav-dismiss{% if active_page == 'admin' %} aria-current="page"{% endif %}>Admin</a>
+      {% endif %}
+      <a class="nav-link-shell{% if active_page == 'help' %} is-active{% endif %}" href="{{ url_for('pages.help_page') }}" data-mobile-nav-dismiss{% if active_page == 'help' %} aria-current="page"{% endif %}>Help</a>
+    </nav>
+    <div class="mobile-nav-panel__meta">
+      <p>Browser traffic stays inside the frontend shell and calls only <code>/ui-api/*</code>.</p>
+    </div>
+  </div>
+</header>

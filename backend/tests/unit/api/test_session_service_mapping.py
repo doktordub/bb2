@@ -194,18 +194,22 @@ async def test_default_session_service_persists_state_and_records_trace() -> Non
     assert len(workflow_state.save_requests) == 1
 
     saved_state = workflow_state.states["session_abc"]
-    assert saved_state["conversation"]["messages"] == [
-        {"role": "user", "content": "persist this"},
-        {
-            "role": "assistant",
-            "content": "Echo: persist this",
-            "metadata": {
-                "agent_name": "fake_session_agent",
-                "strategy_name": "fake_direct_strategy",
-                "llm_profile": "fake_local_profile",
-            },
-        },
-    ]
+    messages = saved_state["conversation"]["messages"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "user"
+    assert messages[0]["content"] == "persist this"
+    assert isinstance(messages[0].get("created_at"), str)
+    assert messages[0]["metadata"] == {"usecase": "support_chat"}
+    assert messages[1]["role"] == "assistant"
+    assert messages[1]["content"] == "Echo: persist this"
+    assert isinstance(messages[1].get("created_at"), str)
+    assert messages[1]["metadata"] == {
+        "agent_name": "fake_session_agent",
+        "strategy_name": "fake_direct_strategy",
+        "llm_profile": "fake_local_profile",
+        "trace_id": "trace-session-map-0001",
+        "usecase": "support_chat",
+    }
     assert saved_state["workflow"]["current_step"] == "answered"
     assert saved_state["last_result"] == {
         "agent_name": "fake_session_agent",

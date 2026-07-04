@@ -808,6 +808,8 @@ class DefaultMemoryGateway:
     ) -> MemoryScope:
         explicit_scope = scope.normalized()
         resolved_scope = self._resolve_scope(scope, context)
+        metadata = dict(explicit_scope.metadata)
+        metadata.update(resolved_scope.metadata)
         return MemoryScope(
             user_id=resolved_scope.user_id,
             project_id=resolved_scope.project_id,
@@ -818,7 +820,7 @@ class DefaultMemoryGateway:
             source_id=explicit_scope.source_id,
             document_id=explicit_scope.document_id,
             tags=explicit_scope.tags,
-            metadata=dict(explicit_scope.metadata),
+            metadata=metadata,
         )
 
     def _ensure_write_scope(self, scope: MemoryScope) -> None:

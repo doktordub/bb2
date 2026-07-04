@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pluggable-agentic-ai-frontend"
+version = "0.1.0"
+description = "Frontend Flask UI for the pluggable agentic AI system"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "bleach",
+  "Flask",
+  "httpx",
+  "markdown",
+  "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy",
+  "pytest",
+  "pytest-cov",
+  "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = [
+  "templates/**/*.html",
+  "static/**/*.css",
+  "static/**/*.js",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true

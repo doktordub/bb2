@@ -59,6 +59,9 @@ def test_capabilities_route(monkeypatch: pytest.MonkeyPatch) -> None:
                     "list_enabled": False,
                     "delete_enabled": False,
                     "client_session_id_enabled": True,
+                    "continuity_enabled": False,
+                    "continuity_mode": "disabled",
+                    "summary_compaction_enabled": False,
                 },
                 "usecases": [
                     {
@@ -165,6 +168,9 @@ def test_capabilities_history_flag_follows_session_settings(monkeypatch: pytest.
     assert response.json()["data"]["sessions"]["history_enabled"] is True
     assert response.json()["data"]["sessions"]["list_enabled"] is False
     assert response.json()["data"]["sessions"]["delete_enabled"] is False
+    assert response.json()["data"]["sessions"]["continuity_enabled"] is False
+    assert response.json()["data"]["sessions"]["continuity_mode"] == "disabled"
+    assert response.json()["data"]["sessions"]["summary_compaction_enabled"] is False
     assert response.json()["data"]["memory"] == {
         "enabled": True,
         "configured": True,

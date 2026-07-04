@@ -31,6 +31,10 @@ def build_canonical_config(*, include_entrypoint: bool = False) -> FakeConfigura
         },
         "allowed_tool_intents": ["documents_search"],
         "allowed_memory_scopes": ["project"],
+        "prompts": {
+            "system_prompt": "You are the configured support system prompt.",
+            "developer_prompt": "Prefer concise answers.",
+        },
         "metadata": {"tier": "primary"},
     }
     if include_entrypoint:
@@ -69,6 +73,8 @@ def test_agent_factory_builds_builtin_general_assistant() -> None:
     assert agent.display_name == "Support Agent"
     assert agent.default_llm_profile == "local_reasoning"
     assert agent.prompt_profile == "general_assistant_v1"
+    assert agent.system_prompt_override == "You are the configured support system prompt."
+    assert agent.developer_prompt == "Prefer concise answers."
     assert agent.component == "agent.support_agent"
     assert agent.stream_llm_deltas is True
     assert agent.limits.max_output_chars == 12000
@@ -103,6 +109,8 @@ def test_agent_factory_builds_configured_agent_from_explicit_entrypoint() -> Non
     assert agent.display_name == "Support Agent"
     assert agent.default_llm_profile == "local_reasoning"
     assert agent.prompt_profile == "general_assistant_v1"
+    assert agent.system_prompt_override == "You are the configured support system prompt."
+    assert agent.developer_prompt == "Prefer concise answers."
     assert agent.component == "agent.support_agent"
     assert agent.capabilities == ["answer", "stream", "tool_intents"]
     assert agent.metadata == {

@@ -9,9 +9,10 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 
-from app.config.view import SessionSettings
+from app.config.view import ConversationContextSettings, SessionSettings, get_orchestration_settings
 from app.contracts.config import ConfigurationView
 from app.contracts.context import OrchestrationContext, RequestContext
+from app.contracts.errors import ConfigurationError
 from app.contracts.policy import PolicyService
 from app.contracts.state import WorkflowStateRecord, WorkflowStateSaveResult, WorkflowStateStore
 from app.observability.events import (
@@ -184,6 +185,7 @@ class DefaultSessionService:
             final_state = apply_orchestration_result(
                 prepared.state,
                 result=orchestration_result,
+                conversation_context_settings=self._conversation_context_settings(),
                 request_context=request_context,
                 trace_id=context.trace_id,
                 request_id=context.request_id,
@@ -309,6 +311,7 @@ class DefaultSessionService:
             final_state = apply_orchestration_result(
                 prepared.state,
                 result=orchestration_result,
+                conversation_context_settings=self._conversation_context_settings(),
                 request_context=request_context,
                 trace_id=context.trace_id,
                 request_id=context.request_id,
@@ -654,7 +657,11 @@ class DefaultSessionService:
         try:
             await self.workflow_state.save(
                 session_id,
-                mark_stream_interrupted(state, interrupted_at=self.clock.now()),
+                mark_stream_interrupted(
+                    state,
+                    conversation_context_settings=self._conversation_context_settings(),
+                    interrupted_at=self.clock.now(),
+                ),
                 expected_version=loaded.version,
                 metadata=self._state_metadata(context=context, usecase=usecase),
             )
@@ -678,7 +685,11 @@ class DefaultSessionService:
         try:
             await self.workflow_state.save(
                 session_id,
-                mark_stream_failed(state, failed_at=self.clock.now()),
+                mark_stream_failed(
+                    state,
+                    conversation_context_settings=self._conversation_context_settings(),
+                    failed_at=self.clock.now(),
+                ),
                 expected_version=loaded.version,
                 metadata=self._state_metadata(context=context, usecase=usecase),
             )
@@ -737,6 +748,20 @@ class DefaultSessionService:
                 },
             ),
         )
+
+    def _conversation_context_settings(self) -> ConversationContextSettings:
+        try:
+            return get_orchestration_settings(self.config).defaults.conversation_context
+        except ConfigurationError:
+            return ConversationContextSettings(
+                enabled=False,
+                mode="window",
+                max_messages=12,
+                max_chars=12000,
+                include_assistant_messages=True,
+                summary_threshold_messages=24,
+                summary_max_chars=2000,
+            )
 
     async def _record_event(
         self,

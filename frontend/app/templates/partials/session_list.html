@@ -1,0 +1,49 @@
+<aside id="sessions-drawer" class="panel panel-side session-panel panel-drawer panel-drawer--sessions" data-panel-drawer="sessions" aria-labelledby="sessions-heading" tabindex="-1">
+  <div class="panel-header">
+    <div class="panel-header__cluster">
+      <h4 id="sessions-heading">SESSIONS</h4>
+      <p class="hint">Select a session to reload history, or start a clean conversation without clearing the current use case.</p>
+    </div>
+    <button class="btn btn-shell btn-shell--compact panel-dismiss" type="button" data-chat-panel-dismiss aria-label="Close sessions panel">Close</button>
+  </div>
+
+  <div class="session-actions session-actions--primary">
+    <button class="btn btn-shell btn-shell--compact btn-shell--accent" type="button" data-session-new-chat>New chat</button>
+    <button class="btn btn-shell btn-shell--compact" type="button" data-session-refresh disabled>Refresh</button>
+  </div>
+
+  <section class="session-context" data-session-context hidden>
+    <div class="session-context__header">
+      <div class="session-context__identity">
+        <p class="eyebrow">Selected session</p>
+        <p class="session-context__title" data-session-context-title>No active session</p>
+      </div>
+      <span class="state-pill state-pill--available session-context__status" data-session-context-status>Unknown</span>
+    </div>
+    <p class="session-context__subtitle" data-session-context-usecase>No use case</p>
+    <div class="session-context__meta">
+      <span class="session-stat" data-session-context-count>0 msgs</span>
+      <span class="session-stat" data-session-context-updated>Updated unavailable</span>
+    </div>
+    <div class="compact-card__actions">
+      <button class="btn btn-shell btn-shell--compact" type="button" data-session-reset disabled>Reset active</button>
+    </div>
+  </section>
+
+  <div class="session-empty-state" data-session-empty-state>
+    <article class="info-card compact-card compact-card--soft">
+      <p class="eyebrow">No sessions</p>
+      <h4>Session rail</h4>
+      <p data-session-empty-copy>Capability checks are still loading. Session summaries will appear here when the session list finishes loading.</p>
+      <p class="hint session-empty-state__note" data-session-note>The next message can continue an existing backend session or start a new one while keeping the selected use case.</p>
+    </article>
+  </div>
+
+  <div class="session-list-shell" data-session-list-shell hidden>
+    <div class="session-list-meta">
+      <p class="hint" data-session-summary-copy>Loading sessions...</p>
+      <span class="state-pill state-pill--checking" data-session-list-status>Loading</span>
+    </div>
+    <ul class="session-list" data-session-list aria-live="polite" aria-label="Saved chat sessions"></ul>
+  </div>
+</aside>

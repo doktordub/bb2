@@ -360,6 +360,9 @@ class SessionCapabilities(BaseModel):
     list_enabled: bool = False
     delete_enabled: bool = False
     client_session_id_enabled: bool
+    continuity_enabled: bool = False
+    continuity_mode: str = "disabled"
+    summary_compaction_enabled: bool = False
 
 
 class DebugCapabilities(BaseModel):

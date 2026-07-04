@@ -1,0 +1,135 @@
+:root {
+  color-scheme: dark light;
+  --font-display: "Bahnschrift", "Aptos Display", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-body: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+  --bg-page: #071018;
+  --bg-page-alt: #0b1620;
+  --bg-panel: rgba(11, 23, 34, 0.92);
+  --bg-panel-strong: rgba(13, 27, 39, 0.97);
+  --bg-elevated: rgba(16, 32, 46, 0.98);
+  --border-soft: rgba(128, 153, 174, 0.2);
+  --border-strong: rgba(78, 195, 200, 0.34);
+  --text-main: #dbe7f1;
+  --text-muted: #8ea1b2;
+  --text-strong: #f6fbff;
+  --text-default: var(--text-main);
+  --accent: #4ec3c8;
+  --accent-strong: #84dde0;
+  --accent-warm: #d19b4a;
+  --color-accent: var(--accent);
+  --status-online: #5cc5b6;
+  --status-degraded: #d8a148;
+  --status-offline: #df7469;
+  --status-unknown: #8ea1b2;
+  --surface-soft: rgba(255, 255, 255, 0.03);
+  --surface-soft-strong: rgba(255, 255, 255, 0.05);
+  --surface-subtle: rgba(255, 255, 255, 0.02);
+  --surface-code: rgba(7, 15, 26, 0.85);
+  --surface-code-inline: rgba(255, 255, 255, 0.06);
+  --chat-bubble-assistant: rgba(13, 22, 30, 0.92);
+  --chat-bubble-user: rgba(22, 54, 61, 0.92);
+  --composer-surface: rgba(8, 15, 21, 0.9);
+  --input-surface: rgba(7, 15, 22, 0.78);
+  --input-surface-focus: rgba(7, 15, 22, 0.92);
+  --shadow-color: rgba(2, 8, 13, 0.44);
+  --shadow-panel: 0 14px 28px rgba(2, 8, 13, 0.22);
+  --shadow-overlay: 0 24px 48px rgba(2, 8, 13, 0.34);
+  --hero-glow: rgba(78, 195, 200, 0.09);
+  --surface-highlight: rgba(255, 255, 255, 0.035);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --radius-xs: 0.35rem;
+  --radius-sm: 0.55rem;
+  --radius-md: 0.8rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --header-height: 4.5rem;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-page: #edf2f5;
+  --bg-page-alt: #dce6ec;
+  --bg-panel: rgba(255, 255, 255, 0.94);
+  --bg-panel-strong: rgba(249, 251, 252, 0.98);
+  --bg-elevated: rgba(255, 255, 255, 0.99);
+  --border-soft: rgba(41, 67, 86, 0.16);
+  --border-strong: rgba(19, 111, 118, 0.28);
+  --text-main: #142433;
+  --text-muted: #607487;
+  --text-strong: #08131f;
+  --text-default: var(--text-main);
+  --accent: #137078;
+  --accent-strong: #1f8f91;
+  --accent-warm: #a96b10;
+  --color-accent: var(--accent);
+  --status-online: #0f7d70;
+  --status-degraded: #9c6715;
+  --status-offline: #bb4b3b;
+  --status-unknown: #728595;
+  --surface-soft: rgba(255, 255, 255, 0.84);
+  --surface-soft-strong: rgba(255, 255, 255, 0.92);
+  --surface-subtle: rgba(255, 255, 255, 0.72);
+  --surface-code: rgba(247, 250, 252, 0.98);
+  --surface-code-inline: rgba(19, 111, 118, 0.1);
+  --chat-bubble-assistant: rgba(248, 251, 253, 0.98);
+  --chat-bubble-user: rgba(231, 244, 245, 0.98);
+  --composer-surface: rgba(250, 252, 253, 0.98);
+  --input-surface: rgba(255, 255, 255, 0.96);
+  --input-surface-focus: rgba(255, 255, 255, 1);
+  --shadow-color: rgba(40, 58, 73, 0.16);
+  --shadow-panel: 0 10px 24px rgba(40, 58, 73, 0.12);
+  --shadow-overlay: 0 24px 48px rgba(40, 58, 73, 0.18);
+  --hero-glow: rgba(19, 112, 120, 0.08);
+  --surface-highlight: rgba(14, 28, 40, 0.035);
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme]) {
+    color-scheme: light;
+    --bg-page: #edf2f5;
+    --bg-page-alt: #dce6ec;
+    --bg-panel: rgba(255, 255, 255, 0.94);
+    --bg-panel-strong: rgba(249, 251, 252, 0.98);
+    --bg-elevated: rgba(255, 255, 255, 0.99);
+    --border-soft: rgba(41, 67, 86, 0.16);
+    --border-strong: rgba(19, 111, 118, 0.28);
+    --text-main: #142433;
+    --text-muted: #607487;
+    --text-strong: #08131f;
+    --text-default: var(--text-main);
+    --accent: #137078;
+    --accent-strong: #1f8f91;
+    --accent-warm: #a96b10;
+    --color-accent: var(--accent);
+    --status-online: #0f7d70;
+    --status-degraded: #9c6715;
+    --status-offline: #bb4b3b;
+    --status-unknown: #728595;
+    --surface-soft: rgba(255, 255, 255, 0.84);
+    --surface-soft-strong: rgba(255, 255, 255, 0.92);
+    --surface-subtle: rgba(255, 255, 255, 0.72);
+    --surface-code: rgba(247, 250, 252, 0.98);
+    --surface-code-inline: rgba(19, 111, 118, 0.1);
+    --chat-bubble-assistant: rgba(248, 251, 253, 0.98);
+    --chat-bubble-user: rgba(231, 244, 245, 0.98);
+    --composer-surface: rgba(250, 252, 253, 0.98);
+    --input-surface: rgba(255, 255, 255, 0.96);
+    --input-surface-focus: rgba(255, 255, 255, 1);
+    --shadow-color: rgba(40, 58, 73, 0.16);
+    --shadow-panel: 0 10px 24px rgba(40, 58, 73, 0.12);
+    --shadow-overlay: 0 24px 48px rgba(40, 58, 73, 0.18);
+    --hero-glow: rgba(19, 112, 120, 0.08);
+    --surface-highlight: rgba(14, 28, 40, 0.035);
+  }
+}

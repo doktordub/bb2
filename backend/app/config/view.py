@@ -302,6 +302,19 @@ AgentType = Literal[
 
 
 @dataclass(frozen=True, slots=True)
+class ConversationContextSettings:
+    """Typed same-session continuity settings resolved from validated config."""
+
+    enabled: bool
+    mode: str
+    max_messages: int
+    max_chars: int
+    include_assistant_messages: bool
+    summary_threshold_messages: int
+    summary_max_chars: int
+
+
+@dataclass(frozen=True, slots=True)
 class OrchestrationDefaultsSettings:
     """Typed orchestration default settings resolved from validated configuration."""
 
@@ -323,6 +336,7 @@ class OrchestrationDefaultsSettings:
     expose_strategy_metadata: bool
     expose_chain_of_thought: bool
     save_runtime_snapshots: bool
+    conversation_context: ConversationContextSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,6 +369,18 @@ class OrchestrationUseCaseMemorySettings:
     enabled: bool
     include_document_chunks: bool
     default_limit: int
+    allowed_project_ids: tuple[str, ...]
+    default_project_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AgentMemorySettings:
+    """Typed agent memory settings resolved from validated configuration."""
+
+    search_enabled: bool
+    write_enabled: bool
+    allowed_project_ids: tuple[str, ...]
+    default_project_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -797,6 +823,14 @@ class AgentContextPolicySettings:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentPromptOverrideSettings:
+    """Typed per-plugin prompt overrides resolved from validated configuration."""
+
+    system_prompt: str | None
+    developer_prompt: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class AgentPluginSettings:
     """Typed agent plugin settings resolved from validated configuration."""
 
@@ -812,10 +846,12 @@ class AgentPluginSettings:
     context_policy: AgentContextPolicySettings
     allowed_tool_intents: tuple[str, ...]
     allowed_memory_scopes: tuple[str, ...]
+    memory: AgentMemorySettings
     expose_metadata: bool
     stream_llm_deltas: bool
     module: str | None
     class_name: str | None
+    prompts: AgentPromptOverrideSettings
     metadata: dict[str, Any]
 
 
@@ -1633,6 +1669,15 @@ def get_orchestration_settings(config: ConfigurationView) -> OrchestrationSettin
                     True,
                 ),
                 default_limit=_read_int(usecase_view, "usecase.memory.default_limit", 10),
+                allowed_project_ids=_read_str_tuple(
+                    usecase_view,
+                    "usecase.memory.allowed_project_ids",
+                    (),
+                ),
+                default_project_id=_read_optional_str_or_none(
+                    usecase_view,
+                    "usecase.memory.default_project_id",
+                ),
             ),
             tools=OrchestrationUseCaseToolSettings(
                 enabled=_read_bool(usecase_view, "usecase.tools.enabled", True),
@@ -1740,6 +1785,43 @@ def get_orchestration_settings(config: ConfigurationView) -> OrchestrationSettin
                 config,
                 "orchestration.defaults.save_runtime_snapshots",
                 False,
+            ),
+            conversation_context=ConversationContextSettings(
+                enabled=_read_bool(
+                    config,
+                    "orchestration.defaults.conversation_context.enabled",
+                    False,
+                ),
+                mode=_read_str(
+                    config,
+                    "orchestration.defaults.conversation_context.mode",
+                    "window",
+                ),
+                max_messages=_read_int(
+                    config,
+                    "orchestration.defaults.conversation_context.max_messages",
+                    12,
+                ),
+                max_chars=_read_int(
+                    config,
+                    "orchestration.defaults.conversation_context.max_chars",
+                    12000,
+                ),
+                include_assistant_messages=_read_bool(
+                    config,
+                    "orchestration.defaults.conversation_context.include_assistant_messages",
+                    True,
+                ),
+                summary_threshold_messages=_read_int(
+                    config,
+                    "orchestration.defaults.conversation_context.summary_threshold_messages",
+                    24,
+                ),
+                summary_max_chars=_read_int(
+                    config,
+                    "orchestration.defaults.conversation_context.summary_max_chars",
+                    2000,
+                ),
             ),
         ),
         strategies=strategies,
@@ -2016,6 +2098,27 @@ def get_agents_settings(config: ConfigurationView) -> AgentsSettings:
                 "agent.allowed_memory_scopes",
                 (),
             ),
+            memory=AgentMemorySettings(
+                search_enabled=_read_bool(
+                    plugin_view,
+                    "agent.memory.search_enabled",
+                    False,
+                ),
+                write_enabled=_read_bool(
+                    plugin_view,
+                    "agent.memory.write_enabled",
+                    False,
+                ),
+                allowed_project_ids=_read_str_tuple(
+                    plugin_view,
+                    "agent.memory.allowed_project_ids",
+                    (),
+                ),
+                default_project_id=_read_optional_str_or_none(
+                    plugin_view,
+                    "agent.memory.default_project_id",
+                ),
+            ),
             expose_metadata=_read_bool(
                 plugin_view,
                 "agent.expose_metadata",
@@ -2028,6 +2131,16 @@ def get_agents_settings(config: ConfigurationView) -> AgentsSettings:
             ),
             module=_read_optional_str_or_none(plugin_view, "agent.module"),
             class_name=_read_optional_str_or_none(plugin_view, "agent.class_name"),
+            prompts=AgentPromptOverrideSettings(
+                system_prompt=_read_optional_str_or_none(
+                    plugin_view,
+                    "agent.prompts.system_prompt",
+                ),
+                developer_prompt=_read_optional_str_or_none(
+                    plugin_view,
+                    "agent.prompts.developer_prompt",
+                ),
+            ),
             metadata=_read_mapping_dict(plugin_view, "agent.metadata"),
         )
 
