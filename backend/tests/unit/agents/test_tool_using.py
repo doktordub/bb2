@@ -119,6 +119,49 @@ async def test_tool_using_returns_final_answer_from_tool_context() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_using_falls_back_to_prompt_only_json_when_profile_lacks_schema_support() -> None:
+    context, llm, tools = build_context(
+        response_text=(
+            '{"kind": "tool_intent", "tool_name": "documents_search", '
+            '"arguments": {"query": "weather in Dallas TX"}}'
+        )
+    )
+    context.config = FakeConfigurationView(
+        {
+            "llm": {
+                "profiles": {
+                    "tool_profile": {
+                        "supports_json_schema": False,
+                    }
+                }
+            }
+        }
+    )
+    agent = ToolUsingAgent(name="tool_agent")
+    agent.default_llm_profile = "agent_profile"
+    agent.limits = SimpleNamespace(
+        max_output_chars=200,
+        max_llm_calls=1,
+        max_prompt_context_bytes=800,
+        max_tool_intents=2,
+    )
+    agent.allowed_tool_intents = ("documents_search",)
+
+    request = build_run_request_from_context(
+        context,
+        agent_name=agent.name,
+        available_tools=("documents_search",),
+    )
+
+    result = await agent.run(request=request, context=context)
+
+    assert len(result.tool_intents) == 1
+    assert llm.requests[0].response_format is None
+    assert llm.requests[0].metadata["response_format_fallback"] == "prompt_only"
+    assert tools.calls == []
+
+
+@pytest.mark.asyncio
 async def test_tool_using_rejects_unknown_logical_tool_names() -> None:
     context, _, _ = build_context(
         response_text='{"kind": "tool_intent", "tool_name": "unknown_tool", "arguments": {"text": "hi"}}'

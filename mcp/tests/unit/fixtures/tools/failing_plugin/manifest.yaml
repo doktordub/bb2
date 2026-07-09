@@ -1,0 +1,30 @@
+name: failing_plugin
+package: mcp.tools.failing_plugin
+version: 1.0.0
+status: experimental
+owner: tests
+required: false
+description: Fixture tool whose plugin factory fails.
+capabilities:
+  - name: failing.echo
+    type: tool
+    description: Failing fixture capability.
+    risk_level: read_only
+tools:
+  - name: failing.echo
+    function: echo
+    capability: failing.echo
+    description: Failing fixture capability.
+    risk_level: read_only
+    input_schema:
+      type: object
+      properties: {}
+    tags: [fixture, failing]
+config_schema:
+  type: object
+  required: [label]
+  properties:
+    label:
+      type: string
+      minLength: 1
+  additionalProperties: false

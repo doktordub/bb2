@@ -1,0 +1,30 @@
+name: disabled_tool
+package: mcp.tools.disabled_tool
+version: 1.0.0
+status: experimental
+owner: tests
+required: false
+description: Disabled fixture tool that must never be imported.
+capabilities:
+  - name: disabled.echo
+    type: tool
+    description: Disabled fixture capability.
+    risk_level: read_only
+tools:
+  - name: disabled.echo
+    function: echo
+    capability: disabled.echo
+    description: Disabled fixture capability.
+    risk_level: read_only
+    input_schema:
+      type: object
+      properties: {}
+    tags: [fixture, disabled]
+config_schema:
+  type: object
+  required: [label]
+  properties:
+    label:
+      type: string
+      minLength: 1
+  additionalProperties: false

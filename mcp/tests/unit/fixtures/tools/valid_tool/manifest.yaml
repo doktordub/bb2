@@ -1,0 +1,30 @@
+name: valid_tool
+package: mcp.tools.valid_tool
+version: 1.0.0
+status: experimental
+owner: tests
+required: true
+description: Valid fixture tool for loader coverage.
+capabilities:
+  - name: valid.echo
+    type: tool
+    description: Return the configured fixture label.
+    risk_level: read_only
+tools:
+  - name: valid.echo
+    function: echo
+    capability: valid.echo
+    description: Return the configured fixture label.
+    risk_level: read_only
+    input_schema:
+      type: object
+      properties: {}
+    tags: [fixture, valid]
+config_schema:
+  type: object
+  required: [label]
+  properties:
+    label:
+      type: string
+      minLength: 1
+  additionalProperties: false

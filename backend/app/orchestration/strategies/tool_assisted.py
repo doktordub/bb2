@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.agents.errors import AgentLLMError
+from app.agents.result_builder import build_run_result
 from app.contracts.agents import AgentPlugin
 from app.contracts.context import OrchestrationContext
 from app.contracts.results import OrchestrationResult as LegacyOrchestrationResult
@@ -27,13 +29,15 @@ from app.orchestration.strategy_steps import (
     run_agent_step,
     run_tool_call_step,
 )
-from app.orchestration.tool_intents import ToolIntent, tool_result_safe_text
+from app.orchestration.tool_intents import ToolIntent, build_default_tool_arguments, tool_result_safe_text
 
 if TYPE_CHECKING:
     from app.orchestration.strategy import StrategyExecutionResult
 
 _COMPONENT = "orchestration.strategy.tool_assisted"
 _TOOL_TRIGGER_PREFIX = "tool:"
+_DIRECT_SEARCH_HINTS = ("weather", "forecast", "temperature", "search the web", "search web")
+_WEB_SEARCH_ONLY_TOOLS = ("websearch.search",)
 
 
 @dataclass(slots=True)
@@ -105,21 +109,62 @@ async def _run_strategy(
     strategy_name = _strategy_name(context)
     agent = _selected_agent(context, agents)
     agent_name = agent.name
+    available_tools = _unique_tool_names(_configured_tool_names(context, agent_name=agent_name))
+    shortcut_intent = _resolve_direct_tool_intent(context, available_tools=available_tools)
+    direct_answer_agent = _resolve_direct_answer_agent(
+        context,
+        agents=agents,
+        available_tools=available_tools,
+        shortcut_intent=shortcut_intent,
+    )
+    planning_agent = direct_answer_agent or agent
+    planning_agent_name = planning_agent.name
     llm_profile = await _resolve_llm_profile(
         context,
-        agent_name=agent_name,
+        agent_name=planning_agent_name,
         action="llm.complete",
     )
-    available_tools = tuple(_configured_tool_names(context, agent_name=agent_name))
-    planning_result = await run_agent_step(
-        context,
-        component=_COMPONENT,
-        agent=agent,
-        strategy_name=strategy_name,
-        available_tools=available_tools,
-        llm_profile=llm_profile,
-        metadata={"tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0))},
-    )
+    if direct_answer_agent is not None:
+        planning_result = await run_agent_step(
+            context,
+            component=_COMPONENT,
+            agent=planning_agent,
+            strategy_name=strategy_name,
+            llm_profile=llm_profile,
+            metadata={
+                "tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0)),
+                "direct_answer_shortcut": True,
+                "tool_planning_agent": agent_name,
+            },
+        )
+    elif shortcut_intent is None:
+        planning_result = await run_agent_step(
+            context,
+            component=_COMPONENT,
+            agent=planning_agent,
+            strategy_name=strategy_name,
+            available_tools=available_tools,
+            llm_profile=llm_profile,
+            metadata={"tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0))},
+        )
+    else:
+        planning_result = build_run_result(
+            status="completed",
+            answer=None,
+            agent_name=planning_agent_name,
+            llm_profile=llm_profile,
+            tool_intents=(shortcut_intent,),
+            metadata={
+                "response_mode": "tool_intents",
+                "tool_intent_count": 1,
+                "planner_bypassed": True,
+            },
+        )
+
+    if direct_answer_agent is not None and planning_result.tool_intents:
+        raise OrchestrationLimitExceededError(
+            "The tool-assisted direct-answer shortcut cannot request logical tools."
+        )
 
     if len(planning_result.tool_intents) > 1:
         raise OrchestrationLimitExceededError(
@@ -139,16 +184,32 @@ async def _run_strategy(
             tool_intent=tool_intent,
         )
         raise_if_cancelled(_cancellation_token(context))
-        final_result = await run_agent_step(
-            context,
-            component=_COMPONENT,
-            agent=agent,
-            strategy_name=strategy_name,
-            available_tools=available_tools,
-            tool_context=(_tool_result_section(tool_result),),
-            llm_profile=llm_profile,
-            metadata={"tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0))},
-        )
+        if shortcut_intent is not None:
+            final_result = _build_direct_tool_summary_result(
+                agent_name=agent_name,
+                llm_profile=llm_profile,
+                tool_result=tool_result,
+            )
+        else:
+            try:
+                final_result = await run_agent_step(
+                    context,
+                    component=_COMPONENT,
+                    agent=agent,
+                    strategy_name=strategy_name,
+                    available_tools=available_tools,
+                    tool_context=(_tool_result_section(tool_result),),
+                    llm_profile=llm_profile,
+                    metadata={"tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0))},
+                )
+            except AgentLLMError:
+                if not _supports_direct_tool_summary(tool_result):
+                    raise
+                final_result = _build_direct_tool_summary_result(
+                    agent_name=agent_name,
+                    llm_profile=llm_profile,
+                    tool_result=tool_result,
+                )
         if final_result.tool_intents:
             raise OrchestrationLimitExceededError(
                 "The tool-assisted strategy requested another tool after tool results were provided."
@@ -163,20 +224,40 @@ async def _run_strategy(
         "tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0)),
         "duration_ms": duration_ms,
     }
+    if direct_answer_agent is not None:
+        metadata.update(
+            {
+                "direct_answer_shortcut": True,
+                "direct_answer_agent": planning_agent_name,
+                "tool_planning_agent": agent_name,
+            }
+        )
     steps = [
         build_step_summary(
             step_id=f"{strategy_name}:agent_plan",
             step_type="agent",
             status="completed",
             safe_message=(
+                "Answered directly through the configured direct-answer agent."
+                if direct_answer_agent is not None
+                else (
                 "Generated a bounded logical tool intent."
                 if planning_result.tool_intents
                 else "Answered directly without a tool call."
+                )
             ),
             metadata={
-                "agent_name": planning_result.agent_name or agent_name,
+                "agent_name": planning_result.agent_name or planning_agent_name,
                 "llm_profile": planning_result.llm_profile or llm_profile,
                 "tool_intent_count": len(planning_result.tool_intents),
+                **(
+                    {
+                        "direct_answer_shortcut": True,
+                        "tool_planning_agent": agent_name,
+                    }
+                    if direct_answer_agent is not None
+                    else {}
+                ),
             },
         )
     ]
@@ -211,7 +292,7 @@ async def _run_strategy(
         )
     return finalize_strategy_result(
         answer=agent_result_answer(final_result),
-        agent_name=final_result.agent_name or agent_name,
+        agent_name=final_result.agent_name or planning_agent_name,
         llm_profile=final_result.llm_profile or llm_profile,
         finish_reason=_read_finish_reason(metadata),
         steps=steps,
@@ -295,6 +376,97 @@ def _configured_tool_names(
             configured.extend(usecase.tools.allowed_tools)
     configured.extend(_read_string_list(context.config.get(f"agents.{agent_name}.allowed_tools")))
     return configured
+
+
+def _unique_tool_names(values: Sequence[str]) -> tuple[str, ...]:
+    unique: list[str] = []
+    for item in values:
+        tool_name = _read_optional_str(item)
+        if tool_name is None or tool_name in unique:
+            continue
+        unique.append(tool_name)
+    return tuple(unique)
+
+
+def _resolve_direct_tool_intent(
+    context: OrchestrationContext,
+    *,
+    available_tools: Sequence[str],
+) -> ToolIntent | None:
+    if tuple(available_tools) != _WEB_SEARCH_ONLY_TOOLS:
+        return None
+
+    message = _read_optional_str(context.request.message)
+    if message is None:
+        return None
+
+    lowered = message.casefold()
+    if not any(term in lowered for term in _DIRECT_SEARCH_HINTS):
+        return None
+
+    return ToolIntent(
+        tool_name="websearch.search",
+        arguments=build_default_tool_arguments("websearch.search", message),
+        query=message,
+        metadata={"reason": "single_search_short_circuit"},
+    )
+
+
+def _resolve_direct_answer_agent(
+    context: OrchestrationContext,
+    *,
+    agents: Sequence[AgentPlugin],
+    available_tools: Sequence[str],
+    shortcut_intent: ToolIntent | None,
+) -> AgentPlugin | None:
+    if shortcut_intent is not None:
+        return None
+    if tuple(available_tools) != _WEB_SEARCH_ONLY_TOOLS:
+        return None
+
+    message = _read_optional_str(context.request.message)
+    if message is None:
+        return None
+
+    lowered = message.casefold()
+    if any(term in lowered for term in _DIRECT_SEARCH_HINTS):
+        return None
+
+    direct_agent_name = _configured_direct_answer_agent_name(context)
+    if direct_agent_name is None:
+        return None
+
+    for agent in agents:
+        if agent.name == direct_agent_name:
+            return agent
+    return None
+
+
+def _configured_direct_answer_agent_name(context: OrchestrationContext) -> str | None:
+    if context.settings is None:
+        return None
+
+    direct_settings = context.settings.strategies.get("direct_agent")
+    if direct_settings is None or not direct_settings.enabled:
+        return None
+
+    usecase_name = _read_optional_str(context.request.usecase)
+    if direct_settings.allowed_usecases and usecase_name not in direct_settings.allowed_usecases:
+        return None
+
+    agent_name = _read_optional_str(direct_settings.default_agent)
+    if agent_name is None:
+        return None
+
+    if usecase_name is None:
+        return agent_name
+
+    usecase = context.settings.usecases.get(usecase_name)
+    if usecase is None:
+        return None
+    if usecase.allowed_agents and agent_name not in usecase.allowed_agents:
+        return None
+    return agent_name
 
 
 def _selected_agent_name(
@@ -381,6 +553,58 @@ def _tool_result_section(tool_result: ToolExecutionResult) -> PromptSection:
             f"Summary: {tool_result_safe_text(tool_result)}"
         ),
     )
+
+
+def _supports_direct_tool_summary(tool_result: ToolExecutionResult) -> bool:
+    return tool_result.tool_name == "websearch.search"
+
+
+def _build_direct_tool_summary_result(
+    *,
+    agent_name: str,
+    llm_profile: str | None,
+    tool_result: ToolExecutionResult,
+):
+    return build_run_result(
+        status="completed",
+        answer=_format_direct_tool_answer(tool_result),
+        agent_name=agent_name,
+        llm_profile=llm_profile,
+        metadata={"response_mode": "final_answer", "tool_summary_fallback": True},
+    )
+
+
+def _format_direct_tool_answer(tool_result: ToolExecutionResult) -> str:
+    structured = tool_result.structured_content or {}
+    if structured.get("ok") is not True:
+        error = structured.get("error")
+        if isinstance(error, dict):
+            message = _read_optional_str(error.get("message"))
+            if message is not None:
+                return message
+        return tool_result_safe_text(tool_result)
+
+    results = structured.get("results")
+    if not isinstance(results, Sequence) or isinstance(results, str | bytes | bytearray) or not results:
+        return "The web search tool returned no results."
+
+    lines = ["Here are the top web results:"]
+    for item in list(results)[:3]:
+        if not isinstance(item, dict):
+            continue
+        title = _read_optional_str(item.get("title")) or "Untitled result"
+        snippet = _read_optional_str(item.get("snippet"))
+        url = _read_optional_str(item.get("url"))
+        line = f"- {title}"
+        if snippet:
+            line += f": {snippet}"
+        if url:
+            line += f" ({url})"
+        lines.append(line)
+
+    if len(lines) == 1:
+        return "The web search tool returned no readable results."
+    return "\n".join(lines)
 
 
 def _read_finish_reason(metadata: dict[str, Any]) -> str:

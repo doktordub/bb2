@@ -134,6 +134,11 @@ class ToolUsingAgent(BaseLlmAgent):
                 llm_profile=llm_profile,
                 stream=False,
             )
+            llm_request = self._finalize_llm_request(
+                llm_request,
+                context=context,
+                llm_profile=llm_profile,
+            )
             llm_started_at = perf_counter()
             await self._record_trace(
                 context=context,

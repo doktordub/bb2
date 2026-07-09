@@ -1,0 +1,30 @@
+name: duplicate_tool_a
+package: mcp.tools.duplicate_tool_a
+version: 1.0.0
+status: experimental
+owner: tests
+required: true
+description: First duplicate-name fixture tool.
+capabilities:
+  - name: duplicate.echo
+    type: tool
+    description: Duplicate fixture capability.
+    risk_level: read_only
+tools:
+  - name: duplicate.echo
+    function: echo
+    capability: duplicate.echo
+    description: Duplicate fixture capability.
+    risk_level: read_only
+    input_schema:
+      type: object
+      properties: {}
+    tags: [fixture, duplicate]
+config_schema:
+  type: object
+  required: [label]
+  properties:
+    label:
+      type: string
+      minLength: 1
+  additionalProperties: false

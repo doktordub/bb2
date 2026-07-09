@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field, replace
+import logging
 from time import perf_counter
 from typing import Any, Protocol, TypeVar
 
@@ -83,6 +84,8 @@ ORCHESTRATION_COMPLETED = "orchestration_completed"
 ORCHESTRATION_FAILED = "orchestration_failed"
 ORCHESTRATION_CANCELLED = "orchestration_cancelled"
 ORCHESTRATION_FALLBACK_USED = "strategy_fallback_used"
+
+logger = logging.getLogger(__name__)
 
 _RuntimeT = TypeVar("_RuntimeT", bound="DefaultOrchestrationRuntime")
 
@@ -1155,6 +1158,26 @@ class DefaultOrchestrationRuntime:
                 legacy_result=legacy_result,
                 finish_reason=_read_finish_reason(legacy_result.metadata),
                 duration_ms=duration_ms,
+            )
+            logger.warning(
+                "Primary orchestration strategy degraded to fallback answer",
+                extra={
+                    "component": ORCHESTRATION_COMPONENT,
+                    "event_type": ORCHESTRATION_FALLBACK_USED,
+                    "status": "degraded",
+                    "details": {
+                        "trace_id": request.trace_id,
+                        "session_id": request.session_id,
+                        "usecase": request.usecase,
+                        "failed_strategy": decision.failed_strategy or route.strategy_name,
+                        "fallback_strategy": decision.fallback_strategy or fallback_route.strategy_name,
+                        "fallback_reason": decision.reason,
+                        "failed_error_code": decision.error.code,
+                        "failed_retryable": decision.error.retryable,
+                        "fallback_answer_source": runtime_result.metadata.get("answer_source"),
+                        "fallback_llm_error": runtime_result.metadata.get("fallback_llm_error"),
+                    },
+                },
             )
             return runtime_result, fallback_route, decision
         except Exception:

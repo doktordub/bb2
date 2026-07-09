@@ -1,0 +1,25 @@
+name: wrong_name
+package: mcp.tools.wrong_name
+version: 1.0.0
+status: experimental
+owner: tests
+required: true
+description: Invalid manifest fixture.
+capabilities:
+  - name: invalid.echo
+    type: tool
+    description: Invalid fixture capability.
+    risk_level: read_only
+tools:
+  - name: invalid.echo
+    function: echo
+    capability: invalid.echo
+    description: Invalid fixture capability.
+    risk_level: read_only
+    input_schema:
+      type: object
+      properties: {}
+config_schema:
+  type: object
+  properties: {}
+  additionalProperties: false

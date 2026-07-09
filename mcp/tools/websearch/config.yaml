@@ -1,0 +1,18 @@
+provider: ddgs
+backend: auto
+region: us-en
+safesearch: moderate
+max_results: 10
+max_query_chars: 500
+timeout_seconds: 15
+cache_seconds: 300
+allowed_result_fields:
+  - title
+  - href
+  - body
+result_limits:
+  max_title_chars: 200
+  max_url_chars: 1000
+  max_snippet_chars: 500
+  max_results: 10
+deep_healthcheck: false

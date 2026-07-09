@@ -1,0 +1,79 @@
+server:
+  name: main_mcp
+  version: 1.0.0
+  environment: ${env:MCP_ENV:local}
+  host: ${env:MCP_HOST:0.0.0.0}
+  port: ${env:MCP_PORT:9001}
+  path: /mcp
+  transport: http
+  public_base_url: ${env:MCP_PUBLIC_BASE_URL:http://localhost:9001}
+
+runtime:
+  tools_dir: mcp/tools
+  discovery_on_startup: true
+  fail_on_required_tool_error: true
+  fail_on_optional_tool_error: false
+  reload_tools_in_dev: false
+
+security:
+  inbound_auth:
+    enabled: false
+    mode: none
+    bearer_token_env: MCP_BEARER_TOKEN
+    jwt:
+      issuer: ${env:MCP_JWT_ISSUER:}
+      audience: ${env:MCP_JWT_AUDIENCE:}
+      jwks_url: ${env:MCP_JWT_JWKS_URL:}
+      allowed_algorithms:
+        - RS256
+  outbound_auth:
+    default_mode: none
+    oauth_clients: {}
+  tls:
+    mode: terminate_upstream
+    cert_file: ${env:MCP_TLS_CERT_FILE:}
+    key_file: ${env:MCP_TLS_KEY_FILE:}
+    behind_proxy: true
+  secrets:
+    provider: env
+    allow_tool_env_prefixes:
+      - MCP_TOOL_
+      - WEBSEARCH_
+
+policy:
+  default_tool_enabled: false
+  expose_internal_tools: true
+  expose_health_tool: true
+  expose_capabilities_tool: true
+  require_tool_manifest: true
+  require_tool_config_validation: true
+  reject_secret_like_arguments: true
+
+observability:
+  log_level: ${env:MCP_LOG_LEVEL:INFO}
+  json_logs: true
+  trace_headers:
+    inbound_trace_id: x-trace-id
+    inbound_request_id: x-request-id
+  redact_secrets: true
+  metrics_enabled: true
+  max_log_payload_chars: 2000
+
+defaults:
+  timeout_seconds: 30
+  max_result_bytes: 262144
+  max_argument_bytes: 65536
+  max_results: 10
+  rate_limit:
+    enabled: true
+    per_tool_per_minute: 60
+
+tools:
+  example_tool:
+    enabled: false
+    required: false
+    config_file: config.yaml
+  websearch:
+    enabled: true
+    required: true
+    config_file: config.yaml

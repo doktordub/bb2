@@ -33,7 +33,7 @@ orchestration:
     max_tool_loop_iterations: 3
     max_context_bytes: 64000
     max_turn_duration_seconds: 120
-    max_stream_duration_seconds: 360
+    max_stream_duration_seconds: 120
     emit_step_events: true
     emit_tool_events: true
     emit_memory_events: true
@@ -57,10 +57,11 @@ orchestration:
       default_agent: support_agent
       allowed_usecases:
         - default_chat
+        - support_web_chat
       llm_profile: local_reasoning
       memory_enabled: false
       memory_write_enabled: false
-      tools_enabled: false
+      tools_enabled: true
       stream_llm_deltas: true
       expose_strategy_metadata: true
     retrieval_augmented:
@@ -80,6 +81,22 @@ orchestration:
         default_limit: 8
         include_document_chunks: true
         include_user_memory: true
+    tool_assisted:
+      enabled: true
+      type: tool_assisted
+      description: Run one bounded logical tool call, then synthesize a final answer.
+      default_agent: tool_using_agent
+      allowed_usecases:
+        - default_chat
+        - support_web_chat
+      llm_profile: local_reasoning
+      memory_enabled: false
+      tools_enabled: true
+      stream_llm_deltas: true
+      expose_strategy_metadata: true
+      tools:
+        allowed_tools:
+          - websearch.search
     bounded_planner:
       enabled: true
       type: bounded_planner
@@ -114,21 +131,43 @@ orchestration:
       message: I could not complete the full workflow, but here is the safest answer I can provide.
       allowed_usecases:
         - default_chat
+        - support_web_chat
         - architecture_document_qa
       expose_strategy_metadata: true
   usecases:
     default_chat:
       enabled: true
       description: Default local backend use case.
-      strategy: direct_agent
-      agent: support_agent
+      strategy: tool_assisted
+      agent: tool_using_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - tool_using_agent
+        - support_agent
+      allowed_strategies:
+        - tool_assisted
+        - fallback_answer
+      policy_profile: default
+      tools:
+        enabled: true
+        allowed_tools: [websearch.search]
+    support_web_chat:
+      enabled: true
+      display_name: Support + Web Search
+      description: Answer support questions directly and use web search when current public information is needed.
+      strategy: tool_assisted
+      agent: support_web_agent
       llm_profile: local_reasoning
       allowed_agents:
         - support_agent
+        - support_web_agent
       allowed_strategies:
-        - direct_agent
+        - tool_assisted
         - fallback_answer
       policy_profile: default
+      tools:
+        enabled: true
+        allowed_tools: [websearch.search]
     architecture_document_qa:
       enabled: true
       display_name: Architecture Document Q&A
@@ -272,7 +311,24 @@ tooling:
   registry:
     allow_discovered_tools: true
     require_configured_allowlist: true
-    tools: {}
+    tools:
+      websearch.search:
+        enabled: true
+        mcp_tool_name: websearch.search
+        description: Search the public web through the configured MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+            - support_web_chat
+          agents:
+            - tool_using_agent
+            - support_web_agent
+          strategies:
+            - tool_assisted
+        tags:
+          - web
+          - search
+        safety_level: read_only
 
 # Agents provide task-specific intelligence. Strategies decide the workflow; agents perform task-specific answer/review/extraction behavior.
 # Agents may call LLMs through LLMGateway, memory through MemoryGateway, and tools through ToolGateway only when their contract and policy allow it
@@ -288,6 +344,7 @@ agents:
       - general_assistant_v1
       - document_qa_v1
       - tool_using_v1
+      - support_web_v1
       - project_agent_v1
       - memory_curator_v1
       - reviewer_v1
@@ -321,6 +378,48 @@ agents:
         self_managed_memory: false
         self_managed_tools: false
       allowed_tool_intents: []
+      allowed_memory_scopes: []
+    tool_using_agent:
+      enabled: true
+      type: tool_using
+      display_name: Tool Using Agent
+      description: Produces bounded logical tool intents and final answers from safe tool results.
+      llm_profile: local_reasoning
+      prompt_profile: tool_using_v1
+      capabilities:
+        answer: true
+        review: false
+        stream: true
+        memory_read: false
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: true
+        tool_execute: false
+        self_managed_memory: false
+        self_managed_tools: false
+      allowed_tool_intents:
+        - websearch.search
+      allowed_memory_scopes: []
+    support_web_agent:
+      enabled: true
+      type: tool_using
+      display_name: Support Web Agent
+      description: Answers support questions directly and uses web search for current public information when needed.
+      llm_profile: local_reasoning
+      prompt_profile: support_web_v1
+      capabilities:
+        answer: true
+        review: false
+        stream: true
+        memory_read: false
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: true
+        tool_execute: false
+        self_managed_memory: false
+        self_managed_tools: false
+      allowed_tool_intents:
+        - websearch.search
       allowed_memory_scopes: []
     architecture_document_agent:
       enabled: true
@@ -383,17 +482,21 @@ llm:
       temperature: 0.7
       max_output_tokens: 2048
       supports_streaming: true
-      supports_json_schema: false
-      supports_tool_calling: false
+      supports_json_schema: true
+      supports_tool_calling: true
       allowed_for:
         usecases:
           - default_chat
+          - support_web_chat
           - architecture_document_qa
         agents:
           - support_agent
+          - tool_using_agent
+          - support_web_agent
           - architecture_document_agent
         strategies:
           - direct_agent
+          - tool_assisted
           - retrieval_augmented
       fallback_profiles: []
 
@@ -567,15 +670,19 @@ policy:
       usecases:
         allowed:
           - default_chat
+          - support_web_chat
           - architecture_document_qa
       strategies:
         allowed:
           - direct_agent
+          - tool_assisted
           - retrieval_augmented
           - fallback_answer
       agents:
         allowed:
           - support_agent
+          - tool_using_agent
+          - support_web_agent
           - architecture_document_agent
       llm:
         allowed_profiles:
@@ -589,7 +696,8 @@ policy:
           - usecase
         allowed_write_scopes: []
       tools:
-        allowed_tools: []
+        allowed_tools:
+          - websearch.search
       approval:
         require_approval_for_write_tools: true
         require_approval_for_destructive_tools: true

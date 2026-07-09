@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
+import logging
 from time import perf_counter
 from typing import Any
 
@@ -21,6 +22,9 @@ from app.orchestration.strategy_steps import build_step_summary, finalize_strate
 
 _FALLBACK_COMPONENT = "orchestration.strategy.fallback_answer"
 _DEFAULT_FALLBACK_MESSAGE = "I could not complete the full workflow, but here is the safest answer I can provide."
+_FALLBACK_LLM_FAILED = "fallback_llm_failed"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -73,7 +77,15 @@ class FallbackAnswerStrategy:
                 answer_source = "llm"
                 resolved_profile = response.profile
             except Exception as exc:
-                llm_error_code = normalize_orchestration_error(exc).code
+                normalized = normalize_orchestration_error(exc)
+                llm_error_code = normalized.code
+                await _record_fallback_llm_failure(
+                    context=context,
+                    strategy_name=strategy_name,
+                    llm_profile=llm_profile,
+                    failure_metadata=failure_metadata,
+                    error=normalized,
+                )
 
         duration_ms = max(int((perf_counter() - started_at) * 1000), 0)
         step_summary = build_step_summary(
@@ -243,6 +255,69 @@ def _fallback_stream_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in metadata.items()
         if key in {"fallback_used", "fallback_reason", "failed_strategy", "failed_error_code", "answer_source"}
     }
+
+
+async def _record_fallback_llm_failure(
+    *,
+    context: OrchestrationContext,
+    strategy_name: str,
+    llm_profile: str | None,
+    failure_metadata: Mapping[str, Any],
+    error: object,
+) -> None:
+    error_code = _read_optional_text(getattr(error, "code", None)) or "orchestration_error"
+    retryable = bool(getattr(error, "retryable", False))
+    logger.warning(
+        "Fallback LLM generation failed; returning static fallback answer",
+        extra={
+            "component": _FALLBACK_COMPONENT,
+            "event_type": _FALLBACK_LLM_FAILED,
+            "status": "degraded",
+            "details": {
+                "trace_id": context.request.trace_id,
+                "session_id": context.request.session_id,
+                "usecase": context.request.usecase,
+                "strategy_name": strategy_name,
+                "llm_profile": llm_profile,
+                "failed_strategy": failure_metadata.get("failed_strategy"),
+                "failed_error_code": failure_metadata.get("failed_error_code"),
+                "fallback_reason": failure_metadata.get("fallback_reason"),
+                "fallback_llm_error": error_code,
+                "retryable": retryable,
+            },
+        },
+    )
+
+    recorder = context.observability
+    if recorder is None:
+        return
+
+    try:
+        await recorder.record(
+            event_type="orchestration",
+            event_name=_FALLBACK_LLM_FAILED,
+            component=_FALLBACK_COMPONENT,
+            status="degraded",
+            severity="warning",
+            trace_id=context.request.trace_id,
+            session_id=context.request.session_id,
+            user_id=context.request.user_id,
+            usecase=context.request.usecase,
+            agent_name=_runtime_value(context, "agent_name"),
+            strategy_name=strategy_name,
+            llm_profile=llm_profile,
+            error_type=type(error).__name__,
+            error_code=error_code,
+            retryable=retryable,
+            payload={
+                "answer_source": "static",
+                "failed_strategy": failure_metadata.get("failed_strategy"),
+                "failed_error_code": failure_metadata.get("failed_error_code"),
+                "fallback_reason": failure_metadata.get("fallback_reason"),
+            },
+        )
+    except Exception:
+        return
 
 
 def _runtime_value(context: OrchestrationContext, key: str) -> str | None:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from app.contracts.tools import ToolDefinition
-from app.orchestration.tool_intents import build_tool_policy_metadata, resolve_tool_intent, tool_result_safe_text
+from app.orchestration.tool_intents import (
+    build_default_tool_arguments,
+    build_tool_policy_metadata,
+    resolve_tool_intent,
+    tool_result_safe_text,
+)
 from app.contracts.tools import ToolExecutionResult, ToolResultContent, ToolResultSummary
 
 
@@ -42,3 +47,10 @@ def test_tool_result_safe_text_prefers_summary_then_content() -> None:
     )
 
     assert tool_result_safe_text(result) == "Summary first"
+
+
+def test_build_default_tool_arguments_uses_max_results_for_websearch() -> None:
+    assert build_default_tool_arguments("websearch.search", "Dallas weather") == {
+        "query": "Dallas weather",
+        "max_results": 3,
+    }

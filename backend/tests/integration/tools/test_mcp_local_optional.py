@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.config.loader import load_validated_config
+from app.config.view import ValidatedConfigurationView
 from app.tools.factory import build_tooling_runtime
 
 
@@ -14,7 +15,11 @@ from app.tools.factory import build_tooling_runtime
     reason="Local MCP smoke tests are opt-in.",
 )
 async def test_local_mcp_optional_smoke() -> None:
-    config = load_validated_config(Path("tests/fixtures/config/tooling_local_mcp_optional.yaml"))
+    config = ValidatedConfigurationView(
+        load_validated_config(
+            Path("tests/fixtures/config/tooling_local_mcp_websearch.yaml")
+        ).model_dump(mode="python")
+    )
     runtime = build_tooling_runtime(config)
 
     health = await runtime.mcp_adapter.health()

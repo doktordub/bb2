@@ -1,0 +1,53 @@
+name: example_tool
+package: mcp.tools.example_tool
+version: 1.0.0
+status: experimental
+owner: platform
+required: false
+description: Example plugin for MCP contract validation.
+capabilities:
+  - name: example.echo
+    type: tool
+    risk_level: read_only
+    description: Echo bounded text for plugin contract validation.
+tools:
+  - name: example.echo
+    function: echo
+    capability: example.echo
+    description: Return a bounded echo response for contract validation.
+    risk_level: read_only
+    input_schema:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 200
+        uppercase:
+          type: boolean
+    output_schema:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        tool_name:
+          type: string
+        summary:
+          type: object
+        data:
+          type: object
+    timeout_seconds: 5
+    max_result_bytes: 4096
+    tags: [example, echo, read_only]
+config_schema:
+  type: object
+  required: [default_prefix]
+  properties:
+    default_prefix:
+      type: string
+      minLength: 1
+      maxLength: 40
+    allow_uppercase:
+      type: boolean
+  additionalProperties: false

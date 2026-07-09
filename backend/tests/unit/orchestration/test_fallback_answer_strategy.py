@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.config.view import get_orchestration_settings
 from app.contracts.context import OrchestrationContext, RequestContext
 from app.orchestration.message_catalog import clear_message_catalog_cache
+from app.orchestration.errors import OrchestrationTimeoutError
 from app.orchestration.limits import OrchestrationLimitTracker
 from app.orchestration.strategies.fallback_answer import FallbackAnswerStrategy
 from app.testing.fakes import (
@@ -15,6 +18,13 @@ from app.testing.fakes import (
     FakeToolGateway,
     FakeTraceStore,
 )
+
+
+class TimeoutFakeLLMGateway(FakeLLMGateway):
+    async def complete(self, request, context):
+        self.requests.append(request)
+        self.contexts.append(context)
+        raise OrchestrationTimeoutError()
 
 
 def build_config(*, llm_profile: str | None) -> FakeConfigurationView:
@@ -132,6 +142,23 @@ async def test_fallback_answer_strategy_returns_static_message_when_no_llm_profi
     assert result.metadata["fallback_used"] is True
     assert result.metadata["answer_source"] == "static"
     assert llm.requests == []
+
+
+@pytest.mark.asyncio
+async def test_fallback_answer_strategy_logs_when_llm_generation_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    config = build_config(llm_profile="fallback_profile")
+    llm = TimeoutFakeLLMGateway(response_text="unused")
+    context = build_context(config, llm=llm)
+
+    with caplog.at_level(logging.WARNING):
+        result = await FallbackAnswerStrategy().run(context=context, agents=[])
+
+    assert result.answer == "Fallback static answer."
+    assert result.metadata["answer_source"] == "static"
+    assert result.metadata["fallback_llm_error"] == "orchestration_timeout"
+    assert "Fallback LLM generation failed; returning static fallback answer" in caplog.text
 
 
 @pytest.mark.asyncio

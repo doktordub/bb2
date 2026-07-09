@@ -14,7 +14,7 @@ from app.agents.prompts import build_prompt_messages, resolve_system_prompt
 from app.agents.result_builder import build_run_request_from_context, build_run_result, build_usage_summary, to_legacy_agent_result
 from app.agents.stream_mapping import build_cancelled_event, build_completed_event, build_failed_event, build_started_event, map_llm_stream_event
 from app.agents.trace_helpers import build_error_trace_summary, build_llm_trace_summary, build_prompt_trace_summary, build_request_trace_summary, build_result_trace_summary
-from app.contracts.llm import LLMMessage, LLMRequest, LLMResponse
+from app.contracts.llm import LLMMessage, LLMRequest, LLMResponse, LLMResponseFormat
 from app.memory.redaction import truncate_text
 from app.orchestration.models import sanitize_metadata
 from app.orchestration.prompt_inputs import PromptSection
@@ -144,6 +144,11 @@ class BaseLlmAgent(LegacyCompatibleAgent):
                 request=request,
                 llm_profile=llm_profile,
                 stream=False,
+            )
+            llm_request = self._finalize_llm_request(
+                llm_request,
+                context=context,
+                llm_profile=llm_profile,
             )
             llm_started_at = perf_counter()
             await self._record_trace(
@@ -288,6 +293,11 @@ class BaseLlmAgent(LegacyCompatibleAgent):
                 request=request,
                 llm_profile=llm_profile,
                 stream=True,
+            )
+            llm_request = self._finalize_llm_request(
+                llm_request,
+                context=context,
+                llm_profile=llm_profile,
             )
             llm_started_at = perf_counter()
             await self._record_trace(
@@ -493,6 +503,42 @@ class BaseLlmAgent(LegacyCompatibleAgent):
             response_format=self._response_format(request),
             metadata=self._llm_request_metadata(request=request, llm_profile=llm_profile, stream=stream),
         )
+
+    def _finalize_llm_request(
+        self,
+        llm_request: LLMRequest,
+        *,
+        context: "OrchestrationContext",
+        llm_profile: str,
+    ) -> LLMRequest:
+        response_format = llm_request.response_format
+        if response_format is None:
+            return llm_request
+
+        response_format_type = (
+            response_format.type
+            if isinstance(response_format, LLMResponseFormat)
+            else response_format.get("type")
+        )
+        if response_format_type in {None, "text"}:
+            return llm_request
+
+        supports_json_schema = context.config.get(
+            f"llm.profiles.{llm_profile}.supports_json_schema",
+            None,
+        )
+        if supports_json_schema is not False:
+            return llm_request
+
+        llm_request.response_format = None
+        llm_request.metadata = sanitize_metadata(
+            {
+                **llm_request.metadata,
+                "response_format_fallback": "prompt_only",
+                "requested_response_format": response_format_type,
+            }
+        )
+        return llm_request
 
     def normalize_response_text(
         self,

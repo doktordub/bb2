@@ -39,6 +39,18 @@ def test_default_app_config_known_prompt_profiles_exist_in_catalog() -> None:
     assert set(parsed.agents.defaults.known_prompt_profiles).issubset(set(catalog.prompt_profiles))
 
 
+def test_default_app_config_support_web_usecase_is_fully_wired() -> None:
+    clear_prompt_catalog_cache()
+    parsed = load_validated_config("config/app.yaml", env={})
+    catalog = load_prompt_catalog()
+
+    assert "support_web_v1" in catalog.prompt_profiles
+    assert "support_web_v1" in parsed.agents.defaults.known_prompt_profiles
+    assert parsed.usecases["support_web_chat"].default_agent == "support_web_agent"
+    assert "support_web_chat" in parsed.policy.profiles["default"].usecases.allowed
+    assert "support_web_agent" in parsed.policy.profiles["default"].agents.allowed
+
+
 def test_prompt_resolution_uses_yaml_override_by_default(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "prompts.yaml"
     path.write_text(

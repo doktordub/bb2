@@ -16,4 +16,5 @@ log/
 backend/data/
 backend/log/
 backend/runtime/
+backend/data/*.db
 

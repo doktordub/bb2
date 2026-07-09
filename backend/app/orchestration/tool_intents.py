@@ -65,6 +65,8 @@ def resolve_tool_intent(
 def build_default_tool_arguments(tool_name: str, query: str) -> dict[str, object]:
     normalized_name = _normalize_tool_name(tool_name)
     normalized_query = _normalize_text(query)
+    if normalized_name == "websearch.search":
+        return {"query": normalized_query, "max_results": 3}
     if "search" in normalized_name:
         return {"query": normalized_query, "limit": 3}
     return {"text": normalized_query}
