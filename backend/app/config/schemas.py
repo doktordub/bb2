@@ -13,8 +13,21 @@ from app.contracts.state import (
     WORKFLOW_STATE_RESET_MODE_REPLACE_WITH_EMPTY_STATE,
     WORKFLOW_STATE_RESET_MODES,
 )
+from app.visualization.models import (
+    CANONICAL_CHART_TYPES,
+    SUPPORTED_CHART_DATA_SOURCES,
+    SUPPORTED_CHART_RENDERERS,
+)
+from app.visualization.settings import (
+    DEFAULT_VISUALIZATION_ALIASES,
+    DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST,
+    VISUALIZATION_ARTIFACT_STORE_PROVIDERS,
+    VISUALIZATION_CONTEXT_SUMMARY_MODES,
+    VISUALIZATION_EVICTION_POLICIES,
+)
 
 _ALLOWED_SQLITE_SYNCHRONOUS_MODES = frozenset({"NORMAL", "FULL"})
+_ALLOWED_SQLITE_JOURNAL_MODES = frozenset({"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"})
 _ALLOWED_TRACE_CAPTURE_MODES = frozenset({"none", "summaries_only"})
 _ALLOWED_CORS_ORIGIN_SCHEMES = frozenset({"http", "https"})
 _ALLOWED_SESSION_CONCURRENCY_MODES = frozenset({"optimistic_version"})
@@ -52,8 +65,10 @@ _ALLOWED_ORCHESTRATION_STRATEGY_TYPES = frozenset(
 )
 _ALLOWED_AGENT_TYPES = frozenset(
     {
+        "chart_agent",
         "general_assistant",
         "document_qa",
+        "task_execution",
         "tool_using",
         "project_agent",
         "memory_curator",
@@ -1595,6 +1610,85 @@ class PolicyStreamConfig(StrictConfigModel):
     expose_raw_deltas: bool = False
 
 
+class PolicyVisualizationConfig(StrictConfigModel):
+    enabled: bool = False
+    deny_unknown_chart_types: bool = True
+    deny_unknown_renderers: bool = True
+    require_data_source: bool = True
+    allow_memory_data: bool = False
+    allow_tool_data: bool = False
+    allow_uploaded_file_data: bool = False
+    allow_reference_data_mode: bool = False
+    allow_exact_followup_retrieval: bool = False
+    allow_data_export: bool = False
+    allow_full_dataset_in_context: bool = False
+    allowed_chart_types: list[str] = Field(default_factory=list)
+    allowed_renderers: list[str] = Field(default_factory=list)
+    allowed_data_sources: list[str] = Field(default_factory=list)
+    sensitive_fields: list[str] = Field(default_factory=list)
+    max_rows_inline: int | None = Field(default=None, ge=1, le=100000)
+    max_rows_artifact_store: int | None = Field(default=None, ge=1, le=1000000)
+    max_series: int | None = Field(default=None, ge=1, le=1000)
+    max_categories: int | None = Field(default=None, ge=1, le=100000)
+    max_context_summary_tokens: int | None = Field(default=None, ge=1, le=200000)
+    max_artifacts_per_response: int = Field(default=1, ge=1, le=32)
+
+    @field_validator("allowed_chart_types")
+    @classmethod
+    def normalize_allowed_chart_types(cls, value: list[str]) -> list[str]:
+        normalized = _normalize_name_list(value, field_name="allowed_chart_types")
+        invalid = sorted(chart_type for chart_type in normalized if chart_type not in CANONICAL_CHART_TYPES)
+        if invalid:
+            supported = ", ".join(CANONICAL_CHART_TYPES)
+            raise ValueError(
+                f"allowed_chart_types must only contain supported values: {supported}"
+            )
+        return normalized
+
+    @field_validator("allowed_renderers")
+    @classmethod
+    def normalize_allowed_renderers(cls, value: list[str]) -> list[str]:
+        normalized = [item.lower() for item in _normalize_name_list(value, field_name="allowed_renderers")]
+        invalid = sorted(renderer for renderer in normalized if renderer not in SUPPORTED_CHART_RENDERERS)
+        if invalid:
+            supported = ", ".join(SUPPORTED_CHART_RENDERERS)
+            raise ValueError(
+                f"allowed_renderers must only contain supported values: {supported}"
+            )
+        return normalized
+
+    @field_validator("allowed_data_sources")
+    @classmethod
+    def normalize_allowed_data_sources(cls, value: list[str]) -> list[str]:
+        normalized = [item.lower() for item in _normalize_name_list(value, field_name="allowed_data_sources")]
+        invalid = sorted(source for source in normalized if source not in SUPPORTED_CHART_DATA_SOURCES)
+        if invalid:
+            supported = ", ".join(SUPPORTED_CHART_DATA_SOURCES)
+            raise ValueError(
+                f"allowed_data_sources must only contain supported values: {supported}"
+            )
+        return normalized
+
+    @field_validator("sensitive_fields")
+    @classmethod
+    def normalize_sensitive_fields(cls, value: list[str]) -> list[str]:
+        return [item.lower() for item in _normalize_name_list(value, field_name="sensitive_fields")]
+
+    @model_validator(mode="after")
+    def validate_visualization_policy_rules(self) -> "PolicyVisualizationConfig":
+        if self.allow_full_dataset_in_context:
+            raise ValueError("policy.visualization.allow_full_dataset_in_context must remain false in V1")
+        if (
+            self.max_rows_inline is not None
+            and self.max_rows_artifact_store is not None
+            and self.max_rows_inline > self.max_rows_artifact_store
+        ):
+            raise ValueError(
+                "policy.visualization.max_rows_inline must be less than or equal to max_rows_artifact_store"
+            )
+        return self
+
+
 class PolicyCapabilityConfig(StrictConfigModel):
     expose_enabled: bool = True
     include_policy_profiles: bool = False
@@ -1643,6 +1737,7 @@ class PolicyProfileConfig(StrictConfigModel):
     fallback: PolicyFallbackConfig = Field(default_factory=PolicyFallbackConfig)
     trace: PolicyTraceConfig = Field(default_factory=PolicyTraceConfig)
     stream: PolicyStreamConfig = Field(default_factory=PolicyStreamConfig)
+    visualization: PolicyVisualizationConfig | None = None
     capabilities: PolicyCapabilityConfig = Field(default_factory=PolicyCapabilityConfig)
     health: PolicyHealthPolicyConfig = Field(default_factory=PolicyHealthPolicyConfig)
     audit: PolicyAuditConfig = Field(default_factory=PolicyAuditConfig)
@@ -1721,6 +1816,7 @@ class PolicyConfig(StrictConfigModel):
     default_decision: str = "deny"
     fail_closed: bool = True
     default_profile: str = "default"
+    visualization: PolicyVisualizationConfig | None = None
     profiles: dict[str, PolicyProfileConfig] = Field(default_factory=dict)
 
     @field_validator("mode")
@@ -2134,6 +2230,275 @@ class SessionConfig(StrictConfigModel):
     tracing: SessionTracingConfig = Field(default_factory=SessionTracingConfig)
 
 
+class VisualizationLimitsConfig(StrictConfigModel):
+    max_rows_inline: int = Field(default=500, ge=1, le=100000)
+    max_rows_artifact_store: int = Field(default=5000, ge=1, le=1000000)
+    max_series: int = Field(default=12, ge=1, le=1000)
+    max_categories: int = Field(default=100, ge=1, le=10000)
+    max_artifact_bytes: int = Field(default=262144, ge=1024, le=10485760)
+
+    @model_validator(mode="after")
+    def validate_row_limits(self) -> "VisualizationLimitsConfig":
+        if self.max_rows_inline > self.max_rows_artifact_store:
+            raise ValueError(
+                "max_rows_inline must be less than or equal to max_rows_artifact_store"
+            )
+        return self
+
+
+class VisualizationSampleDataConfig(StrictConfigModel):
+    enabled: bool = False
+    require_explicit_opt_in: bool = True
+    max_rows: int = Field(default=24, ge=1, le=1000)
+
+
+class VisualizationContextSummaryConfig(StrictConfigModel):
+    enabled: bool = True
+    mode: str = "summary_only"
+    max_tokens_per_chart_summary: int = Field(default=600, ge=1, le=20000)
+    max_chart_summaries_per_session_context: int = Field(default=5, ge=1, le=100)
+    max_total_visualization_context_tokens: int = Field(default=1800, ge=1, le=200000)
+    include_data_ref: bool = True
+    include_aggregate_stats: bool = True
+    include_extrema: bool = True
+    include_trend_summary: bool = True
+    include_sample_rows: bool = False
+    max_sample_rows: int = Field(default=0, ge=0, le=50)
+    eviction_policy: str = "most_recent_relevant"
+    allow_full_dataset_in_context: bool = False
+
+    @field_validator("mode")
+    @classmethod
+    def normalize_mode(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized not in VISUALIZATION_CONTEXT_SUMMARY_MODES:
+            supported = ", ".join(VISUALIZATION_CONTEXT_SUMMARY_MODES)
+            raise ValueError(f"mode must be one of: {supported}")
+        return normalized
+
+    @field_validator("eviction_policy")
+    @classmethod
+    def normalize_eviction_policy(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized not in VISUALIZATION_EVICTION_POLICIES:
+            supported = ", ".join(VISUALIZATION_EVICTION_POLICIES)
+            raise ValueError(f"eviction_policy must be one of: {supported}")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_context_budget_rules(self) -> "VisualizationContextSummaryConfig":
+        if not self.include_sample_rows and self.max_sample_rows != 0:
+            raise ValueError(
+                "max_sample_rows must be 0 when include_sample_rows is false"
+            )
+        if self.include_sample_rows and self.max_sample_rows <= 0:
+            raise ValueError(
+                "include_sample_rows requires max_sample_rows to be greater than 0"
+            )
+        if self.allow_full_dataset_in_context:
+            raise ValueError("allow_full_dataset_in_context must remain false in V1")
+        return self
+
+
+class VisualizationArtifactStoreSqliteConfig(StrictConfigModel):
+    path: str | None = None
+    create_parent_dirs: bool = True
+    initialize_schema: bool = True
+    journal_mode: str = "WAL"
+    synchronous: str = "NORMAL"
+    busy_timeout_ms: int = Field(default=5000, ge=0, le=600000)
+    foreign_keys: bool = True
+
+    @field_validator("path")
+    @classmethod
+    def normalize_path(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @field_validator("journal_mode")
+    @classmethod
+    def normalize_journal_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in _ALLOWED_SQLITE_JOURNAL_MODES:
+            supported = ", ".join(sorted(_ALLOWED_SQLITE_JOURNAL_MODES))
+            raise ValueError(f"journal_mode must be one of: {supported}")
+        return normalized
+
+    @field_validator("synchronous")
+    @classmethod
+    def normalize_synchronous(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in _ALLOWED_SQLITE_SYNCHRONOUS_MODES:
+            supported = ", ".join(sorted(_ALLOWED_SQLITE_SYNCHRONOUS_MODES))
+            raise ValueError(f"synchronous must be one of: {supported}")
+        return normalized
+
+
+class VisualizationArtifactStoreConfig(StrictConfigModel):
+    enabled: bool = False
+    provider: str = "disabled"
+    ttl_seconds: int = Field(default=3600, ge=1, le=604800)
+    allow_reference_data_mode: bool = False
+    public_retrieval_enabled: bool = False
+    retrieval_endpoint: str | None = None
+    exact_followup_retrieval_enabled: bool = True
+    sqlite: VisualizationArtifactStoreSqliteConfig = Field(
+        default_factory=VisualizationArtifactStoreSqliteConfig
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        normalized = value.strip().lower().replace("-", "_")
+        if normalized not in VISUALIZATION_ARTIFACT_STORE_PROVIDERS:
+            supported = ", ".join(VISUALIZATION_ARTIFACT_STORE_PROVIDERS)
+            raise ValueError(f"provider must be one of: {supported}")
+        return normalized
+
+    @field_validator("retrieval_endpoint")
+    @classmethod
+    def normalize_retrieval_endpoint(cls, value: str | None) -> str | None:
+        return _normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_reference_mode_requirements(self) -> "VisualizationArtifactStoreConfig":
+        if self.enabled and self.provider == "disabled":
+            raise ValueError("enabled artifact_store requires a non-disabled provider")
+        if self.public_retrieval_enabled and self.retrieval_endpoint is None:
+            raise ValueError(
+                "public_retrieval_enabled requires visualization.artifact_store.retrieval_endpoint"
+            )
+        if self.allow_reference_data_mode and not self.enabled:
+            raise ValueError(
+                "allow_reference_data_mode requires visualization.artifact_store.enabled"
+            )
+        if self.allow_reference_data_mode and self.retrieval_endpoint is None:
+            raise ValueError(
+                "allow_reference_data_mode requires visualization.artifact_store.retrieval_endpoint"
+            )
+        return self
+
+
+class VisualizationHistoryReplayConfig(StrictConfigModel):
+    enabled: bool = True
+    prefer_inline: bool = True
+    max_artifacts_per_message: int = Field(default=3, ge=1, le=32)
+    max_inline_artifact_bytes: int = Field(default=65536, ge=1024, le=10485760)
+    max_total_bytes_per_message: int = Field(default=131072, ge=1024, le=10485760)
+
+    @model_validator(mode="after")
+    def validate_history_replay_limits(self) -> "VisualizationHistoryReplayConfig":
+        if self.max_total_bytes_per_message < self.max_inline_artifact_bytes:
+            raise ValueError(
+                "max_total_bytes_per_message must be greater than or equal to "
+                "max_inline_artifact_bytes"
+            )
+        return self
+
+
+class VisualizationConfig(StrictConfigModel):
+    enabled: bool = True
+    default_renderer: str = "echarts"
+    allowed_renderers: list[str] = Field(
+        default_factory=lambda: list(SUPPORTED_CHART_RENDERERS)
+    )
+    artifact_spec_version: str = "1.0"
+    allowed_chart_types: list[str] = Field(
+        default_factory=lambda: list(CANONICAL_CHART_TYPES)
+    )
+    aliases: dict[str, str] = Field(
+        default_factory=lambda: dict(DEFAULT_VISUALIZATION_ALIASES)
+    )
+    limits: VisualizationLimitsConfig = Field(default_factory=VisualizationLimitsConfig)
+    sample_data: VisualizationSampleDataConfig = Field(
+        default_factory=VisualizationSampleDataConfig
+    )
+    context_summary: VisualizationContextSummaryConfig = Field(
+        default_factory=VisualizationContextSummaryConfig
+    )
+    artifact_store: VisualizationArtifactStoreConfig = Field(
+        default_factory=VisualizationArtifactStoreConfig
+    )
+    history_replay: VisualizationHistoryReplayConfig = Field(
+        default_factory=VisualizationHistoryReplayConfig
+    )
+    safe_metadata_allowlist: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST)
+    )
+
+    @field_validator("default_renderer")
+    @classmethod
+    def normalize_default_renderer(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in SUPPORTED_CHART_RENDERERS:
+            supported = ", ".join(SUPPORTED_CHART_RENDERERS)
+            raise ValueError(f"default_renderer must be one of: {supported}")
+        return normalized
+
+    @field_validator("allowed_renderers")
+    @classmethod
+    def normalize_allowed_renderers(cls, value: list[str]) -> list[str]:
+        normalized = _normalize_name_list(value, field_name="allowed_renderers")
+        invalid = sorted(
+            renderer for renderer in normalized if renderer.lower() not in SUPPORTED_CHART_RENDERERS
+        )
+        if invalid:
+            supported = ", ".join(SUPPORTED_CHART_RENDERERS)
+            raise ValueError(
+                f"allowed_renderers must only contain supported values: {supported}"
+            )
+        return [renderer.lower() for renderer in normalized]
+
+    @field_validator("artifact_spec_version")
+    @classmethod
+    def normalize_artifact_spec_version(cls, value: str) -> str:
+        normalized = value.strip()
+        if normalized == "":
+            raise ValueError("artifact_spec_version must not be empty")
+        return normalized
+
+    @field_validator("allowed_chart_types")
+    @classmethod
+    def normalize_allowed_chart_types(cls, value: list[str]) -> list[str]:
+        normalized = _normalize_name_list(value, field_name="allowed_chart_types")
+        invalid = sorted(chart_type for chart_type in normalized if chart_type not in CANONICAL_CHART_TYPES)
+        if invalid:
+            supported = ", ".join(CANONICAL_CHART_TYPES)
+            raise ValueError(
+                f"allowed_chart_types must only contain supported values: {supported}"
+            )
+        return normalized
+
+    @field_validator("aliases")
+    @classmethod
+    def normalize_aliases(cls, value: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for raw_alias, raw_chart_type in value.items():
+            alias = raw_alias.strip().lower()
+            if alias == "":
+                raise ValueError("aliases keys must not be empty")
+            chart_type = raw_chart_type.strip()
+            if chart_type == "":
+                raise ValueError("aliases values must not be empty")
+            if chart_type not in CANONICAL_CHART_TYPES:
+                supported = ", ".join(CANONICAL_CHART_TYPES)
+                raise ValueError(
+                    f"aliases must map to supported chart types: {supported}"
+                )
+            normalized[alias] = chart_type
+        return normalized
+
+    @field_validator("safe_metadata_allowlist")
+    @classmethod
+    def normalize_safe_metadata_allowlist(cls, value: list[str]) -> list[str]:
+        return _normalize_name_list(value, field_name="safe_metadata_allowlist")
+
+    @model_validator(mode="after")
+    def validate_cross_field_rules(self) -> "VisualizationConfig":
+        if self.default_renderer not in self.allowed_renderers:
+            raise ValueError("default_renderer must be included in allowed_renderers")
+        return self
+
+
 class BackendConfig(StrictConfigModel):
     @model_validator(mode="before")
     @classmethod
@@ -2284,6 +2649,7 @@ class BackendConfig(StrictConfigModel):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     llm: LLMConfig
     tooling: ToolingConfig = Field(default_factory=ToolingConfig)
+    visualization: VisualizationConfig = Field(default_factory=VisualizationConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     mcp: MCPConfig
     persistence: PersistenceConfig

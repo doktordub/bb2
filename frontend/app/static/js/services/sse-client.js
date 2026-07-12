@@ -104,6 +104,10 @@ function isRecognizedEvent(eventName) {
 	return new Set([
 		"response.started",
 		"response.delta",
+		"artifact.started",
+		"artifact.completed",
+		"artifact.failed",
+		"response.artifact",
 		"response.metadata",
 		"response.completed",
 		"response.error",

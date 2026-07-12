@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from typing import Literal
+from dataclasses import dataclass, field, replace
+from typing import Any, Literal
 
 from app.errors import MCPToolPluginError
+from app.tools_base.dataset_models import DATASET_SCHEMA_VERSION, STRUCTURED_DATASET_OUTPUT_SCHEMA
 from app.tools_base.manifest import ToolManifest
-from app.tools_base.models import RiskLevel, ToolDescriptor
+from app.tools_base.models import RiskLevel, ToolDescriptor, ToolHealth
 from app.tools_base.plugin import ToolPlugin
 
 
@@ -33,9 +34,15 @@ class RegisteredCapability:
     risk_level: RiskLevel
     enabled: bool
     status: ToolLoadStatus
+    health: RegisteredToolHealth
     version: str
+    owner: str
+    tags: tuple[str, ...]
+    input_schema: str | dict[str, Any]
+    output_schema: str | dict[str, Any] | None
+    schema_version: str | None = None
 
-    def to_summary(self) -> dict[str, str | bool]:
+    def to_summary(self) -> dict[str, object]:
         return {
             "capability_name": self.capability_name,
             "type": self.type,
@@ -43,7 +50,13 @@ class RegisteredCapability:
             "risk_level": self.risk_level,
             "enabled": self.enabled,
             "status": self.status,
+            "health": self.health,
             "version": self.version,
+            "owner": self.owner,
+            "tags": list(self.tags),
+            "input_schema": _copy_schema(self.input_schema),
+            "output_schema": _copy_schema(self.output_schema),
+            "schema_version": self.schema_version,
         }
 
 
@@ -64,6 +77,7 @@ class RegisteredTool:
     owner: str
     tags: tuple[str, ...]
     health_status: RegisteredToolHealth
+    health_details: dict[str, Any] = field(default_factory=dict)
     last_load_error: ToolLoadErrorSummary | None = None
     health_reason: str | None = None
 
@@ -76,8 +90,12 @@ class RegisteredTool:
             "status": self.load_status,
             "health": self.health_status,
             "tools": list(self.fastmcp_tool_names),
+            "capabilities": [capability.capability_name for capability in self.capabilities],
+            "risk_levels": list(self.risk_levels),
             "owner": self.owner,
             "tags": list(self.tags),
+            "health_details": dict(self.health_details),
+            "health_reason": self.health_reason,
             "last_error": None if self.last_load_error is None else self.last_load_error.message,
         }
 
@@ -114,17 +132,20 @@ class ToolRegistry:
         plugin: ToolPlugin,
         manifest: ToolManifest,
         config: dict[str, object],
+        health: ToolHealth | None = None,
     ) -> None:
         del config
         self._ensure_fastmcp_names_available(
             manifest.tool_descriptors(),
             owner_name=manifest.name,
         )
+        resolved_health = health or ToolHealth(state="ok", details={})
         registered_tool = self._build_registered_tool(
             manifest=manifest,
             enabled=True,
             load_status="loaded",
-            health_status=self._plugin_health_status(plugin),
+            health_status=self._plugin_health_status(resolved_health),
+            health_details=dict(resolved_health.details),
             last_load_error=None,
         )
         self._store_registered_tool(registered_tool)
@@ -141,6 +162,7 @@ class ToolRegistry:
             enabled=False,
             load_status="disabled",
             health_status="disabled",
+            health_details={},
             last_load_error=None,
         )
         self._tools[manifest.name] = registered_tool
@@ -158,6 +180,7 @@ class ToolRegistry:
                 enabled=True,
                 load_status="failed",
                 health_status="error",
+                health_details={},
                 last_load_error=self._error_summary(error),
             )
             self._store_registered_tool(registered_tool)
@@ -178,6 +201,7 @@ class ToolRegistry:
             owner="unknown",
             tags=(),
             health_status="error",
+            health_details={},
             last_load_error=self._error_summary(error),
         )
 
@@ -233,6 +257,7 @@ class ToolRegistry:
         enabled: bool,
         load_status: ToolLoadStatus,
         health_status: RegisteredToolHealth,
+        health_details: dict[str, Any],
         last_load_error: ToolLoadErrorSummary | None,
     ) -> RegisteredTool:
         tool_descriptors = manifest.tool_descriptors()
@@ -248,7 +273,13 @@ class ToolRegistry:
                 risk_level=descriptor.risk_level,
                 enabled=enabled and load_status == "loaded",
                 status=load_status,
+                health=health_status,
                 version=manifest.version,
+                owner=manifest.owner,
+                tags=tuple(sorted(descriptor.tags)),
+                input_schema=_copy_schema(descriptor.input_schema),
+                output_schema=_copy_schema(descriptor.output_schema),
+                schema_version=_schema_version_for_descriptor(descriptor),
             )
             for descriptor in tool_descriptors
         )
@@ -266,6 +297,7 @@ class ToolRegistry:
             owner=manifest.owner,
             tags=tags,
             health_status=health_status,
+            health_details=dict(health_details),
             last_load_error=last_load_error,
         )
 
@@ -302,5 +334,17 @@ class ToolRegistry:
         )
 
     @staticmethod
-    def _plugin_health_status(plugin: ToolPlugin) -> RegisteredToolHealth:
-        return "ok"
+    def _plugin_health_status(health: ToolHealth) -> RegisteredToolHealth:
+        return health.state
+
+
+def _copy_schema(schema: str | dict[str, Any] | None) -> str | dict[str, Any] | None:
+    if isinstance(schema, dict):
+        return dict(schema)
+    return schema
+
+
+def _schema_version_for_descriptor(descriptor: ToolDescriptor) -> str | None:
+    if descriptor.output_schema == STRUCTURED_DATASET_OUTPUT_SCHEMA:
+        return DATASET_SCHEMA_VERSION
+    return None

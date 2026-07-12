@@ -74,7 +74,33 @@ def test_chat_response_maps_from_session_result() -> None:
         llm_profile="fake_local_profile",
         tool_calls=[{"tool_name": "search", "status": "completed"}],
         memory_updates=[{"scope": "project", "status": "skipped"}],
-        metadata={"usecase": "support_chat", "message_count": 2},
+        artifacts=[
+            {
+                "artifact_id": "chart_123",
+                "type": "chart",
+                "chart_type": "bar",
+                "title": "Revenue",
+                "description": "Monthly revenue.",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "inline",
+                "data": [{"month": "Jan", "revenue": 1200}],
+                "data_ref": None,
+                "encoding": {"x": "month", "y": ["revenue"]},
+                "options": {},
+                "warnings": [],
+                "metadata": {"source": "workflow_state"},
+            }
+        ],
+        metadata={
+            "usecase": "support_chat",
+            "message_count": 2,
+            "artifact_count": 1,
+            "artifact_delivery_mode": "inline",
+            "context_summary_added": True,
+            "context_summary_id": "chart_123",
+            "context_summary_ids": ["chart_123"],
+        },
     )
 
     response = ChatResponse.from_result(result)
@@ -90,8 +116,34 @@ def test_chat_response_maps_from_session_result() -> None:
             "llm_profile": "fake_local_profile",
             "tool_calls": [{"tool_name": "search", "status": "completed"}],
             "memory_updates": [{"scope": "project", "status": "skipped"}],
+            "artifacts": [
+                {
+                    "artifact_id": "chart_123",
+                    "type": "chart",
+                    "chart_type": "bar",
+                    "title": "Revenue",
+                    "description": "Monthly revenue.",
+                    "renderer": "echarts",
+                    "spec_version": "1.0",
+                    "data_mode": "inline",
+                    "data": [{"month": "Jan", "revenue": 1200}],
+                    "data_ref": None,
+                    "encoding": {"x": "month", "y": ["revenue"]},
+                    "options": {},
+                    "warnings": [],
+                    "metadata": {"source": "workflow_state"},
+                }
+            ],
         },
-        "metadata": {"usecase": "support_chat", "message_count": 2},
+        "metadata": {
+            "usecase": "support_chat",
+            "message_count": 2,
+            "artifact_count": 1,
+            "artifact_delivery_mode": "inline",
+            "context_summary_added": True,
+            "context_summary_id": "chart_123",
+            "context_summary_ids": ["chart_123"],
+        },
     }
 
 

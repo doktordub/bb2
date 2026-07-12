@@ -24,7 +24,7 @@ llm:
       max_output_tokens: 256
       supports_streaming: true
       supports_json_schema: false
-      supports_tool_calling: false
+      supports_tool_calling: true
       allowed_for:
         usecases:
           - default_chat

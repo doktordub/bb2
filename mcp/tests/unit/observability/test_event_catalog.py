@@ -18,6 +18,13 @@ EXPECTED_EVENT_NAMES = {
     "mcp_tool_call_timeout",
     "mcp_tool_call_cancelled",
     "mcp_health_checked",
+    "mcp_reporting_query_started",
+    "mcp_reporting_request_validated",
+    "mcp_reporting_provider_call_started",
+    "mcp_reporting_provider_call_completed",
+    "mcp_reporting_provider_call_failed",
+    "mcp_reporting_result_normalized",
+    "mcp_reporting_result_truncated",
     "mcp_shutdown_started",
     "mcp_shutdown_completed",
 }

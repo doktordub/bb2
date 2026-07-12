@@ -32,6 +32,8 @@ _REQUIRED_SECTION_SPECS: dict[str, Mapping[str, str]] = {
     "tool_using": {
         "response_contract_with_tools": "text",
         "response_contract_with_tool_context": "text",
+        "response_contract_with_tools_legacy_json": "text",
+        "response_contract_with_tool_context_legacy_json": "text",
         "response_contract_no_tools": "text",
         "reasoning_rules": "text",
     },
@@ -58,6 +60,8 @@ _REQUIRED_SECTION_SPECS: dict[str, Mapping[str, str]] = {
 _ALLOWED_TEMPLATE_FIELDS: dict[tuple[str, str], frozenset[str]] = {
     ("tool_using", "response_contract_with_tools"): frozenset(),
     ("tool_using", "response_contract_with_tool_context"): frozenset(),
+    ("tool_using", "response_contract_with_tools_legacy_json"): frozenset(),
+    ("tool_using", "response_contract_with_tool_context_legacy_json"): frozenset(),
     ("tool_using", "response_contract_no_tools"): frozenset(),
     ("tool_using", "reasoning_rules"): frozenset(),
     ("reviewer", "response_contract"): frozenset(),

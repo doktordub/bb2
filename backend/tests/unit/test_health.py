@@ -98,6 +98,17 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             "docs_enabled": True,
             "streaming_enabled": True,
         }
+        assert payload["visualization"] == {
+            "status": "ok",
+            "configured": True,
+            "enabled": False,
+            "default_renderer": "echarts",
+            "supported_chart_types_count": 19,
+            "context_summary_enabled": True,
+            "artifact_store_enabled": False,
+            "artifact_store_provider": "disabled",
+            "durable_replay_enabled": False,
+        }
         assert payload["checks"] == {
             "settings": {"status": "ok"},
             "config": {
@@ -110,6 +121,24 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
                 "llm_profiles_count": 2,
                 "llm_providers": ["local_provider", "openai"],
                 "mcp_configured": True,
+                "visualization": {
+                    "enabled": True,
+                    "default_renderer": "echarts",
+                    "allowed_renderers": ["echarts"],
+                    "artifact_spec_version": "1.0",
+                    "supported_chart_types_count": 19,
+                    "artifact_store_enabled": False,
+                    "artifact_store_provider": "disabled",
+                    "reference_mode_enabled": False,
+                    "exact_followup_retrieval_enabled": True,
+                    "history_replay_enabled": True,
+                    "history_replay_prefer_inline": True,
+                    "history_replay_max_artifacts_per_message": 3,
+                    "context_summary_enabled": True,
+                    "context_summary_mode": "summary_only",
+                    "context_summary_budget_tokens": "***REDACTED***",
+                    "sample_data_enabled": False,
+                },
                 "deployment": {
                     "profile": "local",
                     "config_path_readable": True,
@@ -128,7 +157,7 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
                         "runtime": {"ready": True, "created": False},
                         "workflow_state_parent": {"ready": True, "created": False},
                         "trace_parent": {"ready": True, "created": False},
-                        "memory_store": {"ready": False, "created": False},
+                        "memory_store": {"ready": True, "created": False},
                     },
                 },
                 "agents": {
@@ -188,7 +217,7 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
                 "mode": "enforce",
                 "default_profile": "default",
                 "profile_count": 2,
-                "rule_count": 12,
+                "rule_count": 13,
                 "cache": {
                     "enabled": True,
                     "profile_count": 1,
@@ -218,6 +247,17 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
                 "structured_logging": True,
                 "metrics_enabled": True,
                 "trace_store_configured": True,
+            },
+            "visualization": {
+                "status": "ok",
+                "configured": True,
+                "enabled": False,
+                "default_renderer": "echarts",
+                "supported_chart_types_count": 19,
+                "context_summary_enabled": True,
+                "artifact_store_enabled": False,
+                "artifact_store_provider": "disabled",
+                "durable_replay_enabled": False,
             },
             "mcp": {
                 "status": "degraded",
@@ -397,6 +437,7 @@ def test_health_route(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             },
         }
         assert payload["memory"] == payload["checks"]["memory"]
+        assert payload["visualization"] == payload["checks"]["visualization"]
         assert payload["workflow_state"] == payload["checks"]["workflow_state"]
         assert payload["trace"] == payload["checks"]["trace"]
         assert payload["llm"] == payload["checks"]["llm"]

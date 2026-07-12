@@ -85,3 +85,41 @@ async def test_stream_policy_allows_safe_response_delta() -> None:
     assert decision is not None
     assert decision.decision == "allow"
     assert decision.reason_code == "policy.stream.allowed"
+
+
+@pytest.mark.asyncio
+async def test_stream_policy_allows_safe_artifact_completed_event() -> None:
+    context = _build_context()
+    event = SessionStreamEvent(
+        event_type="artifact.completed",
+        trace_id="trace-1",
+        session_id="session-1",
+        data={
+            "artifact": {
+                "artifact_id": "chart-1",
+                "type": "chart",
+                "chart_type": "bar",
+                "title": "Revenue",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "inline",
+                "data": [{"month": "Jan", "revenue": 1200}],
+                "data_ref": None,
+                "encoding": {"x": "month", "y": ["revenue"]},
+                "options": {},
+                "warnings": [],
+                "metadata": {},
+            }
+        },
+    )
+    request = build_stream_policy_request(event=event, payload_category="safe_summary")
+
+    decision = await evaluate_stream_request(
+        request,
+        context,
+        PolicyProfileSettings(name="default"),
+    )
+
+    assert decision is not None
+    assert decision.decision == "allow"
+    assert decision.reason_code == "policy.stream.allowed"

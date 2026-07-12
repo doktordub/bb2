@@ -528,11 +528,30 @@ The default local API surface is:
 - `POST /chat/stream` when `features.streaming_enabled` and the API streaming fixture/override are enabled
 - `POST /sessions/{session_id}/reset`
 - `GET /sessions/{session_id}/history`
+- `GET /artifacts/{artifact_id}` when `visualization.artifact_store.public_retrieval_enabled` is enabled; saved history reference artifacts use this route after reload or restart
 - `GET /sessions` and `DELETE /sessions/{session_id}`; these routes return stable admin envelopes and become operational when `session.management.list_enabled` and `session.management.delete_enabled` are enabled
 - `GET /health`
 - `GET /capabilities`
 - `POST /restart` only when both `api.debug_routes.enabled` and `api.debug_routes.restart_enabled` are true; accepted requests write `backend/runtime/restart-request.json` and expect an external supervisor or wrapper to start the process again
 - `GET /debug/traces` and `GET /debug/traces/{trace_id}` only when explicitly enabled for local debugging
+
+## Visualization History Replay
+
+Visualization history replay is now a supported backend runtime capability for newly saved assistant turns.
+
+- `GET /sessions/{session_id}/history` returns replayable chart descriptors on `message.artifacts` for sessions saved after the replay refactor.
+- Sessions saved before replay persistence landed that only retained `artifact_count` are legacy sessions. They are not backfilled automatically and should remain on the existing regenerate-the-chart warning path in the frontend.
+- Inline history storage is bounded by `visualization.history_replay.max_artifacts_per_message`, `visualization.history_replay.max_inline_artifact_bytes`, `visualization.history_replay.max_total_bytes_per_message`, and `persistence.workflow_state.sqlite.max_state_bytes`.
+- Durable reference artifacts live in `backend/data/visualization_artifacts.db` by default, or `visualization.artifact_store.sqlite.path` when overridden.
+- Durable artifact rows expire according to `visualization.artifact_store.ttl_seconds`; expired rows are purged during artifact-store initialization and later store operations.
+- Session reset clears session-scoped durable visualization artifacts when a visualization artifact store is configured.
+
+Focused visualization replay validation from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest --import-mode=importlib tests\integration\visualization\test_session_chart_pipeline.py tests\integration\session\test_session_with_sqlite_workflow_state_store.py
+.\.venv\Scripts\python.exe -m ruff check tests\integration\visualization\test_session_chart_pipeline.py tests\integration\session\test_session_with_sqlite_workflow_state_store.py
+```
 
 Focused API validation from `backend/`:
 
@@ -830,6 +849,38 @@ Focused policy validation from `backend/`:
 ```
 
 The next direct backend document is `../docs/backend-deployment-architecture.md`.
+
+## Task Execution Chat Rollout
+
+The task-first `task_execution_chat` flow is now validated for staged activation, but the current rollout decision is to keep multiple parallel use cases instead of replacing `default_chat` or `support_web_chat` immediately.
+
+Activation flags:
+
+- disabled baseline: keep `orchestration.usecases.task_execution_chat.enabled: false`
+- staged activation: set `orchestration.usecases.task_execution_chat.enabled: true` and keep `app.active_usecase` plus `session.defaults.default_usecase` on the current default; callers opt in by sending `usecase: task_execution_chat`
+- default activation: set `orchestration.usecases.task_execution_chat.enabled: true`, `app.active_usecase: task_execution_chat`, and `session.defaults.default_usecase: task_execution_chat`
+- rollout fixtures for these three states live under `tests/fixtures/config/task_execution_chat_disabled.yaml`, `tests/fixtures/config/task_execution_chat_staged.yaml`, and `tests/fixtures/config/task_execution_chat_enabled.yaml`
+
+Health expectations:
+
+- `/health` should remain green on the existing backend dependencies; `task_execution_chat` does not add a new required external service boundary
+- config-backed health summaries should only show `task_execution_chat` as the active default when `app.active_usecase` has been switched
+- successful task-first responses should expose additive metadata such as `response_mode`, `needs_user_input`, `pending_task_count`, and `generated_artifact_count` without requiring API or frontend contract changes
+
+Failure modes:
+
+- missing required inputs should stop with a clarification response instead of a fallback answer
+- enabling `bounded_planner` while canonical `memory.enabled` or `tooling.enabled` are still off will fail config validation
+- custom configs that add the use case without matching LLM, agent, strategy, tool, or policy allowlists can still fail at startup or at request time
+- fallback answers should now be rare for multi-step chart requests; treat frequent fallback on `task_execution_chat` as a rollout regression
+
+Focused task-execution rollout validation from `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\unit\config\test_loader_valid_config.py tests\integration\orchestration\test_bounded_planner_runtime.py tests\integration\visualization\test_session_chart_pipeline.py
+```
+
+The rollout decision record is `../docs/decisions/task-execution-chat-rollout-decision.md`.
 
 ## Validation
 

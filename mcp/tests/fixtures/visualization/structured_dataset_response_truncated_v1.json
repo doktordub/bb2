@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "reporting.metric_series.monthly_income_expense.v1",
+  "columns": [
+    {
+      "name": "reporting_period",
+      "data_type": "date",
+      "nullable": false,
+      "semantic_role": "time",
+      "unit": null
+    },
+    {
+      "name": "income",
+      "data_type": "number",
+      "nullable": false,
+      "semantic_role": "metric",
+      "unit": "USD"
+    },
+    {
+      "name": "expense",
+      "data_type": "number",
+      "nullable": false,
+      "semantic_role": "metric",
+      "unit": "USD"
+    }
+  ],
+  "rows": [
+    {
+      "reporting_period": "2026-01-01",
+      "income": 125000.0,
+      "expense": 101000.0
+    },
+    {
+      "reporting_period": "2026-02-01",
+      "income": 131500.0,
+      "expense": 104250.0
+    },
+    {
+      "reporting_period": "2026-03-01",
+      "income": 128900.0,
+      "expense": 109400.0
+    }
+  ],
+  "row_count": 3,
+  "total_row_count": 6,
+  "truncated": true,
+  "source": "reporting_fixture",
+  "query_summary": "Monthly income and expense totals truncated to the first 3 rows for transport.",
+  "time_range": {
+    "start": "2026-01-01",
+    "end": "2026-06-30"
+  },
+  "warnings": [
+    "Result truncated to 3 rows to honor the dataset transport limit."
+  ],
+  "provenance": {
+    "provider": "fixture",
+    "tool_name": "reporting.query_metric_series",
+    "aggregation": "sum",
+    "granularity": "month"
+  }
+}

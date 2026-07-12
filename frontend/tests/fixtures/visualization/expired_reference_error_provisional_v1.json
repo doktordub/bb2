@@ -1,0 +1,14 @@
+{
+  "status_code": 410,
+  "trace_id": "trace_vis_expired_001",
+  "artifact_id": "chart_ticket_volume_24_months",
+  "error": {
+    "code": "artifact_expired",
+    "message": "Visualization data is no longer available. Regenerate the chart to continue.",
+    "retryable": true
+  },
+  "metadata": {
+    "fixture_status": "frontend_phase0_edge",
+    "contract_status": "provisional"
+  }
+}

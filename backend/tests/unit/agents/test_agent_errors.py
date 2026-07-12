@@ -11,6 +11,7 @@ from app.agents.errors import (
     normalize_agent_error,
 )
 from app.contracts.errors import LLMGatewayError, PolicyDeniedError
+from app.llm.errors import LLMPolicyDeniedError
 
 
 def test_agent_error_detail_sanitizes_message_and_metadata() -> None:
@@ -27,7 +28,22 @@ def test_agent_error_detail_sanitizes_message_and_metadata() -> None:
 
 
 def test_normalize_agent_error_maps_policy_and_gateway_failures() -> None:
-    assert isinstance(normalize_agent_error(PolicyDeniedError("denied")), AgentPolicyDeniedError)
+    denied = normalize_agent_error(PolicyDeniedError("denied"))
+
+    assert isinstance(denied, AgentPolicyDeniedError)
+    assert denied.metadata["policy_denied"] is True
+
+    llm_denied = normalize_agent_error(
+        LLMPolicyDeniedError(
+            "LLM profile 'blocked_profile' is not allowed by policy.",
+            metadata={"profile": "blocked_profile"},
+        )
+    )
+
+    assert isinstance(llm_denied, AgentPolicyDeniedError)
+    assert llm_denied.message == "LLM profile 'blocked_profile' is not allowed by policy."
+    assert llm_denied.metadata["profile"] == "blocked_profile"
+    assert llm_denied.metadata["source_error_code"] == "llm_policy_denied"
 
     llm_error = normalize_agent_error(LLMGatewayError("provider timeout"))
     assert isinstance(llm_error, AgentLLMError)

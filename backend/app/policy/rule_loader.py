@@ -17,6 +17,7 @@ from app.policy.stream_policy import evaluate_stream_request
 from app.policy.trace_policy import evaluate_trace_request
 from app.policy.tool_policy import evaluate_tool_request
 from app.policy.usecase_policy import evaluate_usecase_access
+from app.policy.visualization_policy import evaluate_visualization_request
 
 
 def load_default_policy_registry() -> PolicyRegistry:
@@ -32,6 +33,8 @@ def load_default_policy_registry() -> PolicyRegistry:
                     "agent.invoke",
                     "llm.complete",
                     "llm.stream",
+                    "visualization.build",
+                    "visualization.retrieve",
                     "memory.search",
                     "memory.get",
                     "memory.upsert",
@@ -80,7 +83,7 @@ def load_default_policy_registry() -> PolicyRegistry:
         CallbackPolicyRuleEvaluator(
             rule=PolicyRule(
                 name="agent_access",
-                actions=("agent.invoke",),
+                actions=("agent.invoke", "visualization.build", "visualization.retrieve"),
                 priority=20,
             ),
             callback=evaluate_agent_access,
@@ -147,6 +150,22 @@ def load_default_policy_registry() -> PolicyRegistry:
     registry.register_rule(
         CallbackPolicyRuleEvaluator(
             rule=PolicyRule(
+                name="visualization_access",
+                actions=("visualization.build", "visualization.retrieve"),
+                component_prefixes=("app.visualization", "visualization.", "app.agents", "agents.", "app.orchestration", "orchestration."),
+                priority=32,
+            ),
+            callback=lambda request, context, profile, runtime_config: evaluate_visualization_request(
+                request,
+                context,
+                profile,
+                runtime_config,
+            ),
+        )
+    )
+    registry.register_rule(
+        CallbackPolicyRuleEvaluator(
+            rule=PolicyRule(
                 name="fallback_access",
                 actions=("fallback.execute",),
                 component_prefixes=("orchestration.", "app.orchestration"),
@@ -164,7 +183,24 @@ def load_default_policy_registry() -> PolicyRegistry:
             rule=PolicyRule(
                 name="trace_access",
                 actions=("trace.emit",),
-                component_prefixes=("api.", "app.api", "observability.", "app.observability", "orchestration.", "app.orchestration", "session.", "app.session", "persistence.", "app.persistence"),
+                component_prefixes=(
+                    "api.",
+                    "app.api",
+                    "observability.",
+                    "app.observability",
+                    "orchestration.",
+                    "app.orchestration",
+                    "session.",
+                    "app.session",
+                    "persistence.",
+                    "app.persistence",
+                    "agents.",
+                    "app.agents",
+                    "llm.",
+                    "app.llm",
+                    "visualization.",
+                    "app.visualization",
+                ),
                 priority=35,
             ),
             callback=lambda request, context, profile, runtime_config: evaluate_trace_request(

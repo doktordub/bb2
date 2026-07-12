@@ -11,6 +11,7 @@ from app.config.view import (
     get_agents_settings,
     get_orchestration_settings,
     get_tooling_settings,
+    get_visualization_settings,
 )
 from app.contracts.config import ConfigurationView
 from app.deployment.process_control import ProcessControlService
@@ -32,6 +33,8 @@ from app.policy.settings import PolicyProfileSettings
 from app.orchestration.runtime import OrchestrationRuntime
 from app.orchestration.strategy_factory import build_strategy_registry
 from app.tools.capabilities import build_tool_capabilities_payload
+from app.visualization.capabilities import build_visualization_capabilities_payload
+from app.visualization.chart_registry import ChartTypeRegistry
 
 
 class CapabilitiesService:
@@ -67,6 +70,7 @@ class CapabilitiesService:
         orchestration_enabled, enabled_usecases = self._configured_usecases()
         chat_enabled = orchestration_enabled and bool(enabled_usecases)
         tool_capabilities = self._describe_tool_capabilities_fallback()
+        visualization_settings = get_visualization_settings(self._config)
 
         return {
             "service": self._config.require("app.name"),
@@ -81,6 +85,7 @@ class CapabilitiesService:
                 "llm_profiles": bool(self._config.section("llm.profiles")),
                 "trace": bool(features.get("trace_enabled", False))
                 and self._has_provider("persistence.trace.provider"),
+                "visualization": visualization_settings.enabled,
             },
         }
 
@@ -99,6 +104,8 @@ class CapabilitiesService:
         llm_capabilities = await self._describe_llm_capabilities()
         memory_capabilities = await self._describe_memory_capabilities()
         tool_capabilities = await self._describe_tool_capabilities()
+        profile = self._resolve_policy_profile() if self._policy_service is not None else None
+        visualization_capabilities = self._describe_visualization_capabilities(profile=profile)
 
         payload = {
             "chat": {
@@ -147,6 +154,7 @@ class CapabilitiesService:
             "tools": tool_capabilities,
             "memory": memory_capabilities,
             "llm": llm_capabilities,
+            "visualization": visualization_capabilities,
         }
 
         if self._policy_service is not None and hasattr(self._policy_service, "health"):
@@ -217,9 +225,38 @@ class CapabilitiesService:
                     "streaming_supported": False,
                     "structured_output_supported": False,
                 },
+                "visualization": {
+                    "enabled": False,
+                    "default_renderer": None,
+                    "allowed_renderers": [],
+                    "spec_version": None,
+                    "context_summary_mode": "disabled",
+                    "supported_chart_types": [],
+                    "reference_mode_supported": False,
+                    "reference_mode_enabled": False,
+                    "artifact_store_enabled": False,
+                    "exact_followup_retrieval_enabled": False,
+                    "limits": {},
+                },
             }
-        profile = self._resolve_policy_profile()
+        profile = profile or self._resolve_policy_profile()
         return sanitize_capabilities_payload(payload, profile=profile)
+
+    def _describe_visualization_capabilities(
+        self,
+        *,
+        profile: PolicyProfileSettings | None,
+    ) -> dict[str, Any]:
+        settings = get_visualization_settings(self._config)
+        registry = ChartTypeRegistry(
+            allowed_chart_types=settings.allowed_chart_types,
+            aliases=settings.aliases,
+        )
+        return build_visualization_capabilities_payload(
+            settings=settings,
+            registry=registry,
+            policy=(profile.visualization if profile is not None else None),
+        )
 
     def _resolve_policy_profile(self) -> PolicyProfileSettings:
         if self._policy_service is None:

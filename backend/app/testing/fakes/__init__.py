@@ -12,6 +12,7 @@ from app.testing.fakes.fake_state import FakeWorkflowStateStore
 from app.testing.fakes.fake_strategy import FakeDirectStrategy
 from app.testing.fakes.fake_tools import FakeToolGateway
 from app.testing.fakes.fake_trace import FakeTraceStore
+from app.testing.fakes.fake_visualization import FakeVisualizationGateway
 
 __all__ = [
 	"FakeAgent",
@@ -26,5 +27,6 @@ __all__ = [
 	"FakeSessionService",
 	"FakeToolGateway",
 	"FakeTraceStore",
+	"FakeVisualizationGateway",
 	"FakeWorkflowStateStore",
 ]

@@ -8,6 +8,7 @@ from app.services import BackendJsonResult, BackendStreamResult, get_backend_cli
 
 
 ui_api_bp = Blueprint("ui_api", __name__, url_prefix="/ui-api")
+SESSION_ID_HEADER = "X-Session-Id"
 
 
 @ui_api_bp.get("/backend/health")
@@ -81,6 +82,18 @@ def get_session_history(session_id: str) -> Response:
     )
 
 
+@ui_api_bp.get("/artifacts/<artifact_id>")
+def get_artifact(artifact_id: str) -> Response:
+    return _make_json_response(
+        get_backend_client().request_json(
+            "GET",
+            f"/artifacts/{artifact_id}",
+            query=_request_query_items(),
+            headers=_forward_session_headers(),
+        )
+    )
+
+
 @ui_api_bp.post("/sessions/<session_id>/reset")
 def reset_session(session_id: str) -> Response:
     return _make_json_response(
@@ -112,6 +125,13 @@ def _request_json_body() -> dict[str, Any] | None:
     if isinstance(payload, dict):
         return payload
     return None
+
+
+def _forward_session_headers() -> dict[str, str]:
+    session_id = request.headers.get(SESSION_ID_HEADER)
+    if isinstance(session_id, str) and session_id.strip():
+        return {SESSION_ID_HEADER: session_id.strip()}
+    return {}
 
 
 def _make_json_response(result: BackendJsonResult) -> Response:

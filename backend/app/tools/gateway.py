@@ -741,6 +741,12 @@ class DefaultToolGateway:
         resolved_retryable = retryable
         if resolved_retryable is None and error is not None:
             resolved_retryable = isinstance(error, (ToolCancelledError,)) and False
+        policy_block_summary = _policy_block_summary_for_tool(tool_name=tool_name, error=error)
+        policy_decision = None
+        if isinstance(error, ToolPolicyApprovalRequiredError):
+            policy_decision = "approval_required"
+        elif isinstance(error, ToolPolicyDeniedError):
+            policy_decision = "deny"
         await self._record_event(
             context=context,
             event_type=TOOL_CALL_FAILED,
@@ -752,6 +758,8 @@ class DefaultToolGateway:
                     "status": status,
                     "attempt_count": attempt_count,
                     "retryable": resolved_retryable,
+                    "policy_decision": policy_decision,
+                    "policy_block_summary": policy_block_summary,
                 }
             ),
             status=status,
@@ -908,6 +916,31 @@ def _error_code_for_error(error: ToolGatewayError | None) -> str | None:
     if isinstance(error, ToolGatewayError):
         return "tool_execution_failed"
     return None
+
+
+def _policy_block_summary_for_tool(
+    *,
+    tool_name: str,
+    error: ToolGatewayError | None,
+) -> str | None:
+    if not isinstance(error, ToolPolicyDeniedError):
+        return None
+
+    message = _optional_text_value(str(error))
+    if isinstance(error, ToolPolicyApprovalRequiredError):
+        if message is not None and "policy" in message.casefold():
+            return message
+        return f"Tool '{tool_name}' requires approval by policy."
+    if message is not None and "policy" in message.casefold():
+        return message
+    return f"Tool '{tool_name}' blocked by policy."
+
+
+def _optional_text_value(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _drop_none_values(payload: Mapping[str, Any]) -> dict[str, Any]:

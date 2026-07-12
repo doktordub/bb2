@@ -143,6 +143,107 @@ async def test_get_history_returns_bounded_safe_projection() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_history_returns_first_class_inline_history_artifacts() -> None:
+    workflow_state = FakeWorkflowStateStore()
+    workflow_state.states["session_history_artifacts_1"] = {
+        "conversation": {
+            "messages": [
+                {"role": "user", "content": "show chart"},
+                {
+                    "role": "assistant",
+                    "content": "chart ok",
+                    "artifacts": [
+                        {
+                            "artifact_id": "chart-history-inline-1",
+                            "type": "chart",
+                            "chart_type": "bar",
+                            "title": "Revenue",
+                            "description": "Monthly revenue.",
+                            "renderer": "echarts",
+                            "spec_version": "1.0",
+                            "data_mode": "inline",
+                            "data": [{"month": "Jan", "revenue": 1200}],
+                            "data_ref": None,
+                            "encoding": {"x": "month", "y": ["revenue"]},
+                            "options": {"currency": "USD"},
+                            "warnings": [],
+                            "metadata": {"source": "workflow_state"},
+                        }
+                    ],
+                    "metadata": {
+                        "artifact_count": 1,
+                        "artifact_delivery_mode": "inline",
+                        "artifact_replay_status": "available",
+                    },
+                },
+            ]
+        },
+        "workflow": {"current_step": "answered", "scratch": {}},
+        "metadata": {"loaded_empty": False},
+    }
+    workflow_state.versions["session_history_artifacts_1"] = 2
+    service = DefaultSessionService(
+        config=FakeConfigurationView({"usecases": {"default_chat": {"enabled": True}}}),
+        settings=_build_settings(history_enabled=True),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=FakeTraceStore()),
+        orchestrator=FakeOrchestrationRuntime(),
+        policy_service=FakePolicyService(),
+        clock=FakeClock([datetime(2026, 6, 27, 17, 32, tzinfo=UTC)]),
+    )
+
+    result = await service.get_history(
+        session_id="session_history_artifacts_1",
+        limit=10,
+        context=_build_context(),
+    )
+
+    assert len(result.messages) == 2
+    assert result.messages[1].artifacts == [
+        {
+            "artifact_id": "chart-history-inline-1",
+            "type": "chart",
+            "chart_type": "bar",
+            "title": "Revenue",
+            "description": "Monthly revenue.",
+            "renderer": "echarts",
+            "spec_version": "1.0",
+            "data_mode": "inline",
+            "data": [{"month": "Jan", "revenue": 1200}],
+            "data_ref": None,
+            "encoding": {"x": "month", "y": ["revenue"]},
+            "options": {"currency": "USD"},
+            "warnings": [],
+            "metadata": {"source": "workflow_state"},
+        }
+    ]
+    assert result.messages[1].metadata == {
+        "message_chars": 8,
+        "artifact_count": 1,
+        "artifact_delivery_mode": "inline",
+        "artifact_replay_status": "available",
+        "visualizations": [
+            {
+                "artifact_id": "chart-history-inline-1",
+                "type": "chart",
+                "chart_type": "bar",
+                "title": "Revenue",
+                "description": "Monthly revenue.",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "inline",
+                "data": [{"month": "Jan", "revenue": 1200}],
+                "data_ref": None,
+                "encoding": {"x": "month", "y": ["revenue"]},
+                "options": {"currency": "USD"},
+                "warnings": [],
+                "metadata": {"source": "workflow_state"},
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_history_raises_when_history_is_disabled() -> None:
     service = DefaultSessionService(
         config=FakeConfigurationView({"usecases": {"default_chat": {"enabled": True}}}),
@@ -180,3 +281,53 @@ def test_history_helpers_keep_only_safe_roles_and_metadata() -> None:
             "token": "secret",
         }
     ) == {"trace_id": "trace-1", "usecase": "default_chat"}
+
+
+def test_history_helpers_preserve_safe_visualization_replay_descriptors() -> None:
+    projected = project_safe_message_metadata(
+        {
+            "artifact_count": 1,
+            "artifact_delivery_mode": "inline",
+            "visualizations": [
+                {
+                    "artifact_id": "chart-history-1",
+                    "type": "chart",
+                    "chart_type": "bar",
+                    "title": "Revenue",
+                    "description": "Monthly revenue.",
+                    "renderer": "echarts",
+                    "spec_version": "1.0",
+                    "data_mode": "reference",
+                    "data": None,
+                    "data_ref": "/artifacts/chart-history-1",
+                    "encoding": {"x": "month", "y": ["revenue"]},
+                    "options": {"currency": "USD"},
+                    "warnings": ["trimmed labels"],
+                    "metadata": {"source": "workflow_state"},
+                }
+            ],
+        }
+    )
+
+    assert projected == {
+        "artifact_count": 1,
+        "artifact_delivery_mode": "inline",
+        "visualizations": [
+            {
+                "artifact_id": "chart-history-1",
+                "type": "chart",
+                "chart_type": "bar",
+                "title": "Revenue",
+                "description": "Monthly revenue.",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "reference",
+                "data": None,
+                "data_ref": "/artifacts/chart-history-1",
+                "encoding": {"x": "month", "y": ["revenue"]},
+                "options": {"currency": "USD"},
+                "warnings": ["trimmed labels"],
+                "metadata": {"source": "workflow_state"},
+            }
+        ],
+    }

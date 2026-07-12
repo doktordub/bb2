@@ -25,12 +25,12 @@ orchestration:
   defaults:
     strategy: direct_agent
     fallback_strategy: fallback_answer
-    max_steps: 8
-    max_tool_calls: 4
+    max_steps: 10
+    max_tool_calls: 8
     max_memory_searches: 3
     max_memory_writes: 1
-    max_llm_calls: 6
-    max_tool_loop_iterations: 3
+    max_llm_calls: 10
+    max_tool_loop_iterations: 6
     max_context_bytes: 64000
     max_turn_duration_seconds: 120
     max_stream_duration_seconds: 120
@@ -48,7 +48,7 @@ orchestration:
       max_chars: 12000
       include_assistant_messages: true
       summary_threshold_messages: 24
-      summary_max_chars: 2000
+      summary_max_chars: 4000
   strategies: # Strategies define the shape of a turn. They decide whether to answer directly, retrieve memory first, call tools, route among agents, update memory, or produce a fallback.
     direct_agent:
       enabled: true
@@ -97,6 +97,7 @@ orchestration:
       tools:
         allowed_tools:
           - websearch.search
+          - reporting.query_metric_series
     bounded_planner:
       enabled: true
       type: bounded_planner
@@ -133,6 +134,7 @@ orchestration:
         - default_chat
         - support_web_chat
         - architecture_document_qa
+        - task_execution_chat
       expose_strategy_metadata: true
   usecases:
     default_chat:
@@ -144,13 +146,15 @@ orchestration:
       allowed_agents:
         - tool_using_agent
         - support_agent
+        - chart_agent
       allowed_strategies:
+        - direct_agent
         - tool_assisted
         - fallback_answer
       policy_profile: default
       tools:
         enabled: true
-        allowed_tools: [websearch.search]
+        allowed_tools: [websearch.search, reporting.query_metric_series]
     support_web_chat:
       enabled: true
       display_name: Support + Web Search
@@ -161,13 +165,48 @@ orchestration:
       allowed_agents:
         - support_agent
         - support_web_agent
+        - chart_agent
       allowed_strategies:
+        - direct_agent
         - tool_assisted
         - fallback_answer
       policy_profile: default
       tools:
         enabled: true
-        allowed_tools: [websearch.search]
+        allowed_tools: [websearch.search, reporting.query_metric_series]
+    # Planned task-first flow. Keep direct_agent out of allowed_strategies so
+    # chart-looking turns do not bypass request assessment through visualization routing.
+    task_execution_chat:
+      enabled: true
+      display_name: Task Execution Chat
+      description: Assess the user request first, answer directly when possible, ask for missing input when required, and execute bounded multi-step tasks before returning a final response.
+      strategy: bounded_planner
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - task_execution_agent
+        - support_agent
+        - tool_using_agent
+        - support_web_agent
+        - chart_agent
+        - architecture_document_agent
+      allowed_strategies:
+        - bounded_planner
+        - fallback_answer
+      policy_profile: default
+      memory:
+        enabled: true
+        include_document_chunks: true
+        default_limit: 6
+      tools:
+        enabled: true
+        allowed_tools: [websearch.search, reporting.query_metric_series]
+      metadata:
+        implementation_status: phase_4_complete
+        routing_mode: task_first
+        assessment_agent: task_execution_agent
+        target_default_agent: task_execution_agent
+        keep_visualization_override_disabled: true
     architecture_document_qa:
       enabled: true
       display_name: Architecture Document Q&A
@@ -290,6 +329,97 @@ session:
     record_history_returned: true
     record_stream_lifecycle: true
 
+visualization:
+  enabled: true
+  default_renderer: echarts
+  allowed_renderers:
+    - echarts
+  artifact_spec_version: "1.0"
+  allowed_chart_types:
+    - bar
+    - grouped_bar
+    - stacked_bar
+    - horizontal_bar
+    - line
+    - multi_line
+    - area
+    - pie
+    - donut
+    - scatter
+    - bubble
+    - histogram
+    - box_plot
+    - heatmap
+    - treemap
+    - waterfall
+    - gantt
+    - radar
+    - table
+  aliases:
+    bar graph: bar
+    bar chart: bar
+    column chart: bar
+    grouped bar graph: grouped_bar
+    stacked bar graph: stacked_bar
+    line graph: line
+    trend chart: line
+    pie graph: pie
+    donut graph: donut
+    scatter plot: scatter
+    correlation plot: scatter
+    gantt chart: gantt
+  limits:
+    max_rows_inline: 500
+    max_rows_artifact_store: 5000
+    max_series: 12
+    max_categories: 100
+    max_artifact_bytes: 262144
+  sample_data:
+    enabled: false
+    require_explicit_opt_in: true
+    max_rows: 24
+  context_summary:
+    enabled: true
+    mode: summary_only
+    max_tokens_per_chart_summary: 600
+    max_chart_summaries_per_session_context: 5
+    max_total_visualization_context_tokens: 1800
+    include_data_ref: true
+    include_aggregate_stats: true
+    include_extrema: true
+    include_trend_summary: true
+    include_sample_rows: false
+    max_sample_rows: 0
+    eviction_policy: most_recent_relevant
+    allow_full_dataset_in_context: false
+  artifact_store:
+    enabled: true
+    provider: sqlite
+    ttl_seconds: 3600
+    allow_reference_data_mode: true
+    public_retrieval_enabled: true
+    retrieval_endpoint: /artifacts/{artifact_id}
+    exact_followup_retrieval_enabled: true
+    sqlite:
+      path: visualization_artifacts.db
+      create_parent_dirs: true
+      initialize_schema: true
+      journal_mode: WAL
+      synchronous: NORMAL
+      busy_timeout_ms: 5000
+      foreign_keys: true
+  history_replay:
+    enabled: true
+    prefer_inline: true
+    max_artifacts_per_message: 3
+    max_inline_artifact_bytes: 65536
+    max_total_bytes_per_message: 131072
+  safe_metadata_allowlist:
+    - source
+    - source_agent
+    - currency
+    - unit
+
 features:
   streaming_enabled: true
   memory_enabled: true
@@ -329,6 +459,76 @@ tooling:
           - web
           - search
         safety_level: read_only
+      reporting.query_metric_series:
+        enabled: true
+        mcp_tool_name: reporting.query_metric_series
+        description: Query bounded visualization-ready reporting datasets through the configured MCP server.
+        allowed_for:
+          usecases:
+            - default_chat
+            - support_web_chat
+          agents:
+            - chart_agent
+          strategies:
+            - direct_agent
+            - tool_assisted
+        timeout_seconds: 30
+        max_argument_bytes: 8192
+        max_result_bytes: 131072
+        approval_required: false
+        input_schema_override:
+          type: object
+          properties:
+            metric_names:
+              type: array
+              minItems: 1
+              maxItems: 8
+              items:
+                type: string
+                minLength: 1
+            dimension:
+              type: string
+              minLength: 1
+            start_date:
+              type: string
+            end_date:
+              type: string
+            filters:
+              type: object
+            aggregation:
+              type: string
+              enum:
+                - sum
+                - avg
+                - min
+                - max
+                - count
+            granularity:
+              type: string
+              enum:
+                - day
+                - week
+                - month
+                - quarter
+                - year
+                - category
+            sort:
+              type: string
+              enum:
+                - asc
+                - desc
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 100
+          required:
+            - metric_names
+            - dimension
+          additionalProperties: false
+        tags:
+          - reporting
+          - visualization
+        safety_level: read_only
 
 # Agents provide task-specific intelligence. Strategies decide the workflow; agents perform task-specific answer/review/extraction behavior.
 # Agents may call LLMs through LLMGateway, memory through MemoryGateway, and tools through ToolGateway only when their contract and policy allow it
@@ -343,6 +543,7 @@ agents:
     known_prompt_profiles:
       - general_assistant_v1
       - document_qa_v1
+      - task_execution_v1
       - tool_using_v1
       - support_web_v1
       - project_agent_v1
@@ -355,10 +556,35 @@ agents:
     max_llm_calls: 1
     max_self_managed_tool_calls: 0
     max_self_managed_memory_searches: 0
-    allow_self_managed_tools: false
+    allow_self_managed_tools: true
     allow_self_managed_memory: false
     allow_memory_write: true
   plugins:
+    chart_agent:
+      enabled: true
+      type: chart_agent
+      display_name: Chart Agent
+      description: Generates validated chart artifacts and answers chart follow-up questions through backend gateways.
+      llm_profile: local_reasoning
+      capabilities:
+        answer: true
+        review: false
+        stream: true
+        memory_read: true
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: false
+        tool_execute: true
+        self_managed_memory: false
+        self_managed_tools: true
+      limits:
+        max_self_managed_tool_calls: 1
+      allowed_tool_intents:
+        - reporting.query_metric_series
+      allowed_memory_scopes:
+        - project
+        - usecase
+        - session
     support_agent:
       enabled: true
       type: general_assistant
@@ -370,6 +596,26 @@ agents:
         answer: true
         review: false
         stream: true
+        memory_read: false
+        memory_write: false
+        memory_candidate_extract: false
+        tool_intents: false
+        tool_execute: false
+        self_managed_memory: false
+        self_managed_tools: false
+      allowed_tool_intents: []
+      allowed_memory_scopes: []
+    task_execution_agent:
+      enabled: true
+      type: task_execution
+      display_name: Task Execution Agent
+      description: Assesses a request, answers directly when safe, asks for missing input when required, or emits a bounded task list for orchestration.
+      llm_profile: local_reasoning
+      prompt_profile: task_execution_v1
+      capabilities:
+        answer: true
+        review: false
+        stream: false
         memory_read: false
         memory_write: false
         memory_candidate_extract: false
@@ -461,7 +707,7 @@ llm:
     profile: local_reasoning
     timeout_seconds: 120
     stream_timeout_seconds: 300
-    max_retries: 1
+    max_retries: 2
     trace_prompts: false
     trace_completions: false
   providers:
@@ -478,9 +724,9 @@ llm:
     local_reasoning:
       enabled: true
       provider: local_provider
-      model: qwen3.5-27b-claude-4.6-opus-reasoning-distilled-i1
+      model: cognitivecomputations_dolphin3.0-mistral-24b #gemma-4-26b-a4b-it # #qwen3.5-27b-claude-4.6-opus-reasoning-distilled-i1
       temperature: 0.7
-      max_output_tokens: 2048
+      max_output_tokens: 8192 #2048
       supports_streaming: true
       supports_json_schema: true
       supports_tool_calling: true
@@ -489,15 +735,20 @@ llm:
           - default_chat
           - support_web_chat
           - architecture_document_qa
+          - task_execution_chat
         agents:
+          - chart_agent
           - support_agent
           - tool_using_agent
           - support_web_agent
           - architecture_document_agent
+          - task_execution_agent
         strategies:
           - direct_agent
           - tool_assisted
           - retrieval_augmented
+          - bounded_planner
+          - fallback_answer
       fallback_profiles: []
 
 memory:
@@ -656,6 +907,20 @@ policy:
   default_decision: allow # deny
   fail_closed: true
   default_profile: default
+  visualization:
+    enabled: true
+    require_data_source: true
+    allow_memory_data: true
+    allow_tool_data: true
+    allow_uploaded_file_data: true
+    allow_exact_followup_retrieval: true
+    allowed_data_sources:
+      - deterministic_synthesis
+      - user_provided
+      - workflow_state
+      - uploaded_file
+      - memory
+      - tool
   profiles:
     default:
       enabled: true
@@ -671,24 +936,28 @@ policy:
         allowed:
           - default_chat
           - support_web_chat
+          - task_execution_chat
           - architecture_document_qa
       strategies:
         allowed:
           - direct_agent
           - tool_assisted
+          - bounded_planner
           - retrieval_augmented
           - fallback_answer
       agents:
         allowed:
           - support_agent
+          - task_execution_agent
           - tool_using_agent
           - support_web_agent
           - architecture_document_agent
+          - chart_agent
       llm:
         allowed_profiles:
           - local_reasoning
-        allow_prompt_trace: false
-        allow_completion_trace: false
+        allow_prompt_trace: true
+        allow_completion_trace: true
       memory:
         allowed_read_scopes:
           - project
@@ -698,6 +967,7 @@ policy:
       tools:
         allowed_tools:
           - websearch.search
+          - reporting.query_metric_series
       approval:
         require_approval_for_write_tools: true
         require_approval_for_destructive_tools: true

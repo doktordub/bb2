@@ -162,6 +162,28 @@ async def test_fallback_answer_strategy_logs_when_llm_generation_fails(
 
 
 @pytest.mark.asyncio
+async def test_fallback_answer_strategy_returns_explicit_policy_message_without_calling_llm() -> None:
+    config = build_config(llm_profile="fallback_profile")
+    llm = FakeLLMGateway(response_text="should not be used")
+    context = build_context(config, llm=llm)
+    context.request.metadata.update(
+        {
+            "policy_denied": True,
+            "policy_block_summary": "Tool 'documents.search' is not allowed by policy.",
+            "failed_error_message": "Tool 'documents.search' is not allowed by policy.",
+        }
+    )
+
+    result = await FallbackAnswerStrategy().run(context=context, agents=[])
+
+    assert result.answer == "I couldn't complete that request because tool 'documents.search' is not allowed by policy."
+    assert result.metadata["answer_source"] == "policy_static"
+    assert result.metadata["policy_denied"] is True
+    assert result.metadata["policy_block_summary"] == "Tool 'documents.search' is not allowed by policy."
+    assert llm.requests == []
+
+
+@pytest.mark.asyncio
 async def test_fallback_answer_strategy_uses_message_catalog_when_strategy_message_is_missing(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

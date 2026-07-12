@@ -21,8 +21,10 @@ from app.session.mapping import build_session_chat_request, build_session_reques
 from app.session.service import DefaultSessionService
 from app.testing.fakes.fake_clock import FakeClock
 from app.testing.fakes.fake_config import FakeConfigurationView
+from app.testing.fakes.fake_llm import FakeLLMGateway
 from app.testing.fakes.fake_memory import FakeMemoryGateway
 from app.testing.fakes.fake_orchestration_runtime import FakeOrchestrationRuntime
+from app.testing.fakes.fake_policy import FakePolicyService
 from app.testing.fakes.fake_state import FakeWorkflowStateStore
 from app.testing.fakes.fake_trace import FakeTraceStore
 from app.testing.fakes.fake_trace_recorder import build_fake_trace_recorder
@@ -95,6 +97,93 @@ def _build_context():
         method="POST",
         metadata={"auth_mode": "local"},
         headers_safe={"x-trace-id": "trace-session-stream-0001"},
+    )
+
+
+def _build_chart_config() -> FakeConfigurationView:
+    return FakeConfigurationView(
+        {
+            "app": {"active_usecase": "default_chat"},
+            "usecases": {
+                "default_chat": {
+                    "enabled": True,
+                }
+            },
+            "visualization": {
+                "enabled": True,
+                "context_summary": {
+                    "enabled": True,
+                    "mode": "summary_only",
+                    "max_tokens_per_chart_summary": 600,
+                    "max_chart_summaries_per_session_context": 5,
+                    "max_total_visualization_context_tokens": 1800,
+                    "include_data_ref": True,
+                    "include_aggregate_stats": True,
+                    "include_extrema": True,
+                    "include_trend_summary": True,
+                    "include_sample_rows": False,
+                    "max_sample_rows": 0,
+                    "eviction_policy": "most_recent_relevant",
+                },
+                "artifact_store": {
+                    "enabled": True,
+                    "provider": "workflow_state_cache",
+                    "ttl_seconds": 7200,
+                    "allow_reference_data_mode": True,
+                    "public_retrieval_enabled": False,
+                    "exact_followup_retrieval_enabled": True,
+                    "retrieval_endpoint": "/artifacts/{artifact_id}",
+                },
+            },
+            "orchestration": {
+                "enabled": True,
+                "defaults": {
+                    "strategy": "direct_agent",
+                    "fallback_strategy": "direct_agent",
+                    "max_steps": 8,
+                    "max_tool_calls": 4,
+                    "max_memory_searches": 3,
+                    "max_llm_calls": 6,
+                    "max_turn_duration_seconds": 120,
+                    "max_stream_duration_seconds": 300,
+                },
+                "strategies": {
+                    "direct_agent": {
+                        "enabled": True,
+                        "type": "direct_agent",
+                        "default_agent": "chart_agent",
+                        "allowed_usecases": ["default_chat"],
+                        "llm_profile": "fake_chart",
+                    }
+                },
+                "usecases": {
+                    "default_chat": {
+                        "enabled": True,
+                        "strategy": "direct_agent",
+                        "agent": "chart_agent",
+                        "allowed_agents": ["chart_agent"],
+                        "allowed_strategies": ["direct_agent"],
+                        "policy_profile": "default",
+                    }
+                },
+            },
+            "agents": {
+                "chart_agent": {
+                    "enabled": True,
+                    "module": "app.testing.fakes.fake_visualization_agent",
+                    "class_name": "FakeVisualizationAgent",
+                    "llm_profile": "fake_chart",
+                }
+            },
+            "llm": {"defaults": {"profile": "fake_chart"}},
+            "observability": {
+                "trace_enabled": True,
+                "trace_payloads_enabled": True,
+                "trace_store_required": True,
+                "redact_secrets": True,
+                "max_trace_payload_chars": 8000,
+            },
+        }
     )
 
 
@@ -385,3 +474,65 @@ async def test_stream_chat_can_use_real_llm_gateway_streaming_path() -> None:
             },
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_persists_visualization_summary_once_on_completion() -> None:
+    workflow_state = FakeWorkflowStateStore()
+    trace_store = FakeTraceStore()
+    config = _build_chart_config()
+    orchestrator = DirectAgentOrchestrationRuntime.from_config(
+        config=config,
+        llm_gateway=FakeLLMGateway(response_text="unused"),
+        memory=FakeMemoryGateway(),
+        state=workflow_state,
+        trace=trace_store,
+        policy_service=FakePolicyService(),
+    )
+    service = DefaultSessionService(
+        config=config,
+        settings=_build_settings(),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=trace_store),
+        orchestrator=orchestrator,
+        clock=FakeClock(
+            [
+                datetime(2026, 6, 27, 18, 0, tzinfo=UTC),
+                datetime(2026, 6, 27, 18, 0, 1, tzinfo=UTC),
+            ]
+        ),
+    )
+
+    events = [
+        event
+        async for event in service.stream_chat(
+            request=build_session_chat_request(
+                message="Plot revenue by month as a bar chart.",
+                session_id="session_stream_chart",
+                usecase="default_chat",
+            ),
+            context=_build_context(),
+        )
+    ]
+
+    assert [event.event_type for event in events] == [
+        "response.started",
+        "response.delta",
+        "response.metadata",
+        "artifact.started",
+        "artifact.completed",
+        "response.completed",
+    ]
+    assert events[3].data == {
+        "artifact_id": "chart_vis_001",
+        "type": "chart",
+        "chart_type": "bar",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+    }
+    assert events[4].data["artifact"]["artifact_id"] == "chart_vis_001"
+    assert len(workflow_state.save_calls) == 1
+    saved_visualization_context = workflow_state.states["session_stream_chart"]["metadata"]["visualization_context"]
+    assert saved_visualization_context["summaries"][0]["artifact_id"] == "chart_vis_001"
+    assert "data" not in saved_visualization_context["summaries"][0]

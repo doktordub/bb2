@@ -1,0 +1,118 @@
+name: reporting
+package: mcp.tools.reporting
+version: 1.0.0
+status: experimental
+owner: platform
+required: false
+
+description: Return bounded structured metric series for approved reporting visualization use cases.
+
+capabilities:
+  - name: reporting.metric_series.read
+    type: tool
+    risk_level: read_only
+    description: Query approved aggregated metric series.
+
+tools:
+  - name: reporting.query_metric_series
+    function: query_metric_series
+    capability: reporting.metric_series.read
+    description: Return bounded structured metric series for approved reporting use cases.
+    risk_level: read_only
+    input_schema: auto
+    output_schema: structured_dataset_v1
+    timeout_seconds: 20
+    max_result_bytes: 262144
+    tags: [reporting, metrics, visualization_ready, read_only]
+
+config_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - provider
+    - fixture_dataset
+    - enabled_metrics
+    - enabled_dimensions
+    - max_date_range_days
+    - default_granularity
+    - maximum_rows
+    - maximum_metrics_per_query
+    - maximum_filters
+    - max_result_bytes
+    - timeout_seconds
+    - cache_ttl_seconds
+    - max_concurrency
+    - retry_attempts
+    - circuit_breaker_threshold
+    - circuit_breaker_reset_seconds
+    - provider_auth_profile
+    - healthcheck_mode
+  properties:
+    provider:
+      type: string
+      enum: [fixture]
+    fixture_dataset:
+      type: string
+      enum: [monthly_income_expense, truncated_result, empty_result, invalid_numeric_result]
+    enabled_metrics:
+      type: array
+      minItems: 1
+      maxItems: 5
+    enabled_dimensions:
+      type: array
+      minItems: 1
+      maxItems: 5
+    max_date_range_days:
+      type: integer
+      minimum: 1
+      maximum: 3650
+    default_granularity:
+      type: string
+      enum: [day, week, month, quarter, year, category]
+    maximum_rows:
+      type: integer
+      minimum: 1
+      maximum: 100
+    maximum_metrics_per_query:
+      type: integer
+      minimum: 1
+      maximum: 5
+    maximum_filters:
+      type: integer
+      minimum: 0
+      maximum: 10
+    max_result_bytes:
+      type: integer
+      minimum: 256
+      maximum: 1048576
+    timeout_seconds:
+      type: integer
+      minimum: 1
+      maximum: 60
+    cache_ttl_seconds:
+      type: integer
+      minimum: 0
+      maximum: 3600
+    max_concurrency:
+      type: integer
+      minimum: 1
+      maximum: 32
+    retry_attempts:
+      type: integer
+      minimum: 1
+      maximum: 4
+    circuit_breaker_threshold:
+      type: integer
+      minimum: 1
+      maximum: 20
+    circuit_breaker_reset_seconds:
+      type: integer
+      minimum: 5
+      maximum: 900
+    provider_auth_profile:
+      type: string
+      minLength: 1
+      maxLength: 64
+    healthcheck_mode:
+      type: string
+      enum: [safe, provider]

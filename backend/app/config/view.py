@@ -27,9 +27,22 @@ from app.policy.settings import (
     PolicyStreamSettings,
     PolicyToolSettings,
     PolicyTraceSettings,
+    PolicyVisualizationSettings,
 )
 from app.persistence.paths import resolve_backend_path, resolve_data_path
 from app.persistence.settings import get_persistence_settings
+from app.visualization.models import CANONICAL_CHART_TYPES, SUPPORTED_CHART_RENDERERS
+from app.visualization.settings import (
+    DEFAULT_VISUALIZATION_ALIASES,
+    DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST,
+    VisualizationArtifactStoreSqliteSettings,
+    VisualizationArtifactStoreSettings,
+    VisualizationContextSummarySettings,
+    VisualizationHistoryReplaySettings,
+    VisualizationLimitsSettings,
+    VisualizationSampleDataSettings,
+    VisualizationSettings,
+)
 
 if TYPE_CHECKING:
     from app.persistence.settings import PersistenceSettings
@@ -291,6 +304,7 @@ StrategyType = Literal[
 ]
 
 AgentType = Literal[
+    "chart_agent",
     "general_assistant",
     "document_qa",
     "tool_using",
@@ -940,6 +954,9 @@ class ValidatedConfigurationView:
     def persistence_settings(self) -> PersistenceSettings:
         return get_persistence_settings(self)
 
+    def visualization_settings(self) -> VisualizationSettings:
+        return get_visualization_settings(self)
+
     def as_redacted_dict(self) -> dict[str, Any]:
         return cast(dict[str, Any], redact_config(_unfreeze(self._values)))
 
@@ -1090,6 +1107,22 @@ def get_policy_settings(config: ConfigurationView) -> PolicySettings:
             _read_bool(profile_view, "profile.allow_approval_required_tools", False),
         )
         profile_fail_closed = _read_optional_bool(profile_view, "profile.fail_closed")
+        root_visualization = config.get("policy.visualization", None)
+        profile_visualization = profile_view.get("profile.visualization", None)
+        visualization_defaults = ValidatedConfigurationView(
+            {
+                "visualization": _unfreeze(root_visualization)
+                if isinstance(root_visualization, Mapping)
+                else {}
+            }
+        )
+        visualization_view = ValidatedConfigurationView(
+            {
+                "visualization": _unfreeze(profile_visualization)
+                if isinstance(profile_visualization, Mapping)
+                else {}
+            }
+        )
 
         profiles[profile_name] = PolicyProfileSettings(
             name=profile_name,
@@ -1245,6 +1278,181 @@ def get_policy_settings(config: ConfigurationView) -> PolicySettings:
                     profile_view,
                     "profile.stream.expose_raw_deltas",
                     False,
+                ),
+            ),
+            visualization=PolicyVisualizationSettings(
+                enabled=_read_bool(
+                    profile_view,
+                    "profile.visualization.enabled",
+                    _read_bool(visualization_defaults, "visualization.enabled", False),
+                ),
+                deny_unknown_chart_types=_read_bool(
+                    profile_view,
+                    "profile.visualization.deny_unknown_chart_types",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.deny_unknown_chart_types",
+                        True,
+                    ),
+                ),
+                deny_unknown_renderers=_read_bool(
+                    profile_view,
+                    "profile.visualization.deny_unknown_renderers",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.deny_unknown_renderers",
+                        True,
+                    ),
+                ),
+                require_data_source=_read_bool(
+                    profile_view,
+                    "profile.visualization.require_data_source",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.require_data_source",
+                        True,
+                    ),
+                ),
+                allow_memory_data=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_memory_data",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_memory_data",
+                        False,
+                    ),
+                ),
+                allow_tool_data=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_tool_data",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_tool_data",
+                        False,
+                    ),
+                ),
+                allow_uploaded_file_data=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_uploaded_file_data",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_uploaded_file_data",
+                        False,
+                    ),
+                ),
+                allow_reference_data_mode=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_reference_data_mode",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_reference_data_mode",
+                        _read_bool(config, "visualization.artifact_store.allow_reference_data_mode", False),
+                    ),
+                ),
+                allow_exact_followup_retrieval=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_exact_followup_retrieval",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_exact_followup_retrieval",
+                        _read_bool(config, "visualization.artifact_store.exact_followup_retrieval_enabled", True),
+                    ),
+                ),
+                allow_data_export=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_data_export",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_data_export",
+                        False,
+                    ),
+                ),
+                allow_full_dataset_in_context=_read_bool(
+                    profile_view,
+                    "profile.visualization.allow_full_dataset_in_context",
+                    _read_bool(
+                        visualization_defaults,
+                        "visualization.allow_full_dataset_in_context",
+                        _read_bool(config, "visualization.context_summary.allow_full_dataset_in_context", False),
+                    ),
+                ),
+                allowed_chart_types=_read_str_tuple(
+                    profile_view,
+                    "profile.visualization.allowed_chart_types",
+                    _read_str_tuple(
+                        visualization_defaults,
+                        "visualization.allowed_chart_types",
+                        _read_str_tuple(config, "visualization.allowed_chart_types", CANONICAL_CHART_TYPES),
+                    ),
+                ),
+                allowed_renderers=_read_str_tuple(
+                    profile_view,
+                    "profile.visualization.allowed_renderers",
+                    _read_str_tuple(
+                        visualization_defaults,
+                        "visualization.allowed_renderers",
+                        _read_str_tuple(config, "visualization.allowed_renderers", SUPPORTED_CHART_RENDERERS),
+                    ),
+                ),
+                allowed_data_sources=_read_str_tuple(
+                    profile_view,
+                    "profile.visualization.allowed_data_sources",
+                    _read_str_tuple(
+                        visualization_defaults,
+                        "visualization.allowed_data_sources",
+                        (),
+                    ),
+                ),
+                sensitive_fields=_read_str_tuple(
+                    profile_view,
+                    "profile.visualization.sensitive_fields",
+                    _read_str_tuple(
+                        visualization_defaults,
+                        "visualization.sensitive_fields",
+                        (),
+                    ),
+                ),
+                max_rows_inline=_read_int(
+                    profile_view,
+                    "profile.visualization.max_rows_inline",
+                    _read_optional_int(visualization_view, "visualization.max_rows_inline")
+                    or _read_optional_int(visualization_defaults, "visualization.max_rows_inline")
+                    or _read_int(config, "visualization.limits.max_rows_inline", 500),
+                ),
+                max_rows_artifact_store=_read_int(
+                    profile_view,
+                    "profile.visualization.max_rows_artifact_store",
+                    _read_optional_int(visualization_view, "visualization.max_rows_artifact_store")
+                    or _read_optional_int(visualization_defaults, "visualization.max_rows_artifact_store")
+                    or _read_int(config, "visualization.limits.max_rows_artifact_store", 5000),
+                ),
+                max_series=_read_int(
+                    profile_view,
+                    "profile.visualization.max_series",
+                    _read_optional_int(visualization_view, "visualization.max_series")
+                    or _read_optional_int(visualization_defaults, "visualization.max_series")
+                    or _read_int(config, "visualization.limits.max_series", 12),
+                ),
+                max_categories=_read_int(
+                    profile_view,
+                    "profile.visualization.max_categories",
+                    _read_optional_int(visualization_view, "visualization.max_categories")
+                    or _read_optional_int(visualization_defaults, "visualization.max_categories")
+                    or _read_int(config, "visualization.limits.max_categories", 100),
+                ),
+                max_context_summary_tokens=_read_int(
+                    profile_view,
+                    "profile.visualization.max_context_summary_tokens",
+                    _read_optional_int(visualization_view, "visualization.max_context_summary_tokens")
+                    or _read_optional_int(visualization_defaults, "visualization.max_context_summary_tokens")
+                    or _read_int(config, "visualization.context_summary.max_tokens_per_chart_summary", 600),
+                ),
+                max_artifacts_per_response=_read_int(
+                    profile_view,
+                    "profile.visualization.max_artifacts_per_response",
+                    _read_optional_int(visualization_view, "visualization.max_artifacts_per_response")
+                    or _read_optional_int(visualization_defaults, "visualization.max_artifacts_per_response")
+                    or 1,
                 ),
             ),
             capabilities=PolicyCapabilitySettings(
@@ -2889,6 +3097,233 @@ def get_session_settings(config: ConfigurationView) -> SessionSettings:
                 config,
                 "session.tracing.record_stream_lifecycle",
                 True,
+            ),
+        ),
+    )
+
+
+def get_visualization_settings(config: ConfigurationView) -> VisualizationSettings:
+    """Resolve typed visualization settings from validated configuration."""
+
+    raw_aliases = config.get("visualization.aliases", None)
+    artifact_store_enabled = _read_bool(config, "visualization.artifact_store.enabled", False)
+    artifact_store_provider = _read_str(
+        config,
+        "visualization.artifact_store.provider",
+        "disabled",
+    )
+    artifact_store_sqlite = None
+    if artifact_store_provider.strip().lower() == "sqlite":
+        base_dir = _read_memory_base_dir(config)
+        database_path = _read_optional_resolved_path(
+            config,
+            "visualization.artifact_store.sqlite.path",
+            resolve_with=lambda value: resolve_data_path(value, base_dir=base_dir),
+        ) or resolve_data_path("visualization_artifacts.db", base_dir=base_dir)
+        artifact_store_sqlite = VisualizationArtifactStoreSqliteSettings(
+            path=database_path,
+            create_parent_dirs=_read_bool(
+                config,
+                "visualization.artifact_store.sqlite.create_parent_dirs",
+                True,
+            ),
+            initialize_schema=_read_bool(
+                config,
+                "visualization.artifact_store.sqlite.initialize_schema",
+                True,
+            ),
+            journal_mode=_read_str(
+                config,
+                "visualization.artifact_store.sqlite.journal_mode",
+                "WAL",
+            ).upper(),
+            synchronous=_read_str(
+                config,
+                "visualization.artifact_store.sqlite.synchronous",
+                "NORMAL",
+            ).upper(),
+            busy_timeout_ms=_read_int(
+                config,
+                "visualization.artifact_store.sqlite.busy_timeout_ms",
+                5000,
+            ),
+            foreign_keys=_read_bool(
+                config,
+                "visualization.artifact_store.sqlite.foreign_keys",
+                True,
+            ),
+            required=artifact_store_enabled,
+        )
+
+    return VisualizationSettings(
+        enabled=_read_bool(config, "visualization.enabled", True),
+        default_renderer=_read_str(
+            config,
+            "visualization.default_renderer",
+            SUPPORTED_CHART_RENDERERS[0],
+        ),
+        allowed_renderers=_read_str_tuple(
+            config,
+            "visualization.allowed_renderers",
+            SUPPORTED_CHART_RENDERERS,
+        ),
+        artifact_spec_version=_read_str(
+            config,
+            "visualization.artifact_spec_version",
+            "1.0",
+        ),
+        allowed_chart_types=_read_str_tuple(
+            config,
+            "visualization.allowed_chart_types",
+            CANONICAL_CHART_TYPES,
+        ),
+        aliases=(
+            _read_str_mapping(config, "visualization.aliases")
+            if raw_aliases is not None
+            else dict(DEFAULT_VISUALIZATION_ALIASES)
+        ),
+        safe_metadata_allowlist=_read_str_tuple(
+            config,
+            "visualization.safe_metadata_allowlist",
+            DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST,
+        ),
+        limits=VisualizationLimitsSettings(
+            max_rows_inline=_read_int(config, "visualization.limits.max_rows_inline", 500),
+            max_rows_artifact_store=_read_int(
+                config,
+                "visualization.limits.max_rows_artifact_store",
+                5000,
+            ),
+            max_series=_read_int(config, "visualization.limits.max_series", 12),
+            max_categories=_read_int(config, "visualization.limits.max_categories", 100),
+            max_artifact_bytes=_read_int(
+                config,
+                "visualization.limits.max_artifact_bytes",
+                262144,
+            ),
+        ),
+        sample_data=VisualizationSampleDataSettings(
+            enabled=_read_bool(config, "visualization.sample_data.enabled", False),
+            require_explicit_opt_in=_read_bool(
+                config,
+                "visualization.sample_data.require_explicit_opt_in",
+                True,
+            ),
+            max_rows=_read_int(config, "visualization.sample_data.max_rows", 24),
+        ),
+        context_summary=VisualizationContextSummarySettings(
+            enabled=_read_bool(config, "visualization.context_summary.enabled", True),
+            mode=_read_str(
+                config,
+                "visualization.context_summary.mode",
+                "summary_only",
+            ),
+            max_tokens_per_chart_summary=_read_int(
+                config,
+                "visualization.context_summary.max_tokens_per_chart_summary",
+                600,
+            ),
+            max_chart_summaries_per_session_context=_read_int(
+                config,
+                "visualization.context_summary.max_chart_summaries_per_session_context",
+                5,
+            ),
+            max_total_visualization_context_tokens=_read_int(
+                config,
+                "visualization.context_summary.max_total_visualization_context_tokens",
+                1800,
+            ),
+            include_data_ref=_read_bool(
+                config,
+                "visualization.context_summary.include_data_ref",
+                True,
+            ),
+            include_aggregate_stats=_read_bool(
+                config,
+                "visualization.context_summary.include_aggregate_stats",
+                True,
+            ),
+            include_extrema=_read_bool(
+                config,
+                "visualization.context_summary.include_extrema",
+                True,
+            ),
+            include_trend_summary=_read_bool(
+                config,
+                "visualization.context_summary.include_trend_summary",
+                True,
+            ),
+            include_sample_rows=_read_bool(
+                config,
+                "visualization.context_summary.include_sample_rows",
+                False,
+            ),
+            max_sample_rows=_read_int(
+                config,
+                "visualization.context_summary.max_sample_rows",
+                0,
+            ),
+            eviction_policy=_read_str(
+                config,
+                "visualization.context_summary.eviction_policy",
+                "most_recent_relevant",
+            ),
+            allow_full_dataset_in_context=_read_bool(
+                config,
+                "visualization.context_summary.allow_full_dataset_in_context",
+                False,
+            ),
+        ),
+        artifact_store=VisualizationArtifactStoreSettings(
+            enabled=artifact_store_enabled,
+            provider=artifact_store_provider,
+            ttl_seconds=_read_int(
+                config,
+                "visualization.artifact_store.ttl_seconds",
+                3600,
+            ),
+            allow_reference_data_mode=_read_bool(
+                config,
+                "visualization.artifact_store.allow_reference_data_mode",
+                False,
+            ),
+            public_retrieval_enabled=_read_bool(
+                config,
+                "visualization.artifact_store.public_retrieval_enabled",
+                False,
+            ),
+            retrieval_endpoint=_read_optional_str_or_none(
+                config,
+                "visualization.artifact_store.retrieval_endpoint",
+            ),
+            exact_followup_retrieval_enabled=_read_bool(
+                config,
+                "visualization.artifact_store.exact_followup_retrieval_enabled",
+                True,
+            ),
+            sqlite=artifact_store_sqlite,
+        ),
+        history_replay=VisualizationHistoryReplaySettings(
+            enabled=_read_bool(config, "visualization.history_replay.enabled", True),
+            prefer_inline=_read_bool(
+                config,
+                "visualization.history_replay.prefer_inline",
+                True,
+            ),
+            max_artifacts_per_message=_read_int(
+                config,
+                "visualization.history_replay.max_artifacts_per_message",
+                3,
+            ),
+            max_inline_artifact_bytes=_read_int(
+                config,
+                "visualization.history_replay.max_inline_artifact_bytes",
+                65536,
+            ),
+            max_total_bytes_per_message=_read_int(
+                config,
+                "visualization.history_replay.max_total_bytes_per_message",
+                131072,
             ),
         ),
     )

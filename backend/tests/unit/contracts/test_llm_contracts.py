@@ -9,6 +9,9 @@ from app.contracts.llm import (
     LLMResponseFormat,
     LLMStreamDelta,
     LLMStreamEvent,
+    LLMToolCall,
+    LLMToolChoice,
+    LLMToolDefinition,
 )
 
 
@@ -57,6 +60,66 @@ def test_llm_stream_delta_converts_to_lifecycle_events() -> None:
     assert delta_event == LLMStreamEvent.delta(text="hi", profile="fast")
     assert completed_event.type == "completed"
     assert completed_event.profile == "fast"
+
+
+def test_llm_request_normalizes_native_tool_calling_fields() -> None:
+    request = LLMRequest(
+        component="agent.support",
+        messages=[LLMMessage(role="user", content="search the docs")],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "documents.search",
+                    "description": "Search project documents.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            }
+        ],
+        tool_choice={"type": "function", "function": {"name": "documents.search"}},
+    )
+
+    assert len(request.tools) == 1
+    assert isinstance(request.tools[0], LLMToolDefinition)
+    assert request.tools[0].function.name == "documents.search"
+    assert isinstance(request.tool_choice, LLMToolChoice)
+    assert request.tool_choice.type == "function"
+    assert request.tool_choice.function is not None
+    assert request.tool_choice.function.name == "documents.search"
+
+
+def test_llm_message_response_and_stream_event_normalize_tool_calls() -> None:
+    tool_call = {
+        "id": "call_docs_1",
+        "type": "function",
+        "function": {
+            "name": "documents.search",
+            "arguments": '{"query":"gateway path"}',
+        },
+    }
+
+    message = LLMMessage(
+        role="assistant",
+        content="",
+        tool_calls=[tool_call],
+    )
+    response = LLMStreamEvent.completed(
+        profile="local_reasoning",
+        provider="local_provider",
+        model="local-model",
+        tool_calls=[tool_call],
+        finish_reason="tool_calls",
+        reasoning={"effort": "medium"},
+    )
+
+    assert isinstance(message.tool_calls[0], LLMToolCall)
+    assert message.tool_calls[0].function.arguments == '{"query":"gateway path"}'
+    assert response.tool_calls[0].function.name == "documents.search"
+    assert response.reasoning == {"effort": "medium"}
 
 
 def test_llm_health_and_profile_summary_models_are_safe_and_typed() -> None:

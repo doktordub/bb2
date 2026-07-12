@@ -9,7 +9,7 @@ from typing import Any, Literal, cast
 from app.agents.models import AgentOutputFormat, AgentRunResult, AgentTask
 from app.contracts.agents import AgentHandle, AgentPlugin, build_run_request_from_context
 from app.contracts.context import OrchestrationContext
-from app.contracts.llm import LLMRequest, LLMResponse
+from app.contracts.llm import LLMMessage, LLMRequest, LLMResponse
 from app.contracts.memory import MemoryScope, MemorySearchRequest, MemorySearchResult, MemoryWrite, MemoryWriteResult
 from app.contracts.policy import PolicyRequest
 from app.contracts.tools import ToolDefinition, ToolExecutionRequest, ToolExecutionResult
@@ -171,7 +171,8 @@ async def run_agent_step(
     strategy_name: str,
     context_items: Sequence[PromptSection] = (),
     tool_context: Sequence[PromptSection] = (),
-    available_tools: Sequence[str] = (),
+    llm_followup_messages: Sequence[LLMMessage] = (),
+    available_tools: Sequence[str] | None = None,
     task: AgentTask | None = None,
     constraints: Sequence[str] = (),
     output_format: AgentOutputFormat | None = None,
@@ -200,6 +201,7 @@ async def run_agent_step(
         strategy_name=strategy_name,
         context_items=context_items,
         tool_context=tool_context,
+        llm_followup_messages=llm_followup_messages,
         available_tools=available_tools,
         task=task,
         constraints=constraints,
@@ -256,6 +258,12 @@ def build_agent_result_metadata(result: AgentRunResult) -> dict[str, Any]:
         ]
     if result.output_items:
         metadata["output_item_count"] = len(result.output_items)
+    if result.artifacts:
+        metadata["artifacts"] = [dict(item) for item in result.artifacts]
+        metadata.setdefault("artifact_count", len(result.artifacts))
+    if result.context_contributions:
+        metadata["context_contributions"] = [dict(item) for item in result.context_contributions]
+        metadata.setdefault("context_contribution_count", len(result.context_contributions))
     return sanitize_metadata(metadata)
 
 
@@ -355,6 +363,8 @@ def finalize_strategy_result(
     memory_searches: Iterable[MemorySearchSummary] = (),
     memory_updates: Iterable[MemoryUpdateSummary] = (),
     citations: Iterable[CitationSummary] = (),
+    artifacts: Iterable[Mapping[str, Any]] = (),
+    context_contributions: Iterable[Mapping[str, Any]] = (),
     metadata: Mapping[str, Any] | None = None,
 ) -> StrategyExecutionResult:
     from app.orchestration.strategy import StrategyExecutionResult
@@ -369,6 +379,10 @@ def finalize_strategy_result(
         memory_searches=tuple(memory_searches),
         memory_updates=tuple(memory_updates),
         citations=tuple(citations),
+        artifacts=tuple(dict(item) for item in artifacts if isinstance(item, Mapping)),
+        context_contributions=tuple(
+            dict(item) for item in context_contributions if isinstance(item, Mapping)
+        ),
         metadata=sanitize_metadata(metadata),
     )
 

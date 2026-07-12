@@ -1,0 +1,446 @@
+{
+  "spec_version": "1.0",
+  "renderer": "echarts",
+  "cases": [
+    {
+      "chart_type": "bar",
+      "artifact": {
+        "artifact_id": "chart_bar_revenue_by_month",
+        "type": "chart",
+        "chart_type": "bar",
+        "title": "Revenue by Month",
+        "description": "Monthly revenue totals.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "month": "2026-01", "revenue": 1200 },
+          { "month": "2026-02", "revenue": 1350 },
+          { "month": "2026-03", "revenue": 1500 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "month", "y": ["revenue"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state", "unit": "USD" }
+      }
+    },
+    {
+      "chart_type": "grouped_bar",
+      "artifact": {
+        "artifact_id": "chart_grouped_bar_income_expense",
+        "type": "chart",
+        "chart_type": "grouped_bar",
+        "title": "Income vs Expense",
+        "description": "Monthly income and expense comparison.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "month": "2026-01", "income": 5200, "expense": 4100 },
+          { "month": "2026-02", "income": 5400, "expense": 4300 },
+          { "month": "2026-03", "income": 5600, "expense": 4500 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "month", "y": ["income", "expense"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state", "currency": "USD" }
+      }
+    },
+    {
+      "chart_type": "stacked_bar",
+      "artifact": {
+        "artifact_id": "chart_stacked_bar_channel_mix",
+        "type": "chart",
+        "chart_type": "stacked_bar",
+        "title": "Sales Mix by Quarter",
+        "description": "Quarterly direct and partner sales.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "quarter": "Q1", "direct": 210, "partner": 90 },
+          { "quarter": "Q2", "direct": 230, "partner": 110 },
+          { "quarter": "Q3", "direct": 260, "partner": 130 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "quarter", "y": ["direct", "partner"] },
+        "options": { "stacked": true },
+        "warnings": [],
+        "metadata": { "source": "tool", "unit": "deals" }
+      }
+    },
+    {
+      "chart_type": "horizontal_bar",
+      "artifact": {
+        "artifact_id": "chart_horizontal_bar_ticket_volume",
+        "type": "chart",
+        "chart_type": "horizontal_bar",
+        "title": "Tickets by Team",
+        "description": "Resolved tickets per support team.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "team": "Alpha", "tickets": 82 },
+          { "team": "Beta", "tickets": 76 },
+          { "team": "Gamma", "tickets": 64 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "team", "y": ["tickets"] },
+        "options": { "orientation": "horizontal" },
+        "warnings": [],
+        "metadata": { "source": "workflow_state" }
+      }
+    },
+    {
+      "chart_type": "line",
+      "artifact": {
+        "artifact_id": "chart_line_signups",
+        "type": "chart",
+        "chart_type": "line",
+        "title": "Weekly Signups",
+        "description": "Weekly signup trend.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "date": "2026-01-01", "signups": 42 },
+          { "date": "2026-01-08", "signups": 45 },
+          { "date": "2026-01-15", "signups": 51 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "date", "time": "date", "y": ["signups"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "memory" }
+      }
+    },
+    {
+      "chart_type": "multi_line",
+      "artifact": {
+        "artifact_id": "chart_multi_line_env_latency",
+        "type": "chart",
+        "chart_type": "multi_line",
+        "title": "Latency by Environment",
+        "description": "Environment latency trend.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "date": "2026-01-01", "prod": 180, "staging": 220 },
+          { "date": "2026-01-02", "prod": 175, "staging": 210 },
+          { "date": "2026-01-03", "prod": 170, "staging": 205 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "date", "time": "date", "y": ["prod", "staging"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "tool", "unit": "ms" }
+      }
+    },
+    {
+      "chart_type": "area",
+      "artifact": {
+        "artifact_id": "chart_area_active_users",
+        "type": "chart",
+        "chart_type": "area",
+        "title": "Active Users",
+        "description": "Daily active users.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "date": "2026-02-01", "users": 120 },
+          { "date": "2026-02-02", "users": 132 },
+          { "date": "2026-02-03", "users": 141 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "date", "time": "date", "y": ["users"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state" }
+      }
+    },
+    {
+      "chart_type": "pie",
+      "artifact": {
+        "artifact_id": "chart_pie_ticket_sources",
+        "type": "chart",
+        "chart_type": "pie",
+        "title": "Ticket Sources",
+        "description": "Share of tickets by source.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "source_name": "Email", "tickets": 42 },
+          { "source_name": "Chat", "tickets": 27 },
+          { "source_name": "Phone", "tickets": 15 }
+        ],
+        "data_ref": null,
+        "encoding": { "category": "source_name", "value": "tickets" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "tool" }
+      }
+    },
+    {
+      "chart_type": "donut",
+      "artifact": {
+        "artifact_id": "chart_donut_revenue_split",
+        "type": "chart",
+        "chart_type": "donut",
+        "title": "Revenue Split",
+        "description": "Revenue share by segment.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "segment": "Enterprise", "revenue": 620 },
+          { "segment": "SMB", "revenue": 310 },
+          { "segment": "Startup", "revenue": 70 }
+        ],
+        "data_ref": null,
+        "encoding": { "category": "segment", "value": "revenue" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "memory", "currency": "USD" }
+      }
+    },
+    {
+      "chart_type": "scatter",
+      "artifact": {
+        "artifact_id": "chart_scatter_study_score",
+        "type": "chart",
+        "chart_type": "scatter",
+        "title": "Study Hours vs Score",
+        "description": "Correlation between study hours and test score.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "hours": 2, "score": 68 },
+          { "hours": 4, "score": 79 },
+          { "hours": 6, "score": 91 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "hours", "y": "score" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "user_provided" }
+      }
+    },
+    {
+      "chart_type": "bubble",
+      "artifact": {
+        "artifact_id": "chart_bubble_deals_pipeline",
+        "type": "chart",
+        "chart_type": "bubble",
+        "title": "Pipeline Quality",
+        "description": "Deal size on confidence vs velocity.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "confidence": 0.65, "velocity": 18, "amount": 120000 },
+          { "confidence": 0.8, "velocity": 24, "amount": 180000 },
+          { "confidence": 0.55, "velocity": 15, "amount": 90000 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "confidence", "y": "velocity", "size": "amount" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state", "currency": "USD" }
+      }
+    },
+    {
+      "chart_type": "histogram",
+      "artifact": {
+        "artifact_id": "chart_histogram_resolution_time",
+        "type": "chart",
+        "chart_type": "histogram",
+        "title": "Resolution Time Distribution",
+        "description": "Distribution of ticket resolution time in hours.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "hours": 1.5 },
+          { "hours": 2.0 },
+          { "hours": 3.25 },
+          { "hours": 4.0 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "hours" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "tool", "unit": "hours" }
+      }
+    },
+    {
+      "chart_type": "box_plot",
+      "artifact": {
+        "artifact_id": "chart_box_plot_latency",
+        "type": "chart",
+        "chart_type": "box_plot",
+        "title": "Latency by Region",
+        "description": "Regional latency distribution.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "region": "us-east", "latency": 145 },
+          { "region": "us-east", "latency": 152 },
+          { "region": "eu-west", "latency": 181 },
+          { "region": "eu-west", "latency": 176 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "region", "y": ["latency"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "memory", "unit": "ms" }
+      }
+    },
+    {
+      "chart_type": "heatmap",
+      "artifact": {
+        "artifact_id": "chart_heatmap_region_month",
+        "type": "chart",
+        "chart_type": "heatmap",
+        "title": "Usage Heatmap",
+        "description": "Usage intensity by region and month.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "month": "2026-01", "region": "us-east", "value": 82 },
+          { "month": "2026-01", "region": "eu-west", "value": 74 },
+          { "month": "2026-02", "region": "us-east", "value": 91 },
+          { "month": "2026-02", "region": "eu-west", "value": 79 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "month", "y": "region", "value": "value" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "tool" }
+      }
+    },
+    {
+      "chart_type": "treemap",
+      "artifact": {
+        "artifact_id": "chart_treemap_segment_revenue",
+        "type": "chart",
+        "chart_type": "treemap",
+        "title": "Revenue by Segment",
+        "description": "Segment contribution to total revenue.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "segment": "Enterprise", "revenue": 620 },
+          { "segment": "SMB", "revenue": 310 },
+          { "segment": "Startup", "revenue": 70 }
+        ],
+        "data_ref": null,
+        "encoding": { "category": "segment", "value": "revenue" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state", "currency": "USD" }
+      }
+    },
+    {
+      "chart_type": "waterfall",
+      "artifact": {
+        "artifact_id": "chart_waterfall_margin_bridge",
+        "type": "chart",
+        "chart_type": "waterfall",
+        "title": "Margin Bridge",
+        "description": "Positive and negative changes to margin.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "stage": "Starting Margin", "delta": 120 },
+          { "stage": "Discounts", "delta": -35 },
+          { "stage": "Upsell", "delta": 20 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "stage", "value": "delta" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "tool", "currency": "USD" }
+      }
+    },
+    {
+      "chart_type": "gantt",
+      "artifact": {
+        "artifact_id": "chart_gantt_release_plan",
+        "type": "chart",
+        "chart_type": "gantt",
+        "title": "Release Plan",
+        "description": "Planned release activities.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "task": "Design", "start": "2026-03-01", "end": "2026-03-05" },
+          { "task": "Build", "start": "2026-03-06", "end": "2026-03-14" },
+          { "task": "QA", "start": "2026-03-15", "end": "2026-03-19" }
+        ],
+        "data_ref": null,
+        "encoding": { "task": "task", "start": "start", "end": "end" },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state" }
+      }
+    },
+    {
+      "chart_type": "radar",
+      "artifact": {
+        "artifact_id": "chart_radar_capability_score",
+        "type": "chart",
+        "chart_type": "radar",
+        "title": "Capability Scorecard",
+        "description": "Capability comparison across two teams.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "metric": "Reliability", "team_alpha": 82, "team_beta": 75 },
+          { "metric": "Speed", "team_alpha": 76, "team_beta": 80 },
+          { "metric": "Coverage", "team_alpha": 88, "team_beta": 79 }
+        ],
+        "data_ref": null,
+        "encoding": { "x": "metric", "y": ["team_alpha", "team_beta"] },
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "memory" }
+      }
+    },
+    {
+      "chart_type": "table",
+      "artifact": {
+        "artifact_id": "chart_table_monthly_status",
+        "type": "chart",
+        "chart_type": "table",
+        "title": "Monthly Status Table",
+        "description": "Tabular operational summary.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          { "month": "2026-01", "status": "green", "revenue": 1200 },
+          { "month": "2026-02", "status": "green", "revenue": 1350 },
+          { "month": "2026-03", "status": "yellow", "revenue": 1500 }
+        ],
+        "data_ref": null,
+        "encoding": {},
+        "options": {},
+        "warnings": [],
+        "metadata": { "source": "workflow_state" }
+      }
+    }
+  ]
+}

@@ -8,11 +8,13 @@ from typing import Any
 
 _LAZY_EXPORTS = {
 	"BaseLlmAgent": ("app.agents.plugins.base_llm_agent", "BaseLlmAgent"),
+	"ChartAgent": ("app.agents.plugins.chart_agent", "ChartAgent"),
 	"DocumentQaAgent": ("app.agents.plugins.document_qa", "DocumentQaAgent"),
 	"GeneralAssistantAgent": ("app.agents.plugins.general_assistant", "GeneralAssistantAgent"),
 	"MemoryCuratorAgent": ("app.agents.plugins.memory_curator", "MemoryCuratorAgent"),
 	"ProjectAgent": ("app.agents.plugins.project_agent", "ProjectAgent"),
 	"ReviewerAgent": ("app.agents.plugins.reviewer", "ReviewerAgent"),
+	"TaskExecutionAgent": ("app.agents.plugins.task_execution_agent", "TaskExecutionAgent"),
 	"ToolUsingAgent": ("app.agents.plugins.tool_using", "ToolUsingAgent"),
 }
 
@@ -26,10 +28,12 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
 	"BaseLlmAgent",
+	"ChartAgent",
 	"DocumentQaAgent",
 	"GeneralAssistantAgent",
 	"MemoryCuratorAgent",
 	"ProjectAgent",
 	"ReviewerAgent",
+	"TaskExecutionAgent",
 	"ToolUsingAgent",
 ]

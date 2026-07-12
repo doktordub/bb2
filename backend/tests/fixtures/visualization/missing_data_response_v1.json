@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "trace_id": "trace_vis_missing_001",
+  "session_id": "session_vis_missing_001",
+  "data": {
+    "answer": "I can generate that chart, but I still need the monthly income and expense values first.",
+    "agent_name": "chart_agent",
+    "strategy_name": "direct_agent",
+    "llm_profile": "local_reasoning",
+    "tool_calls": [],
+    "memory_updates": [],
+    "artifacts": []
+  },
+  "metadata": {
+    "context_summary_added": false
+  }
+}

@@ -144,7 +144,26 @@ def normalize_agent_error(error: BaseException) -> AgentError:
     if isinstance(error, asyncio.CancelledError):
         return AgentCancelledError()
     if isinstance(error, PolicyDeniedError):
-        return AgentPolicyDeniedError()
+        return AgentPolicyDeniedError(
+            str(error),
+            retryable=_error_retryable(error),
+            metadata=_error_metadata(
+                error,
+                source_error_code=_error_source_code(error),
+                policy_denied=True,
+            ),
+        )
+    source_error_code = _error_source_code(error)
+    if source_error_code is not None and source_error_code.endswith("_policy_denied"):
+        return AgentPolicyDeniedError(
+            str(error),
+            retryable=_error_retryable(error),
+            metadata=_error_metadata(
+                error,
+                source_error_code=source_error_code,
+                policy_denied=True,
+            ),
+        )
     if isinstance(error, ConfigurationError):
         return AgentConfigurationError()
     if isinstance(error, LLMGatewayError):
@@ -208,6 +227,48 @@ def _normalize_safe_message(value: object, *, fallback: str) -> str:
     if "traceback" in lowered or "stack trace" in lowered or 'file "' in lowered:
         return fallback
     return normalized if len(normalized) <= 400 else normalized[:399].rstrip() + "..."
+
+
+def _error_source_code(error: BaseException) -> str | None:
+    code = getattr(error, "code", None)
+    if not isinstance(code, str):
+        return None
+    normalized = code.strip()
+    return normalized or None
+
+
+def _error_retryable(error: BaseException) -> bool | None:
+    retryable = getattr(error, "retryable", None)
+    if isinstance(retryable, bool):
+        return retryable
+    return None
+
+
+def _error_metadata(
+    error: BaseException,
+    *,
+    source_error_code: str | None = None,
+    policy_denied: bool = False,
+) -> dict[str, Any]:
+    raw_metadata = getattr(error, "metadata", None)
+    metadata = sanitize_metadata(raw_metadata if isinstance(raw_metadata, Mapping) else None)
+    if source_error_code is not None:
+        metadata.setdefault("source_error_code", source_error_code)
+    if policy_denied:
+        metadata["policy_denied"] = True
+        summary = _policy_block_summary(str(error))
+        if summary is not None:
+            metadata.setdefault("policy_block_summary", summary)
+    return metadata
+
+
+def _policy_block_summary(message: str | None) -> str | None:
+    if not isinstance(message, str):
+        return None
+    normalized = message.strip()
+    if not normalized:
+        return None
+    return _normalize_safe_message(normalized, fallback=AgentPolicyDeniedError.default_message)
 
 
 __all__ = [

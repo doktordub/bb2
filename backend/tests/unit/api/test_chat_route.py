@@ -78,6 +78,7 @@ def test_chat_route_returns_response_headers_and_calls_service_once(
                 "llm_profile": "fake_local_profile",
                 "tool_calls": [],
                 "memory_updates": [],
+                "artifacts": [],
             },
             "metadata": {
                 "usecase": "support_chat",

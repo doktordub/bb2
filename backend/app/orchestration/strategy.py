@@ -68,6 +68,8 @@ class StrategyExecutionResult:
     memory_searches: tuple[MemorySearchSummary, ...] = field(default_factory=tuple)
     memory_updates: tuple[MemoryUpdateSummary, ...] = field(default_factory=tuple)
     citations: tuple[CitationSummary, ...] = field(default_factory=tuple)
+    artifacts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    context_contributions: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -80,6 +82,12 @@ class StrategyExecutionResult:
         object.__setattr__(self, "memory_searches", tuple(self.memory_searches))
         object.__setattr__(self, "memory_updates", tuple(self.memory_updates))
         object.__setattr__(self, "citations", tuple(self.citations))
+        object.__setattr__(self, "artifacts", tuple(dict(item) for item in self.artifacts))
+        object.__setattr__(
+            self,
+            "context_contributions",
+            tuple(dict(item) for item in self.context_contributions),
+        )
         object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))
 
     def to_legacy_result(
@@ -105,6 +113,8 @@ class StrategyExecutionResult:
             tool_calls=[item.as_legacy_dict() for item in self.tool_calls],
             memory_updates=[item.as_legacy_dict() for item in self.memory_updates],
             citations=[item.as_legacy_dict() for item in self.citations],
+            artifacts=[dict(item) for item in self.artifacts],
+            context_contributions=[dict(item) for item in self.context_contributions],
             metadata=metadata,
         )
 

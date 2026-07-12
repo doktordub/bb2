@@ -5,6 +5,7 @@ FRONTEND_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = FRONTEND_ROOT / "app" / "static"
 STATIC_JS_ROOT = STATIC_ROOT / "js"
 STATIC_CSS_ROOT = STATIC_ROOT / "css"
+VISUALIZATION_VENDOR_ASSET = STATIC_ROOT / "vendor" / "echarts" / "echarts-5.5.1.min.js"
 
 LEGACY_PAGE_ASSETS = (
     STATIC_JS_ROOT / "chat-page.js",
@@ -46,4 +47,11 @@ def test_static_asset_roots_remain_directory_only() -> None:
     assert not top_level_css, (
         "Add CSS assets under app/static/css/<owner>/ instead of reintroducing top-level files: "
         f"{', '.join(top_level_css)}"
+    )
+
+
+def test_visualization_vendor_asset_is_self_hosted() -> None:
+    assert VISUALIZATION_VENDOR_ASSET.is_file(), (
+        "Visualization phase 1 expects a pinned self-hosted ECharts bundle at "
+        f"{VISUALIZATION_VENDOR_ASSET.relative_to(FRONTEND_ROOT).as_posix()}"
     )

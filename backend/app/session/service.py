@@ -9,7 +9,12 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any, Protocol, cast
 
-from app.config.view import ConversationContextSettings, SessionSettings, get_orchestration_settings
+from app.config.view import (
+    ConversationContextSettings,
+    SessionSettings,
+    get_orchestration_settings,
+    get_visualization_settings,
+)
 from app.contracts.config import ConfigurationView
 from app.contracts.context import OrchestrationContext, RequestContext
 from app.contracts.errors import ConfigurationError
@@ -63,6 +68,9 @@ from app.session.lifecycle import (
 )
 from app.session.mapping import (
     build_core_request_context,
+    merge_session_result_metadata,
+    project_public_artifacts,
+    resolve_public_artifact_retrieval_endpoint,
     build_session_orchestration_context,
     build_session_orchestration_request,
     orchestration_result_to_session_result,
@@ -78,6 +86,7 @@ from app.session.models import (
     SessionStreamEvent,
 )
 from app.session.streaming import StreamAccumulator
+from app.visualization.artifact_store import VisualizationArtifactStore, build_visualization_artifact_scope
 
 _SESSION_COMPONENT = "session.service"
 
@@ -148,6 +157,7 @@ class DefaultSessionService:
     policy_service: PolicyService | None = None
     id_provider: SessionIdProvider = field(default_factory=PrefixedUuidSessionIdProvider)
     clock: SessionClock = field(default_factory=SystemClock)
+    visualization_artifact_store: VisualizationArtifactStore | None = None
 
     async def handle_chat(
         self,
@@ -158,6 +168,8 @@ class DefaultSessionService:
         started_at = perf_counter()
         session_id = self._resolve_session_id(request.session_id)
         usecase = self._resolve_usecase(request.usecase)
+        visualization_settings = get_visualization_settings(self.config)
+        artifact_retrieval_endpoint = resolve_public_artifact_retrieval_endpoint(self.config)
         request_context = build_core_request_context(
             request=request,
             context=context,
@@ -186,6 +198,7 @@ class DefaultSessionService:
                 prepared.state,
                 result=orchestration_result,
                 conversation_context_settings=self._conversation_context_settings(),
+                history_replay_settings=visualization_settings.history_replay,
                 request_context=request_context,
                 trace_id=context.trace_id,
                 request_id=context.request_id,
@@ -193,6 +206,7 @@ class DefaultSessionService:
                 client_host=context.client_host,
                 user_agent=context.user_agent,
                 completed_at=self.clock.now(),
+                artifact_retrieval_endpoint=artifact_retrieval_endpoint,
             )
             save_result = await self._save_chat_state(
                 session_id=session_id,
@@ -234,6 +248,7 @@ class DefaultSessionService:
             session_id=session_id,
             message_count=state_message_count(final_state),
             message_count_before=prepared.message_count_before,
+            artifact_retrieval_endpoint=artifact_retrieval_endpoint,
         )
 
     async def stream_chat(
@@ -245,6 +260,8 @@ class DefaultSessionService:
         started_at = perf_counter()
         session_id = self._resolve_session_id(request.session_id)
         usecase = self._resolve_usecase(request.usecase)
+        visualization_settings = get_visualization_settings(self.config)
+        artifact_retrieval_endpoint = resolve_public_artifact_retrieval_endpoint(self.config)
         request_context = build_core_request_context(
             request=request,
             context=context,
@@ -301,10 +318,13 @@ class DefaultSessionService:
                 ),
                 context=build_session_orchestration_context(request_context=request_context),
             ):
-                next_sequence_no = sequence_no + 1
-                session_event = accumulator.consume(event=runtime_event, sequence_no=next_sequence_no)
-                if session_event is not None:
-                    sequence_no = next_sequence_no
+                emitted_events = accumulator.consume(
+                    event=runtime_event,
+                    sequence_no=sequence_no + 1,
+                )
+                for session_event in emitted_events:
+                    if session_event.sequence_no is not None:
+                        sequence_no = session_event.sequence_no
                     yield session_event
 
             orchestration_result = accumulator.build_result()
@@ -312,6 +332,7 @@ class DefaultSessionService:
                 prepared.state,
                 result=orchestration_result,
                 conversation_context_settings=self._conversation_context_settings(),
+                history_replay_settings=visualization_settings.history_replay,
                 request_context=request_context,
                 trace_id=context.trace_id,
                 request_id=context.request_id,
@@ -319,6 +340,7 @@ class DefaultSessionService:
                 client_host=context.client_host,
                 user_agent=context.user_agent,
                 completed_at=self.clock.now(),
+                artifact_retrieval_endpoint=artifact_retrieval_endpoint,
             )
 
             if self.settings.state.save_on_stream_completion:
@@ -559,6 +581,7 @@ class DefaultSessionService:
     ) -> SessionResetResult:
         started_at = perf_counter()
         normalized_session_id = self._resolve_session_id(session_id)
+        visualization_artifacts_cleared: int | None = None
         try:
             loaded = await self.workflow_state.load(normalized_session_id)
             if self.policy_service is not None:
@@ -590,6 +613,14 @@ class DefaultSessionService:
         except PersistenceWorkflowStateError as exc:
             raise SessionResetFailedError() from exc
 
+        try:
+            visualization_artifacts_cleared = await self._clear_visualization_artifacts(
+                session_id=normalized_session_id,
+                context=context,
+            )
+        except Exception as exc:
+            raise SessionResetFailedError() from exc
+
         await self._record_event(
             event_name=SESSION_RESET,
             trace_id=context.trace_id,
@@ -601,13 +632,32 @@ class DefaultSessionService:
             payload={"operation": "reset_session", "reason": reason},
             result=None,
         )
+        result_metadata = {"reason": reason}
+        if visualization_artifacts_cleared is not None:
+            result_metadata["visualization_artifacts_cleared"] = visualization_artifacts_cleared
         return SessionResetResult(
             session_id=normalized_session_id,
             trace_id=context.trace_id,
             reset=True,
             message="Session workflow state was reset.",
-            metadata={"reason": reason},
+            metadata=result_metadata,
         )
+
+    async def _clear_visualization_artifacts(
+        self,
+        *,
+        session_id: str,
+        context: SessionRequestContext,
+    ) -> int | None:
+        if self.visualization_artifact_store is None:
+            return None
+
+        scope = build_visualization_artifact_scope(
+            session_id=session_id,
+            user_id=context.user_id,
+            scope=context.metadata,
+        )
+        return await self.visualization_artifact_store.delete_session_artifacts(scope=scope)
 
     def _resolve_session_id(self, session_id: str | None) -> str:
         return resolve_session_id(
@@ -850,9 +900,21 @@ def _build_session_chat_result(
     session_id: str,
     message_count: int,
     message_count_before: int,
+    artifact_retrieval_endpoint: str | None,
 ) -> SessionChatResult:
     base_result = orchestration_result_to_session_result(result, trace_id=trace_id)
+    public_artifacts = project_public_artifacts(
+        base_result.artifacts,
+        artifact_retrieval_endpoint=artifact_retrieval_endpoint,
+    )
     metadata = {
+        **merge_session_result_metadata(
+            base_metadata=base_result.metadata,
+            artifacts=public_artifacts,
+            context_contributions=[
+                item.model_dump(mode="python") for item in result.context_contributions
+            ],
+        ),
         "usecase": result.usecase,
         "message_count": message_count,
         "message_count_before": message_count_before,
@@ -866,6 +928,7 @@ def _build_session_chat_result(
         llm_profile=base_result.llm_profile,
         tool_calls=base_result.tool_calls,
         memory_updates=base_result.memory_updates,
+        artifacts=public_artifacts,
         metadata=metadata,
     )
 

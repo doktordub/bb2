@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "tool_names": [
+    "reporting.query_metric_series",
+    "reporting.query_category_summary"
+  ],
+  "errors": [
+    {
+      "code": "invalid_query",
+      "retryable": false,
+      "description": "The request shape, filter set, or aggregation is invalid for the approved reporting contract."
+    },
+    {
+      "code": "unsupported_metric",
+      "retryable": false,
+      "description": "One or more requested metric names are not enabled for the reporting tool."
+    },
+    {
+      "code": "unsupported_dimension",
+      "retryable": false,
+      "description": "The requested dimension or granularity is not enabled for the reporting tool."
+    },
+    {
+      "code": "invalid_date_range",
+      "retryable": false,
+      "description": "The requested date range is missing, inverted, or exceeds the approved maximum span."
+    },
+    {
+      "code": "unauthorized_scope",
+      "retryable": false,
+      "description": "The caller is authenticated but not allowed to access the requested reporting scope."
+    },
+    {
+      "code": "provider_unavailable",
+      "retryable": true,
+      "description": "The configured reporting provider is temporarily unavailable."
+    },
+    {
+      "code": "timeout",
+      "retryable": true,
+      "description": "The reporting provider did not complete within the bounded tool timeout."
+    },
+    {
+      "code": "rate_limited",
+      "retryable": true,
+      "description": "The reporting provider or MCP transport rejected the request because of rate limiting."
+    },
+    {
+      "code": "result_too_large",
+      "retryable": false,
+      "description": "The normalized dataset exceeded the configured result-row or byte limits."
+    },
+    {
+      "code": "schema_mismatch",
+      "retryable": false,
+      "description": "The provider returned data that could not be normalized to the frozen structured dataset schema."
+    },
+    {
+      "code": "internal_error",
+      "retryable": true,
+      "description": "An unexpected server-side failure prevented the reporting tool from returning a safe dataset."
+    }
+  ]
+}

@@ -38,6 +38,7 @@ class RecordingBackendClient:
         query: list[tuple[str, str]] | None = None,
         json_body: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        headers: dict[str, str] | None = None,
     ) -> BackendJsonResult:
         self.calls.append(
             {
@@ -47,6 +48,7 @@ class RecordingBackendClient:
                 "query": list(query or []),
                 "json_body": json_body,
                 "timeout_seconds": timeout_seconds,
+                "headers": dict(headers or {}),
             }
         )
         return BackendJsonResult(
@@ -167,6 +169,23 @@ def test_session_history_proxy_preserves_query_params(
     assert response.status_code == 200
     assert response.get_json()["path"] == "/sessions/session-123/history"
     assert backend_client.calls[0]["query"] == [("limit", "25")]
+
+
+def test_artifact_proxy_forwards_session_header_and_query_params(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client, backend_client = build_client(monkeypatch, tmp_path)
+
+    response = client.get(
+        "/ui-api/artifacts/chart-123?return_type=artifact",
+        headers={"X-Session-Id": "session-123"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["path"] == "/artifacts/chart-123"
+    assert backend_client.calls[0]["query"] == [("return_type", "artifact")]
+    assert backend_client.calls[0]["headers"] == {"X-Session-Id": "session-123"}
 
 
 def test_reset_proxy_forwards_json_body(

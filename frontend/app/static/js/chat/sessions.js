@@ -4,6 +4,7 @@ import { setStatePill } from "../common/status.js";
 import { showToast } from "../common/toast.js";
 import { deleteJson, getJson, postJson } from "../services/api-client.js";
 import { clearActiveSession, setActiveSessionId, setSelectedUsecase } from "../services/session-store.js";
+import { resolveHistoryArtifactReplay } from "./artifacts.js";
 import { appendMessage, clearConversation, scrollConversationToBottom, setConversationLoading } from "./conversation.js";
 import { renderInspector, updateStreamingMode, updateStatusBar } from "./inspector.js";
 import { announceChatStatus, resetInspector, setPending, truncateLabel } from "./runtime-state.js";
@@ -11,6 +12,14 @@ import { announceChatStatus, resetInspector, setPending, truncateLabel } from ".
 const DEFAULT_SESSION_LIMIT = 20;
 const DEFAULT_HISTORY_LIMIT = 50;
 const formatDate = (value) => formatDateValue(value, "Timestamp unavailable");
+
+function clearSessionVisualization(refs, sessionId) {
+  if (!sessionId) {
+    return;
+  }
+
+  refs.chatVisualization?.disposeSession?.(sessionId);
+}
 
 function findSessionSummary(runtimeState, sessionId = runtimeState.activeSessionId) {
   if (!sessionId) {
@@ -61,6 +70,7 @@ async function deleteSession(runtimeState, refs, sessionId, { updateActionButton
   try {
     await deleteJson(`/sessions/${encodeURIComponent(sessionId)}`);
     if (runtimeState.activeSessionId === sessionId) {
+      clearSessionVisualization(refs, sessionId);
       runtimeState.activeSessionId = null;
       clearActiveSession();
       clearConversation(refs);
@@ -222,6 +232,7 @@ export async function loadSessions(runtimeState, refs, { updateActionButtons } =
     if (runtimeState.activeSessionId) {
       const stillExists = runtimeState.sessions.some((session) => session.session_id === runtimeState.activeSessionId);
       if (!stillExists) {
+        clearSessionVisualization(refs, runtimeState.activeSessionId);
         runtimeState.activeSessionId = null;
         clearActiveSession();
         clearConversation(refs);
@@ -243,6 +254,7 @@ export async function loadSessionHistory(runtimeState, refs, sessionId, { update
     return;
   }
 
+  clearSessionVisualization(refs, runtimeState.activeSessionId || sessionId);
   runtimeState.activeSessionId = sessionId;
   runtimeState.inspector.sessionId = sessionId;
   setActiveSessionId(sessionId);
@@ -270,12 +282,22 @@ export async function loadSessionHistory(runtimeState, refs, sessionId, { update
       if (!metadata.usecase && sessionSummary?.usecase) {
         metadata.usecase = sessionSummary.usecase;
       }
-      appendMessage(refs, {
+      const card = appendMessage(refs, {
         role: message.role,
         content: message.content,
         createdAt: message.created_at || fallbackCreatedAt,
         metadata,
+        sessionId,
       }, { scroll: false });
+      if (message.role === "assistant") {
+        const historyReplay = resolveHistoryArtifactReplay(message);
+        refs.chatVisualization?.renderHistoryArtifacts?.(card, {
+          artifacts: historyReplay.artifacts,
+          artifactCount: historyReplay.artifactCount,
+          replayStatus: historyReplay.replayStatus,
+          sessionId,
+        });
+      }
     });
     scrollConversationToBottom(refs, { force: true });
     if (refs.historyTruncatedCard) {
@@ -333,6 +355,8 @@ export async function resetActiveSession(runtimeState, refs, { updateActionButto
   setPending(runtimeState, refs, true, "Resetting session", { updateActionButtons });
   try {
     await postJson(`/sessions/${encodeURIComponent(sessionId)}/reset`, { reason: "frontend_reset" });
+    clearSessionVisualization(refs, sessionId);
+    clearConversation(refs);
     resetInspector(runtimeState);
     renderInspector(runtimeState, refs, { renderSessionContext });
     announceChatStatus(refs, `Session ${sessionId} reset.`);
@@ -356,6 +380,7 @@ export async function deleteActiveSession(runtimeState, refs, { updateActionButt
 }
 
 export function startNewChat(runtimeState, refs, { updateActionButtons } = {}) {
+  clearSessionVisualization(refs, runtimeState.activeSessionId);
   runtimeState.activeSessionId = null;
   clearActiveSession();
   clearConversation(refs);

@@ -76,6 +76,95 @@ def build_config() -> FakeConfigurationView:
     )
 
 
+def build_task_first_config() -> FakeConfigurationView:
+    return FakeConfigurationView(
+        {
+            "app": {"active_usecase": "task_chat"},
+            "orchestration": {
+                "enabled": True,
+                "defaults": {
+                    "strategy": "bounded_planner",
+                    "fallback_strategy": "direct_agent",
+                    "max_steps": 8,
+                    "max_tool_calls": 2,
+                    "max_memory_searches": 2,
+                    "max_llm_calls": 4,
+                    "max_turn_duration_seconds": 120,
+                    "max_stream_duration_seconds": 300,
+                    "max_tool_loop_iterations": 2,
+                    "max_context_bytes": 4000,
+                },
+                "strategies": {
+                    "bounded_planner": {
+                        "enabled": True,
+                        "type": "bounded_planner",
+                        "default_agent": "support_agent",
+                        "allowed_usecases": ["task_chat"],
+                        "planner_llm_profile": "planner_profile",
+                        "executor_llm_profile": "executor_profile",
+                        "memory_enabled": True,
+                        "tools_enabled": False,
+                        "max_steps": 8,
+                        "max_tool_calls": 2,
+                        "max_memory_searches": 2,
+                        "max_llm_calls": 4,
+                        "max_context_bytes": 2000,
+                        "max_plan_steps": 4,
+                        "max_execute_steps": 4,
+                        "max_tool_loop_iterations": 2,
+                    },
+                    "direct_agent": {
+                        "enabled": True,
+                        "type": "direct_agent",
+                        "default_agent": "support_agent",
+                        "allowed_usecases": ["task_chat"],
+                    },
+                },
+                "usecases": {
+                    "task_chat": {
+                        "enabled": True,
+                        "strategy": "bounded_planner",
+                        "agent": "support_agent",
+                        "allowed_agents": ["support_agent", "task_execution_agent"],
+                        "allowed_strategies": ["bounded_planner"],
+                        "llm_profile": "executor_profile",
+                        "policy_profile": "default",
+                        "metadata": {"routing_mode": "task_first", "assessment_agent": "task_execution_agent"},
+                    }
+                },
+            },
+            "agents": {
+                "support_agent": {
+                    "enabled": True,
+                    "type": "custom",
+                    "module": "app.testing.fakes.fake_agent",
+                    "class_name": "FakeAgent",
+                },
+                "task_execution_agent": {
+                    "enabled": True,
+                    "type": "custom",
+                    "module": "app.testing.fakes.fake_agent",
+                    "class_name": "FakeAgent",
+                },
+                "out_of_scope_agent": {
+                    "enabled": True,
+                    "type": "custom",
+                    "module": "app.testing.fakes.fake_agent",
+                    "class_name": "FakeAgent",
+                },
+            },
+            "llm": {"defaults": {"profile": "fake_chat"}},
+            "observability": {
+                "trace_enabled": True,
+                "trace_payloads_enabled": True,
+                "trace_store_required": True,
+                "redact_secrets": True,
+                "max_trace_payload_chars": 8000,
+            },
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_default_runtime_run_turn_builds_safe_result_and_health_surface() -> None:
     config = build_config()
@@ -141,6 +230,202 @@ async def test_default_runtime_run_turn_builds_safe_result_and_health_surface() 
     assert capabilities.default_strategy == "direct_agent"
     assert capabilities.usecases[0].name == "default_chat"
     assert capabilities.strategies[0].name == "direct_agent"
+
+
+def test_runtime_strategy_agents_are_scoped_to_usecase_allowed_agents() -> None:
+    runtime = DefaultOrchestrationRuntime.from_config(
+        config=build_task_first_config(),
+        llm_gateway=FakeLLMGateway(response_text="unused"),
+        memory=FakeMemoryGateway(),
+        state=FakeWorkflowStateStore(),
+        trace=FakeTraceStore(),
+        policy_service=FakePolicyService(),
+    )
+
+    request = OrchestrationRequest(
+        session_id="session_scope_test",
+        trace_id="trace_scope_test",
+        user_id="user_1",
+        message="Assess this request.",
+        usecase="task_chat",
+    )
+    route = runtime._resolve_route(request)
+
+    assert [agent.name for agent in runtime._strategy_agents(route)] == [
+        "support_agent",
+        "task_execution_agent",
+    ]
+
+
+def build_chart_config() -> FakeConfigurationView:
+    return FakeConfigurationView(
+        {
+            "app": {"active_usecase": "default_chat"},
+            "visualization": {
+                "enabled": True,
+                "context_summary": {
+                    "enabled": True,
+                    "mode": "summary_only",
+                    "max_tokens_per_chart_summary": 600,
+                    "max_chart_summaries_per_session_context": 5,
+                    "max_total_visualization_context_tokens": 1800,
+                    "include_data_ref": True,
+                    "include_aggregate_stats": True,
+                    "include_extrema": True,
+                    "include_trend_summary": True,
+                    "include_sample_rows": False,
+                    "max_sample_rows": 0,
+                    "eviction_policy": "most_recent_relevant",
+                },
+                "artifact_store": {
+                    "enabled": True,
+                    "provider": "workflow_state_cache",
+                    "ttl_seconds": 7200,
+                    "allow_large_data_reference": True,
+                    "exact_followup_retrieval_enabled": True,
+                    "retrieval_endpoint": "/artifacts/{artifact_id}",
+                },
+            },
+            "orchestration": {
+                "enabled": True,
+                "defaults": {
+                    "strategy": "direct_agent",
+                    "fallback_strategy": "direct_agent",
+                    "max_steps": 8,
+                    "max_tool_calls": 4,
+                    "max_memory_searches": 3,
+                    "max_llm_calls": 6,
+                    "max_turn_duration_seconds": 120,
+                    "max_stream_duration_seconds": 300,
+                },
+                "strategies": {
+                    "direct_agent": {
+                        "enabled": True,
+                        "type": "direct_agent",
+                        "default_agent": "chart_agent",
+                        "allowed_usecases": ["default_chat"],
+                        "llm_profile": "fake_chart",
+                    }
+                },
+                "usecases": {
+                    "default_chat": {
+                        "enabled": True,
+                        "strategy": "direct_agent",
+                        "agent": "chart_agent",
+                        "allowed_agents": ["chart_agent"],
+                        "allowed_strategies": ["direct_agent"],
+                        "policy_profile": "default",
+                    }
+                },
+            },
+            "agents": {
+                "chart_agent": {
+                    "enabled": True,
+                    "module": "app.testing.fakes.fake_visualization_agent",
+                    "class_name": "FakeVisualizationAgent",
+                    "llm_profile": "fake_chart",
+                }
+            },
+            "llm": {"defaults": {"profile": "fake_chart"}},
+            "observability": {
+                "trace_enabled": True,
+                "trace_payloads_enabled": True,
+                "trace_store_required": True,
+                "redact_secrets": True,
+                "max_trace_payload_chars": 8000,
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_runtime_run_turn_propagates_chart_artifacts_and_summary_context() -> None:
+    config = build_chart_config()
+    trace_store = FakeTraceStore()
+    runtime = DefaultOrchestrationRuntime.from_config(
+        config=config,
+        llm_gateway=FakeLLMGateway(response_text="unused"),
+        memory=FakeMemoryGateway(),
+        state=FakeWorkflowStateStore(),
+        trace=trace_store,
+        policy_service=FakePolicyService(),
+    )
+
+    session_id = "session_runtime_chart"
+    trace_id = "trace_runtime_chart"
+    runtime_request = OrchestrationRequest(
+        session_id=session_id,
+        trace_id=trace_id,
+        user_id="user_1",
+        message="Show revenue by month as a chart.",
+        usecase="default_chat",
+        metadata={"request_id": "request_runtime_chart"},
+        workflow_state=workflow_state_snapshot_from_document(
+            session_id=session_id,
+            state=default_workflow_state(session_id),
+        ),
+    )
+    runtime_context = OrchestrationRuntimeContext(
+        request_id="request_runtime_chart",
+        trace_id=trace_id,
+        session_id=session_id,
+        user_id="user_1",
+    )
+
+    result = await runtime.run_turn(request=runtime_request, context=runtime_context)
+
+    assert result.answer == "Here is the revenue chart."
+    assert result.artifacts[0].artifact_id == "chart_vis_001"
+    assert result.context_contributions[0].source_artifact_id == "chart_vis_001"
+    assert result.state_delta is not None
+    assert result.state_delta.metadata_patch["visualization_context"]["summaries"][0]["artifact_id"] == "chart_vis_001"
+    assert "data" not in result.state_delta.metadata_patch["visualization_context"]["summaries"][0]
+
+
+@pytest.mark.asyncio
+async def test_default_runtime_limits_visualization_artifacts_per_response() -> None:
+    config = build_chart_config()
+    trace_store = FakeTraceStore()
+    runtime = DefaultOrchestrationRuntime.from_config(
+        config=config,
+        llm_gateway=FakeLLMGateway(response_text="unused"),
+        memory=FakeMemoryGateway(),
+        state=FakeWorkflowStateStore(),
+        trace=trace_store,
+        policy_service=FakePolicyService(),
+    )
+
+    session_id = "session_runtime_chart_limit"
+    trace_id = "trace_runtime_chart_limit"
+    runtime_request = OrchestrationRequest(
+        session_id=session_id,
+        trace_id=trace_id,
+        user_id="user_1",
+        message="Show revenue and expense charts.",
+        usecase="default_chat",
+        metadata={
+            "request_id": "request_runtime_chart_limit",
+            "multi_artifact_test": True,
+        },
+        workflow_state=workflow_state_snapshot_from_document(
+            session_id=session_id,
+            state=default_workflow_state(session_id),
+        ),
+    )
+    runtime_context = OrchestrationRuntimeContext(
+        request_id="request_runtime_chart_limit",
+        trace_id=trace_id,
+        session_id=session_id,
+        user_id="user_1",
+    )
+
+    result = await runtime.run_turn(request=runtime_request, context=runtime_context)
+
+    assert len(result.artifacts) == 1
+    assert len(result.context_contributions) == 1
+    assert result.artifacts[0].artifact_id == "chart_vis_001"
+    assert result.context_contributions[0].source_artifact_id == "chart_vis_001"
+    assert len(result.state_delta.metadata_patch["visualization_context"]["summaries"]) == 1
 
 
 @pytest.mark.asyncio

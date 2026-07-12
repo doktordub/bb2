@@ -16,6 +16,8 @@ from app.orchestration.models import (
     sanitize_metadata,
 )
 from app.orchestration.state_delta import WorkflowStateDelta, workflow_state_delta_to_dict
+from app.visualization.context_selector import coerce_context_contribution
+from app.visualization.models import ChartArtifact, ContextContribution
 
 
 def build_orchestration_result(
@@ -32,6 +34,8 @@ def build_orchestration_result(
     memory_searches: Iterable[MemorySearchSummary | Mapping[str, Any]] = (),
     memory_updates: Iterable[MemoryUpdateSummary | Mapping[str, Any]] = (),
     citations: Iterable[CitationSummary | Mapping[str, Any]] = (),
+    artifacts: Iterable[ChartArtifact | Mapping[str, Any]] = (),
+    context_contributions: Iterable[ContextContribution | Mapping[str, Any]] = (),
     state_delta: WorkflowStateDelta | None = None,
     finish_reason: str = "stop",
     duration_ms: int | None = None,
@@ -52,6 +56,8 @@ def build_orchestration_result(
         memory_searches=_coerce_memory_search_summaries(memory_searches),
         memory_updates=_coerce_memory_update_summaries(memory_updates),
         citations=_coerce_citation_summaries(citations),
+        artifacts=_coerce_chart_artifacts(artifacts),
+        context_contributions=_coerce_context_contributions(context_contributions),
         state_delta=state_delta,
         finish_reason=finish_reason,
         duration_ms=duration_ms,
@@ -92,6 +98,8 @@ def orchestration_result_from_contract(
         memory_searches=memory_searches,
         memory_updates=result.memory_updates,
         citations=result.citations,
+        artifacts=result.artifacts,
+        context_contributions=result.context_contributions,
         state_delta=state_delta,
         finish_reason=finish_reason,
         duration_ms=duration_ms,
@@ -124,6 +132,8 @@ def orchestration_result_to_contract(result: OrchestrationResult) -> LegacyOrche
         tool_calls=[item.as_legacy_dict() for item in result.tool_calls],
         memory_updates=[item.as_legacy_dict() for item in result.memory_updates],
         citations=[item.as_legacy_dict() for item in result.citations],
+        artifacts=[item.model_dump(mode="python") for item in result.artifacts],
+        context_contributions=[item.model_dump(mode="python") for item in result.context_contributions],
         metadata=sanitize_metadata(metadata),
     )
 
@@ -171,6 +181,29 @@ def _coerce_citation_summaries(
     for item in items:
         summaries.append(item if isinstance(item, CitationSummary) else CitationSummary.from_mapping(item))
     return summaries
+
+
+def _coerce_chart_artifacts(
+    items: Iterable[ChartArtifact | Mapping[str, Any]],
+) -> list[ChartArtifact]:
+    artifacts: list[ChartArtifact] = []
+    for item in items:
+        artifacts.append(item if isinstance(item, ChartArtifact) else ChartArtifact.model_validate(dict(item)))
+    return artifacts
+
+
+def _coerce_context_contributions(
+    items: Iterable[ContextContribution | Mapping[str, Any]],
+) -> list[ContextContribution]:
+    contributions: list[ContextContribution] = []
+    for item in items:
+        if isinstance(item, ContextContribution):
+            contributions.append(item)
+            continue
+        coerced = coerce_context_contribution(item)
+        if coerced is not None:
+            contributions.append(coerced)
+    return contributions
 
 
 def _read_optional_text(value: object) -> str | None:

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
+from typing import Any
 
 from app.contracts.context import OrchestrationContext
 from app.contracts.llm import (
@@ -14,6 +15,7 @@ from app.contracts.llm import (
     LLMResponse,
     LLMStreamEvent,
     LLMTokenUsage,
+    LLMToolCall,
 )
 
 
@@ -25,11 +27,20 @@ class FakeLLMGateway:
         response_text: str = "fake response",
         *,
         default_profile: str = "fake_profile",
+        tool_calls: Sequence[LLMToolCall | Mapping[str, Any]] | None = None,
+        reasoning: Mapping[str, Any] | None = None,
+        supports_tool_calling: bool = False,
     ) -> None:
         self.response_text = response_text
         self.default_profile = default_profile
         self.provider_name = "fake_provider"
         self.model_name = "fake_model"
+        self.tool_calls = [
+            item if isinstance(item, LLMToolCall) else LLMToolCall.from_mapping(item)
+            for item in (tool_calls or ())
+        ]
+        self.reasoning = dict(reasoning or {})
+        self.supports_tool_calling = supports_tool_calling or bool(self.tool_calls)
         self.requests: list[LLMRequest] = []
         self.contexts: list[OrchestrationContext] = []
         self.health_calls = 0
@@ -48,7 +59,9 @@ class FakeLLMGateway:
             profile=profile,
             provider=self.provider_name,
             model=self.model_name,
+            tool_calls=list(self.tool_calls),
             finish_reason="completed",
+            reasoning=dict(self.reasoning),
             usage=LLMTokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
             metadata={"component": request.component} if request.component else {},
         )
@@ -68,17 +81,20 @@ class FakeLLMGateway:
             model=self.model_name,
             metadata=metadata,
         )
-        yield LLMStreamEvent.delta(
-            text=self.response_text,
-            profile=profile,
-            provider=self.provider_name,
-            model=self.model_name,
-        )
+        if self.response_text:
+            yield LLMStreamEvent.delta(
+                text=self.response_text,
+                profile=profile,
+                provider=self.provider_name,
+                model=self.model_name,
+            )
         yield LLMStreamEvent.completed(
             profile=profile,
             provider=self.provider_name,
             model=self.model_name,
+            tool_calls=list(self.tool_calls),
             finish_reason="completed",
+            reasoning=dict(self.reasoning),
             usage=LLMTokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
         )
 
@@ -116,7 +132,7 @@ class FakeLLMGateway:
                 enabled=True,
                 supports_streaming=True,
                 supports_json_schema=False,
-                supports_tool_calling=False,
+                supports_tool_calling=self.supports_tool_calling,
                 fallback_profiles=(),
                 allowed_for={},
                 metadata={"source": "fake"},

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.contracts.llm import LLMResponse, LLMTokenUsage
 from app.contracts.state import default_workflow_state
 from app.contracts.tools import ToolDefinition, ToolExecutionResult, ToolResultContent, ToolResultSummary
 from app.orchestration.models import OrchestrationRequest, OrchestrationRuntimeContext
@@ -16,6 +17,19 @@ from app.testing.fakes import (
     FakeTraceStore,
     FakeWorkflowStateStore,
 )
+
+
+class SequencedFakeLLMGateway(FakeLLMGateway):
+    def __init__(self, responses: list[LLMResponse]) -> None:
+        super().__init__(response_text="", default_profile="gateway_default")
+        self._responses = list(responses)
+
+    async def complete(self, request, context) -> LLMResponse:  # type: ignore[override]
+        self.requests.append(request)
+        self.contexts.append(context)
+        if not self._responses:
+            raise AssertionError("No fake LLM responses remain.")
+        return self._responses.pop(0)
 
 
 def build_config() -> FakeConfigurationView:
@@ -135,3 +149,186 @@ async def test_tool_runtime_executes_fake_tool_and_returns_safe_summary() -> Non
     assert [step.step_type for step in result.steps] == ["strategy", "agent", "tool", "agent"]
     assert result.tool_calls[0].tool_name == "documents.search"
     assert tools.calls[0].tool_name == "documents.search"
+
+
+def build_native_tool_agent_config() -> FakeConfigurationView:
+    return FakeConfigurationView(
+        {
+            "app": {"active_usecase": "project_work"},
+            "orchestration": {
+                "enabled": True,
+                "defaults": {
+                    "strategy": "tool_assisted",
+                    "fallback_strategy": "direct_agent",
+                    "max_steps": 8,
+                    "max_tool_calls": 2,
+                    "max_memory_searches": 3,
+                    "max_llm_calls": 6,
+                    "max_turn_duration_seconds": 120,
+                    "max_stream_duration_seconds": 300,
+                },
+                "strategies": {
+                    "tool_assisted": {
+                        "enabled": True,
+                        "type": "tool_assisted",
+                        "default_agent": "support_agent",
+                        "allowed_usecases": ["project_work"],
+                        "llm_profile": "tool_profile",
+                        "tools_enabled": True,
+                        "tools": {"allowed_tools": ["documents_search"], "max_calls": 2},
+                    },
+                    "direct_agent": {
+                        "enabled": True,
+                        "type": "direct_agent",
+                        "default_agent": "support_agent",
+                        "allowed_usecases": ["project_work"],
+                    },
+                },
+                "usecases": {
+                    "project_work": {
+                        "enabled": True,
+                        "strategy": "tool_assisted",
+                        "agent": "support_agent",
+                        "allowed_agents": ["support_agent"],
+                        "llm_profile": "tool_profile",
+                        "policy_profile": "default",
+                        "memory": {"enabled": False, "include_document_chunks": False, "default_limit": 0},
+                        "tools": {"enabled": True, "allowed_tools": ["documents_search"]},
+                    }
+                },
+            },
+            "agents": {
+                "defaults": {
+                    "enabled": True,
+                    "stream_llm_deltas": False,
+                    "known_prompt_profiles": ["tool_using_v1"],
+                    "max_output_chars": 12000,
+                    "max_llm_calls": 1,
+                    "max_prompt_context_bytes": 4000,
+                    "max_tool_intents": 1,
+                },
+                "plugins": {
+                    "support_agent": {
+                        "enabled": True,
+                        "type": "tool_using",
+                        "display_name": "Tool Agent",
+                        "description": "Produces logical tool intents.",
+                        "llm_profile": "tool_profile",
+                        "prompt_profile": "tool_using_v1",
+                        "capabilities": {
+                            "answer": True,
+                            "stream": True,
+                            "memory_read": False,
+                            "memory_write": False,
+                            "tool_intents": True,
+                            "tool_execute": False,
+                            "self_managed_memory": False,
+                            "self_managed_tools": False,
+                        },
+                        "allowed_tool_intents": ["documents_search"],
+                    }
+                },
+            },
+            "llm": {
+                "defaults": {"profile": "gateway_default"},
+                "profiles": {
+                    "tool_profile": {
+                        "supports_tool_calling": True,
+                    }
+                },
+            },
+            "observability": {
+                "trace_enabled": True,
+                "trace_payloads_enabled": True,
+                "trace_store_required": True,
+                "redact_secrets": True,
+                "max_trace_payload_chars": 8000,
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_runtime_round_trips_native_tool_calls() -> None:
+    config = build_native_tool_agent_config()
+    llm = SequencedFakeLLMGateway(
+        responses=[
+            LLMResponse(
+                text="",
+                profile="tool_profile",
+                provider="fake_provider",
+                model="fake_model",
+                tool_calls=[
+                    {
+                        "id": "call_documents_search_1",
+                        "function": {
+                            "name": "documents_search",
+                            "arguments": '{"query": "architecture notes", "limit": 3}',
+                        },
+                    }
+                ],
+                finish_reason="tool_calls",
+                usage=LLMTokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            ),
+            LLMResponse(
+                text="runtime native tool answer",
+                profile="tool_profile",
+                provider="fake_provider",
+                model="fake_model",
+                finish_reason="completed",
+                usage=LLMTokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            ),
+        ]
+    )
+    tools = FakeToolGateway(
+        tools=[ToolDefinition(name="documents_search", description="Search documents")],
+        execution_results={
+            "documents_search": ToolExecutionResult(
+                tool_name="documents_search",
+                status="completed",
+                content=[ToolResultContent(type="text", text="Found architecture notes")],
+                summary=ToolResultSummary(safe_message="Found architecture notes"),
+            )
+        },
+    )
+    runtime = DefaultOrchestrationRuntime.from_config(
+        config=config,
+        llm_gateway=llm,
+        memory=FakeMemoryGateway(),
+        state=FakeWorkflowStateStore(),
+        trace=FakeTraceStore(),
+        policy_service=FakePolicyService(),
+        tools=tools,
+    )
+
+    session_id = "session_tool_runtime_native"
+    request = OrchestrationRequest(
+        session_id=session_id,
+        trace_id="trace_tool_runtime_native",
+        user_id="user_1",
+        message="Find architecture notes",
+        usecase="project_work",
+        workflow_state=workflow_state_snapshot_from_document(
+            session_id=session_id,
+            state=default_workflow_state(session_id),
+        ),
+    )
+    context = OrchestrationRuntimeContext(
+        request_id="request_tool_runtime_native",
+        trace_id="trace_tool_runtime_native",
+        session_id=session_id,
+        user_id="user_1",
+        project_id="project_1",
+    )
+
+    result = await runtime.run_turn(request=request, context=context)
+
+    assert result.answer == "runtime native tool answer"
+    assert result.tool_calls[0].tool_name == "documents_search"
+    assert tools.calls[0].tool_name == "documents_search"
+    assert [tool.function.name for tool in llm.requests[0].tools] == ["documents_search"]
+    assert llm.requests[0].response_format is None
+    assert llm.requests[1].tools == []
+    assert llm.requests[1].messages[-2].tool_calls[0].id == "call_documents_search_1"
+    assert llm.requests[1].messages[-1].role == "tool"
+    assert llm.requests[1].messages[-1].tool_call_id == "call_documents_search_1"

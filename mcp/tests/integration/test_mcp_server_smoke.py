@@ -45,7 +45,13 @@ async def test_mcp_http_server_exposes_expected_tools_and_trace_correlation() ->
         "risk_level": "read_only",
         "enabled": True,
         "status": "loaded",
+        "health": "ok",
         "version": "1.0.0",
+        "owner": "platform",
+        "tags": ["read_only", "search", "web"],
+        "input_schema": "auto",
+        "output_schema": "structured_results",
+        "schema_version": None,
     }
 
     health_payload = health.structured_content

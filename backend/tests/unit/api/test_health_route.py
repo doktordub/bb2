@@ -66,6 +66,15 @@ def test_health_route_returns_api_facing_shape_with_safe_checks(
         "docs_enabled": True,
         "streaming_enabled": False,
     }
+    assert payload["visualization"] == {
+        "status": "ok",
+        "configured": True,
+        "enabled": False,
+        "default_renderer": "echarts",
+        "supported_chart_types_count": 19,
+        "context_summary_enabled": True,
+        "artifact_store_enabled": False,
+    }
     assert payload["workflow_state"]["provider"] == "sqlite"
     assert payload["trace"]["provider"] == "sqlite"
     assert payload["llm"] == {
@@ -105,5 +114,6 @@ def test_health_route_returns_api_facing_shape_with_safe_checks(
         "server_name": "main",
         "identity_mode": "none",
     }
+    assert payload["checks"]["visualization"] == payload["visualization"]
     assert payload["checks"]["workflow_state"] == payload["workflow_state"]
     assert payload["checks"]["trace"] == payload["trace"]

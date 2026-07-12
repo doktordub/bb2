@@ -3,9 +3,13 @@ from __future__ import annotations
 from app.agents.result_builder import build_run_request_from_context
 from app.config.view import ConversationContextSettings
 from app.contracts.context import OrchestrationContext, RequestContext
-from app.orchestration.conversation_context import build_conversation_context_window, refresh_session_summary_metadata
+from app.orchestration.conversation_context import (
+    build_conversation_context_window,
+    project_conversation_context_window,
+    refresh_session_summary_metadata,
+)
 from app.orchestration.models import ConversationMessage, OrchestrationRuntimeContext
-from app.orchestration.state_delta import WorkflowStateSnapshot
+from app.orchestration.state_delta import WorkflowStateSnapshot, workflow_state_snapshot_from_document
 from app.testing.fakes import (
     FakeConfigurationView,
     FakeLLMGateway,
@@ -223,3 +227,81 @@ def test_conversation_context_uses_persisted_session_summary_when_long_history_i
     assert request.session_summary is not None
     assert "I am Bob" in request.session_summary
     assert request.metadata["session_summary_used"] is True
+
+
+def test_conversation_context_summary_ignores_persisted_message_artifacts() -> None:
+    settings = ConversationContextSettings(
+        enabled=True,
+        mode="window",
+        max_messages=1,
+        max_chars=100,
+        include_assistant_messages=True,
+        summary_threshold_messages=2,
+        summary_max_chars=160,
+    )
+    state = {
+        "session_id": "session_1",
+        "conversation": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Show monthly revenue",
+                    "metadata": {"request_id": "request-1"},
+                },
+                {
+                    "role": "assistant",
+                    "content": "Persisted chart reply",
+                    "metadata": {"request_id": "request-1"},
+                    "artifacts": [
+                        {
+                            "artifact_id": "chart-secret-1",
+                            "type": "chart",
+                            "chart_type": "bar",
+                            "title": "Revenue",
+                            "description": "Monthly revenue.",
+                            "renderer": "echarts",
+                            "spec_version": "1.0",
+                            "data_mode": "inline",
+                            "data": [{"month": "SECRET_ROW", "revenue": 1200}],
+                            "data_ref": None,
+                            "encoding": {"x": "month", "y": ["revenue"]},
+                            "options": {},
+                            "warnings": [],
+                            "metadata": {"source": "workflow_state"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": "Thanks",
+                    "metadata": {"request_id": "request-2"},
+                },
+            ]
+        },
+        "workflow": {"current_step": "answered", "pending_actions": [], "scratch": {}},
+        "metadata": {},
+        "last_result": {},
+    }
+
+    refresh_session_summary_metadata(
+        state,
+        settings=settings,
+        updated_at="2026-07-11T00:00:00+00:00",
+    )
+    snapshot = workflow_state_snapshot_from_document(
+        session_id="session_1",
+        state=state,
+        version=4,
+    )
+
+    window = project_conversation_context_window(
+        state=snapshot,
+        settings=settings,
+        current_request_id=None,
+    )
+
+    assert [message.content for message in window.messages] == ["Thanks"]
+    assert window.session_summary_used is True
+    assert window.session_summary is not None
+    assert "Persisted chart reply" in window.session_summary
+    assert "SECRET_ROW" not in window.session_summary

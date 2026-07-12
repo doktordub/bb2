@@ -1,4 +1,6 @@
 import { waitForShellReady } from "../core/app-shell.js";
+import { createChatVisualizationController, resolveChatVisualizationConfig } from "./artifacts.js";
+import { resolveVisualizationCapabilityState } from "../visualization/runtime-capabilities.js";
 import { bindConversationActions, bindComposerShell, bindLayoutActions, applyComposerPinState } from "./composer.js";
 import { refreshCounter, setConversationLoading, updateCounter } from "./conversation.js";
 import { bindDrawers } from "./drawers.js";
@@ -22,6 +24,15 @@ export async function initializeChatPage() {
 	}
 
 	const shellState = await waitForShellReady();
+	const pageVisualizationConfig = resolveChatVisualizationConfig(refs.chatWorkspace);
+	const visualizationState = resolveVisualizationCapabilityState(shellState.capabilities, {
+		clientLimits: pageVisualizationConfig,
+	});
+	shellState.visualization = visualizationState;
+	refs.chatVisualization = createChatVisualizationController({
+		config: visualizationState.limits || pageVisualizationConfig,
+		visualizationState,
+	});
 	const runtimeState = createRuntimeState(shellState);
 	const refreshControls = () => updateActionButtons(runtimeState, refs, {
 		refreshCounter: () => refreshCounter(refs),

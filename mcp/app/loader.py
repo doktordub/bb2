@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import importlib
 import importlib.util
 from pathlib import Path
 import re
 import sys
+from threading import Thread
 from typing import Any
 
 from fastmcp import FastMCP
@@ -31,6 +33,7 @@ from app.observability.logging import emit_observability_event
 from app.registry import ToolRegistry
 from app.schemas import AppSettings, ToolEnablementSettings
 from app.tools_base.manifest import ToolManifest
+from app.tools_base.models import ToolHealth
 from app.tools_base.plugin import PluginFactory
 from app.tools_base.validation import (
     load_manifest,
@@ -183,7 +186,13 @@ class ToolLoader:
             )
             validate_plugin_instance(plugin, resolved_manifest)
             plugin.register(server)
-            registry.register_plugin(plugin, resolved_manifest, merged_config)
+            plugin_health = self._collect_plugin_health(plugin, resolved_manifest.name)
+            registry.register_plugin(
+                plugin,
+                resolved_manifest,
+                merged_config,
+                health=plugin_health,
+            )
             emit_observability_event(
                 self.services.logger,
                 self.services.tracer,
@@ -196,6 +205,7 @@ class ToolLoader:
                         descriptor.name for descriptor in resolved_manifest.tool_descriptors()
                     ],
                     "status": "loaded",
+                    "health": plugin_health.state,
                 },
             )
         except Exception as error:
@@ -233,6 +243,60 @@ class ToolLoader:
             validate_tool_config(manifest, validation_config)
 
         return merged_config
+
+    def _collect_plugin_health(self, plugin: object, tool_name: str) -> ToolHealth:
+        async def _read_health() -> ToolHealth:
+            result = await plugin.health()  # type: ignore[attr-defined]
+            return ToolHealth(state=result.state, details=dict(result.details))
+
+        try:
+            return asyncio.run(_read_health())
+        except RuntimeError:
+            health_result: ToolHealth | None = None
+            health_error: BaseException | None = None
+
+            def _runner() -> None:
+                nonlocal health_result, health_error
+                try:
+                    health_result = asyncio.run(_read_health())
+                except BaseException as error:  # pragma: no cover - surfaced after join
+                    health_error = error
+
+            thread = Thread(target=_runner, name=f"mcp-{tool_name}-health", daemon=True)
+            thread.start()
+            thread.join()
+            if health_error is not None:
+                return self._degraded_plugin_health(tool_name, health_error)
+            if health_result is not None:
+                return health_result
+            return ToolHealth(
+                state="degraded",
+                details={
+                    "status": "degraded",
+                    "plugin_loaded": True,
+                    "message": "Plugin health check did not return a result.",
+                },
+            )
+        except Exception as error:
+            return self._degraded_plugin_health(tool_name, error)
+
+    def _degraded_plugin_health(self, tool_name: str, error: BaseException) -> ToolHealth:
+        self.services.logger.warning(
+            "mcp.tool.health.degraded",
+            payload={
+                "tool_name": tool_name,
+                "error_type": error.__class__.__name__,
+                "message": str(error) or error.__class__.__name__,
+            },
+        )
+        return ToolHealth(
+            state="degraded",
+            details={
+                "status": "degraded",
+                "plugin_loaded": True,
+                "message": "Plugin health check failed during startup.",
+            },
+        )
 
     def _load_local_config(
         self,

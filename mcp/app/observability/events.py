@@ -17,6 +17,13 @@ MCP_TOOL_CALL_FAILED = "mcp_tool_call_failed"
 MCP_TOOL_CALL_TIMEOUT = "mcp_tool_call_timeout"
 MCP_TOOL_CALL_CANCELLED = "mcp_tool_call_cancelled"
 MCP_HEALTH_CHECKED = "mcp_health_checked"
+MCP_REPORTING_QUERY_STARTED = "mcp_reporting_query_started"
+MCP_REPORTING_REQUEST_VALIDATED = "mcp_reporting_request_validated"
+MCP_REPORTING_PROVIDER_CALL_STARTED = "mcp_reporting_provider_call_started"
+MCP_REPORTING_PROVIDER_CALL_COMPLETED = "mcp_reporting_provider_call_completed"
+MCP_REPORTING_PROVIDER_CALL_FAILED = "mcp_reporting_provider_call_failed"
+MCP_REPORTING_RESULT_NORMALIZED = "mcp_reporting_result_normalized"
+MCP_REPORTING_RESULT_TRUNCATED = "mcp_reporting_result_truncated"
 MCP_SHUTDOWN_STARTED = "mcp_shutdown_started"
 MCP_SHUTDOWN_COMPLETED = "mcp_shutdown_completed"
 
@@ -35,6 +42,13 @@ EVENT_NAMES = (
     MCP_TOOL_CALL_TIMEOUT,
     MCP_TOOL_CALL_CANCELLED,
     MCP_HEALTH_CHECKED,
+    MCP_REPORTING_QUERY_STARTED,
+    MCP_REPORTING_REQUEST_VALIDATED,
+    MCP_REPORTING_PROVIDER_CALL_STARTED,
+    MCP_REPORTING_PROVIDER_CALL_COMPLETED,
+    MCP_REPORTING_PROVIDER_CALL_FAILED,
+    MCP_REPORTING_RESULT_NORMALIZED,
+    MCP_REPORTING_RESULT_TRUNCATED,
     MCP_SHUTDOWN_STARTED,
     MCP_SHUTDOWN_COMPLETED,
 )

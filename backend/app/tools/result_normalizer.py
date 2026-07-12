@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -24,6 +25,18 @@ _MAX_CONTENT_BLOCKS = 20
 _MAX_TABLE_ROWS = 100
 _MAX_FILE_REFS = 50
 _RESULT_OMITTED_TEXT = "Tool result omitted because it exceeded backend limits."
+_STRUCTURED_DATASET_OUTPUT_SCHEMA = "structured_dataset_v1"
+
+
+@dataclass(frozen=True, slots=True)
+class _StructuredDatasetEnvelopeResult:
+    status: str
+    structured_content: dict[str, Any] | None
+    metadata: dict[str, Any]
+    error_detail: ToolErrorDetail | None = None
+    result_count: int | None = None
+    truncated: bool = False
+    summary_message: str | None = None
 
 
 class ToolResultNormalizer:
@@ -52,23 +65,33 @@ class ToolResultNormalizer:
         duration_ms: int | None = None,
     ) -> ToolExecutionResult:
         max_result_bytes = definition.max_result_bytes or self._default_max_result_bytes
+        adapted_envelope = _adapt_structured_dataset_envelope(result.structured_content)
+        effective_status = result.status if adapted_envelope is None else adapted_envelope.status
         normalized_content, content_truncated = self._normalize_content_blocks(result.content)
         structured_content, structured_truncated = self._normalize_structured_content(
             result.structured_content
+            if adapted_envelope is None
+            else adapted_envelope.structured_content
         )
         metadata = self._normalize_metadata(result.metadata)
+        if adapted_envelope is not None and adapted_envelope.metadata:
+            metadata.update(self._normalize_metadata(adapted_envelope.metadata))
         truncated = content_truncated or structured_truncated
+        if adapted_envelope is not None:
+            truncated = truncated or adapted_envelope.truncated
 
-        error_detail: ToolErrorDetail | None = None
-        if result.status != "completed":
+        error_detail: ToolErrorDetail | None = (
+            None if adapted_envelope is None else adapted_envelope.error_detail
+        )
+        if effective_status != "completed" and error_detail is None:
             error_detail = ToolErrorDetail(
-                code=_error_code_for_status(result.status),
+                code=_error_code_for_status(effective_status),
                 message=_truncate_text(
                     result.error_message or "Tool execution failed.",
                     max_chars=512,
                 ),
                 category="tool_execution",
-                retryable=result.status == "timeout",
+                retryable=effective_status == "timeout",
             )
 
         normalized_content, structured_content, metadata, reduced = self._fit_to_budget(
@@ -85,14 +108,25 @@ class ToolResultNormalizer:
             metadata=metadata,
         )
         summary = ToolResultSummary(
-            result_count=_infer_result_count(structured_content, normalized_content),
+            result_count=(
+                adapted_envelope.result_count
+                if adapted_envelope is not None and adapted_envelope.result_count is not None
+                else _infer_result_count(structured_content, normalized_content)
+            ),
             bytes_returned=bytes_returned,
             truncated=truncated,
-            safe_message=_summary_message(result.status, truncated, error_detail),
+            safe_message=_summary_message(
+                effective_status,
+                truncated,
+                error_detail,
+                summary_message=(
+                    None if adapted_envelope is None else adapted_envelope.summary_message
+                ),
+            ),
         )
         return ToolExecutionResult(
             tool_name=definition.logical_name,
-            status=result.status,
+            status=effective_status,
             content=normalized_content,
             structured_content=structured_content,
             summary=summary,
@@ -372,12 +406,136 @@ def _summary_message(
     status: str,
     truncated: bool,
     error_detail: ToolErrorDetail | None,
+    *,
+    summary_message: str | None = None,
 ) -> str | None:
     if error_detail is not None:
-        return error_detail.message
+        return summary_message or error_detail.message
     if status == "completed" and truncated:
-        return "Tool result truncated to backend limits."
+        return summary_message or "Tool result truncated to backend limits."
     return None
+
+
+def _adapt_structured_dataset_envelope(
+    structured_content: Mapping[str, Any] | None,
+) -> _StructuredDatasetEnvelopeResult | None:
+    if structured_content is None:
+        return None
+
+    ok = structured_content.get("ok")
+    meta = structured_content.get("meta")
+    if not isinstance(ok, bool) or not isinstance(meta, Mapping):
+        return None
+
+    output_schema = meta.get("output_schema")
+    if output_schema != _STRUCTURED_DATASET_OUTPUT_SCHEMA:
+        return None
+
+    summary = structured_content.get("summary")
+    summary_message = None
+    result_count = None
+    truncated = False
+    if isinstance(summary, Mapping):
+        message_value = summary.get("message")
+        if isinstance(message_value, str) and message_value.strip():
+            summary_message = message_value.strip()
+        item_count = summary.get("item_count")
+        if isinstance(item_count, int) and item_count >= 0:
+            result_count = item_count
+        truncated = summary.get("truncated") is True
+
+    metadata = {
+        "output_schema": _STRUCTURED_DATASET_OUTPUT_SCHEMA,
+        "schema_version": meta.get("schema_version"),
+    }
+    dataset_id = meta.get("dataset_id")
+    if isinstance(dataset_id, str) and dataset_id.strip():
+        metadata["dataset_id"] = dataset_id.strip()
+
+    if ok:
+        data = structured_content.get("data")
+        dataset = data.get("dataset") if isinstance(data, Mapping) else None
+        if isinstance(dataset, Mapping):
+            return _StructuredDatasetEnvelopeResult(
+                status="completed",
+                structured_content=dict(dataset),
+                metadata=metadata,
+                result_count=result_count,
+                truncated=truncated,
+                summary_message=summary_message,
+            )
+
+        return _StructuredDatasetEnvelopeResult(
+            status="failed",
+            structured_content=None,
+            metadata=metadata,
+            error_detail=ToolErrorDetail(
+                code="tool_contract_error",
+                message="The MCP tool returned a structured dataset envelope without a dataset payload.",
+                category="tool_contract",
+                retryable=False,
+            ),
+            result_count=result_count,
+            truncated=truncated,
+            summary_message=summary_message,
+        )
+
+    error_detail = _error_detail_from_structured_dataset_envelope(
+        structured_content,
+        summary_message=summary_message,
+    )
+    return _StructuredDatasetEnvelopeResult(
+        status=_status_for_structured_dataset_error(error_detail.code),
+        structured_content=None,
+        metadata=metadata,
+        error_detail=error_detail,
+        result_count=result_count,
+        truncated=truncated,
+        summary_message=summary_message,
+    )
+
+
+def _error_detail_from_structured_dataset_envelope(
+    structured_content: Mapping[str, Any],
+    *,
+    summary_message: str | None,
+) -> ToolErrorDetail:
+    errors = structured_content.get("errors")
+    if isinstance(errors, Sequence) and not isinstance(errors, str | bytes | bytearray):
+        for item in errors:
+            if not isinstance(item, Mapping):
+                continue
+            code = item.get("code")
+            message = item.get("message")
+            retryable = item.get("retryable")
+            details = item.get("details")
+            return ToolErrorDetail(
+                code=(code.strip() if isinstance(code, str) and code.strip() else "tool_failed"),
+                message=(
+                    summary_message
+                    or message.strip()
+                    if isinstance(message, str) and message.strip()
+                    else "The MCP tool returned an error result."
+                ),
+                category="tool_execution",
+                retryable=retryable if isinstance(retryable, bool) else None,
+                metadata=dict(details) if isinstance(details, Mapping) else {},
+            )
+
+    return ToolErrorDetail(
+        code="tool_failed",
+        message=summary_message or "The MCP tool returned an error result.",
+        category="tool_execution",
+        retryable=False,
+    )
+
+
+def _status_for_structured_dataset_error(code: str) -> str:
+    if code == "timeout":
+        return "timeout"
+    if code == "cancelled":
+        return "cancelled"
+    return "failed"
 
 
 def _payload_size_bytes(

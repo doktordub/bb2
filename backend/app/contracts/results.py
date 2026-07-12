@@ -28,6 +28,8 @@ class AgentResult:
     memory_updates: list[dict[str, Any]] = field(default_factory=list)
     handoff_to: str | None = None
     citations: list[dict[str, Any]] = field(default_factory=list)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    context_contributions: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -44,6 +46,8 @@ class OrchestrationResult:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     memory_updates: list[dict[str, Any]] = field(default_factory=list)
     citations: list[dict[str, Any]] = field(default_factory=list)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    context_contributions: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

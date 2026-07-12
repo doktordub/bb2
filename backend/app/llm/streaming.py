@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
-from app.contracts.llm import LLMStreamEvent, LLMTokenUsage
+from app.contracts.llm import LLMStreamEvent, LLMTokenUsage, LLMToolCall
 from app.llm.models import ProviderLLMStreamEvent, ResolvedLLMRequest
 
 
@@ -13,6 +14,8 @@ class StreamAssembly:
     """Collected stream state used by the gateway during streaming calls."""
 
     text_parts: list[str] = field(default_factory=list)
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
+    reasoning: dict[str, Any] = field(default_factory=dict)
     usage: LLMTokenUsage | None = None
     finish_reason: str | None = None
 
@@ -39,6 +42,8 @@ def normalize_stream_event(
             profile=resolved.profile_name,
             provider=resolved.provider_name,
             model=resolved.model,
+            tool_calls=event.tool_calls,
+            reasoning=event.reasoning,
             metadata=dict(event.metadata),
         )
     if event.type == "metadata":
@@ -47,13 +52,17 @@ def normalize_stream_event(
             profile=resolved.profile_name,
             provider=resolved.provider_name,
             model=resolved.model,
+            tool_calls=list(event.tool_calls),
+            reasoning=dict(event.reasoning),
             metadata=dict(event.metadata),
         )
     return LLMStreamEvent.completed(
         profile=resolved.profile_name,
         provider=resolved.provider_name,
         model=resolved.model,
+        tool_calls=event.tool_calls,
         finish_reason=event.finish_reason,
+        reasoning=event.reasoning,
         usage=event.usage,
         metadata=dict(event.metadata),
     )
@@ -62,6 +71,10 @@ def normalize_stream_event(
 def update_stream_assembly(*, event: ProviderLLMStreamEvent, assembly: StreamAssembly) -> None:
     if event.type == "delta" and event.text:
         assembly.text_parts.append(event.text)
+    if event.tool_calls:
+        assembly.tool_calls = list(event.tool_calls)
+    if event.reasoning:
+        assembly.reasoning = dict(event.reasoning)
     if event.usage is not None:
         assembly.usage = event.usage
     if event.finish_reason is not None:

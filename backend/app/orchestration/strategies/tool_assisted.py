@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, Literal
 
 from app.agents.errors import AgentLLMError
+from app.agents.models import AgentRunResult
 from app.agents.result_builder import build_run_result
 from app.contracts.agents import AgentPlugin
 from app.contracts.context import OrchestrationContext
+from app.contracts.llm import LLMMessage, LLMToolCall, LLMToolCallFunction
 from app.contracts.results import OrchestrationResult as LegacyOrchestrationResult
 from app.contracts.results import StreamEvent
 from app.contracts.tools import ToolDefinition, ToolExecutionRequest, ToolExecutionResult, ToolScopes
@@ -191,14 +194,21 @@ async def _run_strategy(
                 tool_result=tool_result,
             )
         else:
+            native_followup_messages = _build_native_tool_followup_messages(
+                context,
+                llm_profile=llm_profile,
+                tool_intent=tool_intent,
+                tool_result=tool_result,
+            )
             try:
                 final_result = await run_agent_step(
                     context,
                     component=_COMPONENT,
                     agent=agent,
                     strategy_name=strategy_name,
-                    available_tools=available_tools,
-                    tool_context=(_tool_result_section(tool_result),),
+                    available_tools=() if native_followup_messages else available_tools,
+                    tool_context=() if native_followup_messages else (_tool_result_section(tool_result),),
+                    llm_followup_messages=native_followup_messages,
                     llm_profile=llm_profile,
                     metadata={"tool_loop_iterations": int(context.metadata.get("tool_loop_iterations", 0))},
                 )
@@ -555,6 +565,41 @@ def _tool_result_section(tool_result: ToolExecutionResult) -> PromptSection:
     )
 
 
+def _build_native_tool_followup_messages(
+    context: OrchestrationContext,
+    *,
+    llm_profile: str | None,
+    tool_intent: ToolIntent,
+    tool_result: ToolExecutionResult,
+) -> tuple[LLMMessage, ...]:
+    if llm_profile is None or not _profile_supports_tool_calling(context, llm_profile):
+        return ()
+
+    tool_call_id = _read_optional_str(tool_intent.metadata.get("tool_call_id"))
+    if tool_call_id is None:
+        return ()
+
+    assistant_message = LLMMessage(
+        role="assistant",
+        content="",
+        tool_calls=[
+            LLMToolCall(
+                id=tool_call_id,
+                function=LLMToolCallFunction(
+                    name=tool_intent.tool_name,
+                    arguments=json.dumps(tool_intent.arguments, ensure_ascii=True, sort_keys=True),
+                ),
+            )
+        ],
+    )
+    tool_message = LLMMessage(
+        role="tool",
+        content=tool_result_safe_text(tool_result),
+        tool_call_id=tool_call_id,
+    )
+    return (assistant_message, tool_message)
+
+
 def _supports_direct_tool_summary(tool_result: ToolExecutionResult) -> bool:
     return tool_result.tool_name == "websearch.search"
 
@@ -564,7 +609,7 @@ def _build_direct_tool_summary_result(
     agent_name: str,
     llm_profile: str | None,
     tool_result: ToolExecutionResult,
-):
+) -> AgentRunResult:
     return build_run_result(
         status="completed",
         answer=_format_direct_tool_answer(tool_result),
@@ -610,6 +655,13 @@ def _format_direct_tool_answer(tool_result: ToolExecutionResult) -> str:
 def _read_finish_reason(metadata: dict[str, Any]) -> str:
     finish_reason = _read_optional_str(metadata.get("finish_reason"))
     return finish_reason or "completed"
+
+
+def _profile_supports_tool_calling(
+    context: OrchestrationContext,
+    llm_profile: str,
+) -> bool:
+    return context.config.get(f"llm.profiles.{llm_profile}.supports_tool_calling", None) is True
 
 
 def _cancellation_token(context: OrchestrationContext) -> object | None:

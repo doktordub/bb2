@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+from collections.abc import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config.settings import load_settings
 from app.main import create_app
+from app.session.models import SessionStreamEvent
 
 
 SETTINGS_ENV_VARS = [
@@ -126,6 +128,113 @@ def test_stream_route_emits_response_error_event_when_service_fails(
     }
 
 
+def test_stream_route_emits_artifact_lifecycle_events(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    app = build_app(monkeypatch, tmp_path)
+
+    class ArtifactStreamingSessionService:
+        async def handle_chat(self, **_: object) -> object:
+            raise AssertionError("handle_chat should not be called")
+
+        async def stream_chat(self, **_: object) -> AsyncIterator[SessionStreamEvent]:
+            yield SessionStreamEvent(
+                event_type="response.started",
+                trace_id="trace-stream-artifact-1234",
+                session_id="session_artifact_123",
+                data={"schema_version": "1.0"},
+                sequence_no=1,
+            )
+            yield SessionStreamEvent(
+                event_type="response.delta",
+                trace_id="trace-stream-artifact-1234",
+                session_id="session_artifact_123",
+                data={"delta": "Here is your chart."},
+                sequence_no=2,
+            )
+            yield SessionStreamEvent(
+                event_type="artifact.started",
+                trace_id="trace-stream-artifact-1234",
+                session_id="session_artifact_123",
+                data={
+                    "artifact_id": "chart-1",
+                    "type": "chart",
+                    "chart_type": "bar",
+                    "renderer": "echarts",
+                    "spec_version": "1.0",
+                    "data_mode": "inline",
+                },
+                sequence_no=3,
+            )
+            yield SessionStreamEvent(
+                event_type="artifact.completed",
+                trace_id="trace-stream-artifact-1234",
+                session_id="session_artifact_123",
+                data={
+                    "artifact": {
+                        "artifact_id": "chart-1",
+                        "type": "chart",
+                        "chart_type": "bar",
+                        "title": "Revenue",
+                        "description": "Monthly revenue.",
+                        "renderer": "echarts",
+                        "spec_version": "1.0",
+                        "data_mode": "inline",
+                        "data": [{"month": "Jan", "revenue": 1200}],
+                        "data_ref": None,
+                        "encoding": {"x": "month", "y": ["revenue"]},
+                        "options": {},
+                        "warnings": [],
+                        "metadata": {"source": "workflow_state"},
+                    }
+                },
+                sequence_no=4,
+            )
+            yield SessionStreamEvent(
+                event_type="response.completed",
+                trace_id="trace-stream-artifact-1234",
+                session_id="session_artifact_123",
+                data={"finish_reason": "stop", "duration_ms": 0},
+                sequence_no=5,
+            )
+
+        async def reset_session(self, **_: object) -> object:
+            raise AssertionError("reset_session should not be called")
+
+    with TestClient(app) as client:
+        app.state.container = replace(
+            app.state.container,
+            session_service=ArtifactStreamingSessionService(),
+        )
+        response = client.post(
+            "/api/v1/chat/stream",
+            headers={"x-trace-id": "trace-stream-artifact-1234"},
+            json={"message": "show me a chart"},
+        )
+
+    assert response.status_code == 200
+    events = _parse_sse_events(response.text)
+    assert [event["event"] for event in events] == [
+        "response.started",
+        "response.delta",
+        "artifact.started",
+        "artifact.completed",
+        "response.completed",
+    ]
+    assert events[2]["data"] == {
+        "artifact_id": "chart-1",
+        "type": "chart",
+        "chart_type": "bar",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+    }
+    assert events[2]["id"] == "chart-1"
+    assert events[3]["id"] == "chart-1"
+    assert events[3]["data"]["artifact"]["artifact_id"] == "chart-1"
+
+
 def _parse_sse_events(body: str) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
     for chunk in body.strip().split("\n\n"):
@@ -133,6 +242,8 @@ def _parse_sse_events(body: str) -> list[dict[str, object]]:
             continue
         parsed: dict[str, object] = {}
         for line in chunk.splitlines():
+            if line.startswith("id: "):
+                parsed["id"] = line.removeprefix("id: ")
             if line.startswith("event: "):
                 parsed["event"] = line.removeprefix("event: ")
             elif line.startswith("data: "):

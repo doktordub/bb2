@@ -112,6 +112,130 @@ def test_metadata_event_can_be_suppressed() -> None:
     assert encoded is None
 
 
+def test_artifact_events_encode_with_artifact_ids() -> None:
+    settings = ApiSseSettings(
+        heartbeat_seconds=15,
+        send_trace_id_event=False,
+        send_metadata_events=True,
+    )
+
+    started = encode_session_stream_event(
+        SessionStreamEvent(
+            event_type="artifact.started",
+            trace_id="trace-123",
+            session_id="session-123",
+            data={
+                "artifact_id": "chart-1",
+                "type": "chart",
+                "chart_type": "bar",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "inline",
+            },
+        ),
+        settings=settings,
+    )
+    completed = encode_session_stream_event(
+        SessionStreamEvent(
+            event_type="artifact.completed",
+            trace_id="trace-123",
+            session_id="session-123",
+            data={
+                "artifact": {
+                    "artifact_id": "chart-1",
+                    "type": "chart",
+                    "chart_type": "bar",
+                    "title": "Revenue",
+                    "description": "Monthly revenue.",
+                    "renderer": "echarts",
+                    "spec_version": "1.0",
+                    "data_mode": "inline",
+                    "data": [{"month": "Jan", "revenue": 1200}],
+                    "data_ref": None,
+                    "encoding": {"x": "month", "y": ["revenue"]},
+                    "options": {},
+                    "warnings": [],
+                    "metadata": {"source": "workflow_state"},
+                }
+            },
+        ),
+        settings=settings,
+    )
+
+    assert _decode_frame(started) == {
+        "event": "artifact.started",
+        "id": "chart-1",
+        "data": {
+            "artifact_id": "chart-1",
+            "type": "chart",
+            "chart_type": "bar",
+            "renderer": "echarts",
+            "spec_version": "1.0",
+            "data_mode": "inline",
+        },
+    }
+    assert _decode_frame(completed) == {
+        "event": "artifact.completed",
+        "id": "chart-1",
+        "data": {
+            "artifact": {
+                "artifact_id": "chart-1",
+                "type": "chart",
+                "chart_type": "bar",
+                "title": "Revenue",
+                "description": "Monthly revenue.",
+                "renderer": "echarts",
+                "spec_version": "1.0",
+                "data_mode": "inline",
+                "data": [{"month": "Jan", "revenue": 1200}],
+                "data_ref": None,
+                "encoding": {"x": "month", "y": ["revenue"]},
+                "options": {},
+                "warnings": [],
+                "metadata": {"source": "workflow_state"},
+            }
+        },
+    }
+
+
+def test_reference_artifact_events_rewrite_public_data_ref() -> None:
+    settings = ApiSseSettings(
+        heartbeat_seconds=15,
+        send_trace_id_event=False,
+        send_metadata_events=True,
+    )
+
+    completed = encode_session_stream_event(
+        SessionStreamEvent(
+            event_type="artifact.completed",
+            trace_id="trace-123",
+            session_id="session-123",
+            data={
+                "artifact": {
+                    "artifact_id": "chart-2",
+                    "type": "chart",
+                    "chart_type": "line",
+                    "title": "Revenue Trend",
+                    "description": "Monthly revenue trend.",
+                    "renderer": "echarts",
+                    "spec_version": "1.0",
+                    "data_mode": "reference",
+                    "data": None,
+                    "data_ref": "artifact://session-123/chart-2",
+                    "encoding": {"x": "month", "y": ["revenue"]},
+                    "options": {},
+                    "warnings": [],
+                    "metadata": {"source": "workflow_state"},
+                }
+            },
+        ),
+        settings=settings,
+        artifact_retrieval_endpoint="/artifacts/{artifact_id}",
+    )
+
+    assert _decode_frame(completed)["data"]["artifact"]["data_ref"] == "/artifacts/chart-2"
+
+
 def test_response_delta_encoding_preserves_significant_whitespace() -> None:
     settings = ApiSseSettings(
         heartbeat_seconds=15,
@@ -146,3 +270,16 @@ def _decode_payload(frame: str | None) -> dict[str, object]:
     assert frame is not None
     line = next(item for item in frame.splitlines() if item.startswith("data: "))
     return json.loads(line.removeprefix("data: "))
+
+
+def _decode_frame(frame: str | None) -> dict[str, object]:
+    assert frame is not None
+    parsed: dict[str, object] = {}
+    for line in frame.splitlines():
+        if line.startswith("id: "):
+            parsed["id"] = line.removeprefix("id: ")
+        elif line.startswith("event: "):
+            parsed["event"] = line.removeprefix("event: ")
+        elif line.startswith("data: "):
+            parsed["data"] = json.loads(line.removeprefix("data: "))
+    return parsed

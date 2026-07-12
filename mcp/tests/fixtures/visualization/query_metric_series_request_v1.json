@@ -1,0 +1,17 @@
+{
+  "metric_names": [
+    "income",
+    "expense"
+  ],
+  "dimension": "reporting_period",
+  "start_date": "2026-01-01",
+  "end_date": "2026-06-30",
+  "filters": {
+    "currency": "USD",
+    "business_unit": "core"
+  },
+  "aggregation": "sum",
+  "granularity": "month",
+  "sort": "asc",
+  "limit": 6
+}

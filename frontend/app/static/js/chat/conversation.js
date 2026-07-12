@@ -4,6 +4,12 @@ import { renderMarkdownLite } from "./markdown.js";
 import { syncBusyState, toPositiveInteger, truncateLabel } from "./runtime-state.js";
 
 const formatDate = (value) => formatDateValue(value, "Timestamp unavailable");
+let nextMessageSequence = 0;
+
+function buildMessageId() {
+  nextMessageSequence += 1;
+  return `chat-message-${nextMessageSequence}`;
+}
 
 function syncMessageCharCount(card, content) {
   if (!card) {
@@ -35,9 +41,17 @@ function setThreadVisible(refs, visible) {
   }
 }
 
-function createMessageCard({ role, content, createdAt, metadata = {}, isLoading = false }) {
+function createMessageCard({ role, content, createdAt, metadata = {}, isLoading = false, messageId = null, sessionId = null }) {
   const article = document.createElement("article");
   article.className = `chat-message ${role === "user" ? "chat-message--user" : "chat-message--assistant"}`;
+  article.dataset.messageId = messageId || buildMessageId();
+  article.dataset.messageRole = role;
+  if (sessionId) {
+    article.dataset.sessionId = sessionId;
+  }
+  if (typeof metadata.trace_id === "string" && metadata.trace_id) {
+    article.dataset.traceId = metadata.trace_id;
+  }
   syncMessageCharCount(article, content);
 
   const bubble = document.createElement("div");
@@ -190,6 +204,9 @@ export function setConversationLoading(runtimeState, refs, loading, message = "l
 
 export function clearConversation(refs) {
   if (refs.conversationThread) {
+    refs.conversationThread
+      .querySelectorAll?.(".chat-message[data-message-id]")
+      .forEach((card) => refs.chatVisualization?.disposeMessage?.(card));
     refs.conversationThread.replaceChildren();
   }
   setThreadVisible(refs, false);
@@ -248,4 +265,17 @@ export function updateMessageMeta(card, entries) {
     line.textContent = entry;
     meta.append(line);
   });
+}
+
+export function setMessageContext(card, { sessionId = null, traceId = null } = {}) {
+  if (!card?.dataset) {
+    return;
+  }
+
+  if (sessionId) {
+    card.dataset.sessionId = sessionId;
+  }
+  if (traceId) {
+    card.dataset.traceId = traceId;
+  }
 }

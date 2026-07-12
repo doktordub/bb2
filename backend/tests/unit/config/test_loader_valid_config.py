@@ -91,6 +91,14 @@ def test_load_validated_config_parses_valid_full_fixture() -> None:
     assert config.health.include_component_details is True
 
 
+def test_shipped_app_config_allows_local_reasoning_for_fallback_answer() -> None:
+    config = load_validated_config("config/app.yaml", env={})
+
+    assert "fallback_answer" in config.llm.profiles["local_reasoning"].allowed_for.strategies
+    assert config.policy.visualization is not None
+    assert "deterministic_synthesis" in config.policy.visualization.allowed_data_sources
+
+
 def test_default_external_catalogs_exist_and_parse() -> None:
     clear_builtin_agent_catalog_cache()
     clear_message_catalog_cache()
@@ -172,6 +180,42 @@ def test_load_validated_config_accepts_orchestration_override_fixtures(
 
     assert config.orchestration.defaults.strategy == expected_strategy
     assert expected_usecase in config.orchestration.usecases
+
+
+@pytest.mark.parametrize(
+    ("override_name", "expected_enabled", "expected_active_usecase"),
+    [
+        ("task_execution_chat_disabled.yaml", False, "default_chat"),
+        ("task_execution_chat_staged.yaml", True, "default_chat"),
+        ("task_execution_chat_enabled.yaml", True, "task_execution_chat"),
+    ],
+)
+def test_load_validated_config_accepts_task_execution_rollout_fixtures(
+    override_name: str,
+    expected_enabled: bool,
+    expected_active_usecase: str,
+) -> None:
+    config = load_validated_config(
+        FIXTURES_DIR / "valid_minimal.yaml",
+        override_path=FIXTURES_DIR / override_name,
+        env={},
+    )
+
+    usecase = config.orchestration.usecases["task_execution_chat"]
+
+    assert config.app.active_usecase == expected_active_usecase
+    assert usecase.enabled is expected_enabled
+    assert usecase.strategy == "bounded_planner"
+    assert set(usecase.allowed_agents) == {"chart_agent", "support_agent", "task_execution_agent"}
+    assert set(usecase.allowed_strategies) == {"bounded_planner", "fallback_answer"}
+    assert usecase.metadata["routing_mode"] == "task_first"
+    assert usecase.metadata["assessment_agent"] == "task_execution_agent"
+    assert usecase.metadata["keep_visualization_override_disabled"] is True
+    assert config.agents.plugins["task_execution_agent"].type == "task_execution"
+    assert config.agents.plugins["chart_agent"].type == "chart_agent"
+    assert "task_execution_chat" in config.llm.profiles["local_reasoning"].allowed_for.usecases
+    assert "task_execution_agent" in config.llm.profiles["local_reasoning"].allowed_for.agents
+    assert "bounded_planner" in config.llm.profiles["local_reasoning"].allowed_for.strategies
 
 
 @pytest.mark.parametrize(

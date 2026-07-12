@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Visualization Foundation | {{ frontend_app_name }}{% endblock %}
+
+{% block content %}
+<section class="page-shell page-shell--wide container-xxl visualization-foundation" aria-labelledby="visualization-foundation-title">
+  <article class="visualization-foundation__header">
+    <p class="visualization-foundation__eyebrow">Phase 2</p>
+    <h1 class="visualization-foundation__title" id="visualization-foundation-title">Visualization foundation</h1>
+    <p class="visualization-foundation__lede">This isolated gallery exercises the shared backend validation fixtures across every enabled V1 chart type through the frontend parser, validator, registry, adapters, and renderer lifecycle without wiring live chat yet.</p>
+  </article>
+
+  <article class="visualization-foundation__card" aria-label="Visualization foundation status">
+    <p class="visualization-foundation__meta">Fixture source: backend/tests/fixtures/visualization/chart_validation_cases_v1.json</p>
+    <p class="visualization-foundation__supported" data-visualization-supported>Loading supported chart adapters...</p>
+    <p class="visualization-foundation__status" data-visualization-status>Preparing the Phase 2 fixture gallery...</p>
+  </article>
+
+  <section class="visualization-gallery" data-visualization-demo-grid aria-label="Visualization fixture gallery"></section>
+  <script type="application/json" data-visualization-fixture>{{ visualization_fixture | tojson }}</script>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='vendor/echarts/echarts-5.5.1.min.js', v=static_version) }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/visualization/index.js', v=static_version) }}"></script>
+{% endblock %}

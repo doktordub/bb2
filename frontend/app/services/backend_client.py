@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 from uuid import uuid4
 
 import httpx
@@ -54,6 +54,7 @@ class BackendClient:
         query: Sequence[tuple[str, str]] | None = None,
         json_body: dict[str, Any] | None = None,
         timeout_seconds: int | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> BackendJsonResult:
         request_id = _build_frontend_request_id()
         try:
@@ -63,7 +64,7 @@ class BackendClient:
                     url=path,
                     params=list(query or []),
                     json=json_body,
-                    headers=self._build_headers(request_id=request_id),
+                    headers=self._build_headers(request_id=request_id, extra_headers=headers),
                 )
         except httpx.TimeoutException as exc:
             return self._map_transport_error(
@@ -110,6 +111,7 @@ class BackendClient:
         *,
         query: Sequence[tuple[str, str]] | None = None,
         json_body: dict[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> BackendJsonResult | BackendStreamResult:
         request_id = _build_frontend_request_id()
         client = self._build_client(self._settings.backend_stream_timeout_seconds)
@@ -121,6 +123,7 @@ class BackendClient:
             headers=self._build_headers(
                 request_id=request_id,
                 accept_header="text/event-stream",
+                extra_headers=headers,
             ),
         )
 
@@ -226,10 +229,21 @@ class BackendClient:
             transport=self._transport,
         )
 
-    def _build_headers(self, *, request_id: str, accept_header: str = "application/json") -> dict[str, str]:
+    def _build_headers(
+        self,
+        *,
+        request_id: str,
+        accept_header: str = "application/json",
+        extra_headers: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
         return {
             "Accept": accept_header,
             FRONTEND_REQUEST_ID_HEADER: request_id,
+            **{
+                str(name): value
+                for name, value in dict(extra_headers or {}).items()
+                if isinstance(name, str) and isinstance(value, str) and value.strip()
+            },
         }
 
     def _map_json_response(

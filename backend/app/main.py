@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from app.api.errors import register_exception_handlers
 from app.api.openapi import register_api_openapi_routes
+from app.api.routes_artifacts import router as artifacts_router
 from app.api.routes_chat import router as chat_router
 from app.api.routes_capabilities import router as capabilities_router
 from app.api.routes_debug_control import router as debug_control_router
@@ -19,6 +20,7 @@ from app.api.routes_debug_traces import router as debug_trace_router
 from app.api.routes_health import router as health_router
 from app.api.routes_sessions import router as sessions_router
 from app.config.bootstrap import build_container
+from app.config.view import get_visualization_settings
 from app.config.settings import BACKEND_ROOT, Settings, load_settings
 from app.deployment.process_control import (
     RestartLaunchSpec,
@@ -267,6 +269,13 @@ def _configure_api_surface(app: FastAPI, container: FoundationContainer) -> None
     app.include_router(capabilities_router, prefix=prefix)
     app.include_router(chat_router, prefix=prefix)
     app.include_router(sessions_router, prefix=prefix)
+    visualization_settings = get_visualization_settings(container.config)
+    if (
+        visualization_settings.enabled
+        and visualization_settings.artifact_store.public_retrieval_enabled
+        and container.visualization_gateway is not None
+    ):
+        app.include_router(artifacts_router, prefix=prefix)
     if api_settings.debug_routes.enabled:
         app.include_router(debug_trace_router, prefix=prefix)
         if api_settings.debug_routes.restart_enabled:

@@ -1,0 +1,27 @@
+{
+  "artifact_id": "chart_ticket_volume_24_months",
+  "type": "chart",
+  "chart_type": "line",
+  "title": "Ticket Volume - 24 Months",
+  "description": "Provisional reference-mode fixture for later protected artifact fetch coverage.",
+  "renderer": "echarts",
+  "spec_version": "1.0",
+  "data_mode": "reference",
+  "data": null,
+  "data_ref": "/ui-api/artifacts/chart_ticket_volume_24_months",
+  "encoding": {
+    "x": "month",
+    "y": [
+      "tickets"
+    ]
+  },
+  "options": {
+    "timezone": "UTC"
+  },
+  "warnings": [],
+  "metadata": {
+    "fixture_status": "frontend_phase0_edge",
+    "contract_status": "provisional",
+    "reason": "backend_public_reference_mode_not_frozen"
+  }
+}

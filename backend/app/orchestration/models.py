@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from app.orchestration.state_delta import WorkflowStateDelta, WorkflowStateSnapshot
+    from app.visualization.models import ChartArtifact, ContextContribution
 
 _MAX_TEXT_CHARS = 8_000
 _MAX_METADATA_ITEMS = 32
@@ -43,7 +45,10 @@ _UNSAFE_KEY_PARTS = (
     "scratchpad",
 )
 _ALLOWED_STRATEGY_PLAN_ACTION_TYPES = frozenset(
-    {"memory_search", "tool_call", "agent_invoke", "llm_call", "finalize"}
+    {"memory_search", "tool_call", "agent_invoke", "llm_call", "request_user_input", "finalize"}
+)
+_ALLOWED_TASK_ASSESSMENT_RESPONSE_MODES = frozenset(
+    {"direct_answer", "request_user_input", "planned_execution"}
 )
 
 
@@ -122,6 +127,10 @@ def _normalize_optional_int(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value if value >= 0 else None
+
+
+def _normalize_bool(value: object, *, default: bool = False) -> bool:
+    return value if isinstance(value, bool) else default
 
 
 def _normalize_required_identifier(value: object, *, field_name: str) -> str:
@@ -299,6 +308,287 @@ class StrategyPlanStep:
         if self.depends_on:
             data["depends_on"] = list(self.depends_on)
         return data
+
+
+@dataclass(frozen=True, slots=True)
+class TaskAssessment:
+    """Structured task-first assessment returned before bounded execution begins."""
+
+    request_kind: str
+    response_mode: str
+    direct_answer_eligible: bool = False
+    direct_answer: str | None = None
+    clarification_question: str | None = None
+    missing_required_inputs: tuple[str, ...] = ()
+    required_deterministic_computations: tuple[str, ...] = ()
+    suggested_task_list: tuple[StrategyPlanStep, ...] = ()
+    preferred_agents: tuple[str, ...] = ()
+    preferred_tools: tuple[str, ...] = ()
+    visualization_intent: bool = False
+    safe_goal: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "request_kind",
+            _normalize_required_identifier(self.request_kind, field_name="request_kind"),
+        )
+        normalized_response_mode = _normalize_required_identifier(
+            self.response_mode,
+            field_name="response_mode",
+        )
+        if normalized_response_mode not in _ALLOWED_TASK_ASSESSMENT_RESPONSE_MODES:
+            allowed = ", ".join(sorted(_ALLOWED_TASK_ASSESSMENT_RESPONSE_MODES))
+            raise ValueError(
+                f"Invalid response_mode '{normalized_response_mode}'. Allowed values: {allowed}."
+            )
+        object.__setattr__(self, "response_mode", normalized_response_mode)
+        object.__setattr__(self, "direct_answer_eligible", bool(self.direct_answer_eligible))
+        object.__setattr__(self, "direct_answer", _normalize_optional_text(self.direct_answer))
+        object.__setattr__(
+            self,
+            "clarification_question",
+            _normalize_optional_text(self.clarification_question),
+        )
+        object.__setattr__(
+            self,
+            "missing_required_inputs",
+            _normalize_identifier_tuple(self.missing_required_inputs),
+        )
+        object.__setattr__(
+            self,
+            "required_deterministic_computations",
+            _normalize_identifier_tuple(self.required_deterministic_computations),
+        )
+        object.__setattr__(self, "suggested_task_list", tuple(self.suggested_task_list))
+        object.__setattr__(self, "preferred_agents", _normalize_identifier_tuple(self.preferred_agents))
+        object.__setattr__(self, "preferred_tools", _normalize_identifier_tuple(self.preferred_tools))
+        object.__setattr__(self, "visualization_intent", bool(self.visualization_intent))
+        object.__setattr__(self, "safe_goal", _normalize_optional_text(self.safe_goal))
+        object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))
+
+        if self.response_mode == "direct_answer":
+            if self.direct_answer is None:
+                raise ValueError("Task assessment direct_answer mode requires direct_answer.")
+            object.__setattr__(self, "direct_answer_eligible", True)
+        elif self.response_mode == "request_user_input":
+            if self.clarification_question is None:
+                raise ValueError(
+                    "Task assessment request_user_input mode requires clarification_question."
+                )
+            object.__setattr__(self, "direct_answer_eligible", False)
+        elif not self.suggested_task_list:
+            raise ValueError(
+                "Task assessment planned_execution mode requires suggested_task_list."
+            )
+
+    @classmethod
+    def from_mapping(cls, item: Mapping[str, Any]) -> "TaskAssessment":
+        nested = item.get("assessment") if isinstance(item.get("assessment"), Mapping) else item.get("task_assessment")
+        payload = nested if isinstance(nested, Mapping) else item
+        raw_task_list = payload.get("suggested_task_list")
+        if raw_task_list is None:
+            raw_task_list = payload.get("tasks")
+        raw_task_steps = _coerce_task_assessment_step_mappings(raw_task_list)
+        task_list = _normalize_task_assessment_steps(payload, raw_task_steps)
+        visualization_intent = _coerce_visualization_intent(payload, raw_task_steps)
+        preferred_agents = _coerce_identifier_sequence(payload.get("preferred_agents"))
+        if visualization_intent and "chart_agent" not in preferred_agents:
+            preferred_agents = ("chart_agent",)
+
+        return cls(
+            request_kind=_normalize_optional_text(payload.get("request_kind") or payload.get("kind")) or "general_request",
+            response_mode=_normalize_optional_text(payload.get("response_mode") or payload.get("branch")) or "planned_execution",
+            direct_answer_eligible=_normalize_bool(
+                payload.get("direct_answer_eligible"),
+                default=_normalize_optional_text(payload.get("response_mode") or payload.get("branch"))
+                == "direct_answer",
+            ),
+            direct_answer=_normalize_optional_text(payload.get("direct_answer") or payload.get("answer")),
+            clarification_question=_normalize_optional_text(
+                payload.get("clarification_question") or payload.get("question")
+            ),
+            missing_required_inputs=_coerce_identifier_sequence(
+                payload.get("missing_required_inputs") or payload.get("missing_inputs")
+            ),
+            required_deterministic_computations=_coerce_identifier_sequence(
+                payload.get("required_deterministic_computations")
+                or payload.get("deterministic_computations")
+            ),
+            suggested_task_list=tuple(task_list),
+            preferred_agents=preferred_agents,
+            preferred_tools=_coerce_identifier_sequence(payload.get("preferred_tools")),
+            visualization_intent=visualization_intent,
+            safe_goal=_normalize_optional_text(payload.get("safe_goal") or payload.get("goal")),
+            metadata=sanitize_metadata(payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}),
+        )
+
+    @classmethod
+    def from_payload(cls, payload: object) -> "TaskAssessment":
+        if isinstance(payload, TaskAssessment):
+            return payload
+        if isinstance(payload, Mapping):
+            return cls.from_mapping(payload)
+        if isinstance(payload, str):
+            decoded = _extract_json_mapping_payload(payload)
+            if not isinstance(decoded, Mapping):
+                raise TypeError("Task assessment payload must decode to a mapping.")
+            return cls.from_mapping(decoded)
+        raise TypeError("Unsupported task assessment payload.")
+
+    def as_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "request_kind": self.request_kind,
+            "response_mode": self.response_mode,
+            "direct_answer_eligible": self.direct_answer_eligible,
+            "missing_required_inputs": list(self.missing_required_inputs),
+            "required_deterministic_computations": list(self.required_deterministic_computations),
+            "suggested_task_list": [step.as_dict() for step in self.suggested_task_list],
+            "preferred_agents": list(self.preferred_agents),
+            "preferred_tools": list(self.preferred_tools),
+            "visualization_intent": self.visualization_intent,
+        }
+        if self.direct_answer is not None:
+            data["direct_answer"] = self.direct_answer
+        if self.clarification_question is not None:
+            data["clarification_question"] = self.clarification_question
+        if self.safe_goal is not None:
+            data["safe_goal"] = self.safe_goal
+        if self.metadata:
+            data["metadata"] = dict(self.metadata)
+        return data
+
+
+def _extract_json_mapping_payload(text: str) -> Mapping[str, Any] | None:
+    normalized = text.strip()
+    if not normalized:
+        return None
+
+    decoded = _try_decode_json_mapping(normalized)
+    if decoded is not None:
+        return decoded
+
+    unfenced = _strip_json_fence(normalized)
+    if unfenced != normalized:
+        decoded = _try_decode_json_mapping(unfenced)
+        if decoded is not None:
+            return decoded
+
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(normalized):
+        if character != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(normalized[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, Mapping):
+            return payload
+    return None
+
+
+def _try_decode_json_mapping(text: str) -> Mapping[str, Any] | None:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, Mapping):
+        return payload
+    return None
+
+
+def _strip_json_fence(text: str) -> str:
+    normalized = text.strip()
+    if not normalized.startswith("```"):
+        return normalized
+    lines = normalized.splitlines()
+    if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].strip() == "```":
+        return "\n".join(lines[1:-1]).strip()
+    return normalized
+
+
+def _coerce_task_assessment_step_mappings(value: object) -> tuple[Mapping[str, Any], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
+        raise TypeError("Task assessment suggested_task_list must be a sequence.")
+
+    normalized: list[Mapping[str, Any]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise TypeError("Task assessment suggested_task_list entries must be mappings.")
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _normalize_task_assessment_steps(
+    payload: Mapping[str, Any],
+    raw_steps: Sequence[Mapping[str, Any]],
+) -> tuple[StrategyPlanStep, ...]:
+    parsed_steps: list[StrategyPlanStep] = []
+    try:
+        for raw_step in raw_steps:
+            parsed_steps.append(StrategyPlanStep.from_mapping(raw_step))
+    except (TypeError, ValueError):
+        if _looks_like_visualization_assessment(payload, raw_steps):
+            return (_default_visualization_task_step(),)
+        raise
+
+    if parsed_steps:
+        return tuple(parsed_steps)
+    if _looks_like_visualization_assessment(payload, raw_steps):
+        return (_default_visualization_task_step(),)
+    return ()
+
+
+def _coerce_visualization_intent(
+    payload: Mapping[str, Any],
+    raw_steps: Sequence[Mapping[str, Any]],
+) -> bool:
+    raw_value = payload.get("visualization_intent")
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str) and raw_value.strip():
+        return True
+    return _looks_like_visualization_assessment(payload, raw_steps)
+
+
+def _looks_like_visualization_assessment(
+    payload: Mapping[str, Any],
+    raw_steps: Sequence[Mapping[str, Any]],
+) -> bool:
+    request_kind = (_normalize_optional_text(payload.get("request_kind") or payload.get("kind")) or "").casefold()
+    if any(token in request_kind for token in ("visual", "chart", "graph", "plot")):
+        return True
+
+    for agent_name in _coerce_identifier_sequence(payload.get("preferred_agents")):
+        lowered = agent_name.casefold()
+        if "chart" in lowered or "visual" in lowered:
+            return True
+
+    for raw_step in raw_steps:
+        action = (_normalize_optional_text(raw_step.get("action_type") or raw_step.get("action")) or "").casefold()
+        name = (_normalize_optional_text(raw_step.get("name")) or "").casefold()
+        if any(token in f"{action} {name}" for token in ("chart", "graph", "plot", "visual")):
+            return True
+        inputs = raw_step.get("inputs")
+        if isinstance(inputs, Mapping):
+            for key in inputs:
+                lowered_key = (_normalize_optional_text(key) or "").casefold()
+                if any(token in lowered_key for token in ("chart", "graph", "plot", "visual")):
+                    return True
+
+    return False
+
+
+def _default_visualization_task_step() -> StrategyPlanStep:
+    return StrategyPlanStep(
+        step_id="chart_1",
+        action_type="agent_invoke",
+        name="chart_agent",
+        inputs={},
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -556,6 +846,8 @@ class OrchestrationResult:
     memory_searches: list[MemorySearchSummary] = field(default_factory=list)
     memory_updates: list[MemoryUpdateSummary] = field(default_factory=list)
     citations: list[CitationSummary] = field(default_factory=list)
+    artifacts: list["ChartArtifact"] = field(default_factory=list)
+    context_contributions: list["ContextContribution"] = field(default_factory=list)
     state_delta: "WorkflowStateDelta | None" = None
     finish_reason: str = "stop"
     duration_ms: int | None = None
@@ -574,6 +866,8 @@ class OrchestrationResult:
         object.__setattr__(self, "memory_searches", list(self.memory_searches))
         object.__setattr__(self, "memory_updates", list(self.memory_updates))
         object.__setattr__(self, "citations", list(self.citations))
+        object.__setattr__(self, "artifacts", list(self.artifacts))
+        object.__setattr__(self, "context_contributions", list(self.context_contributions))
         object.__setattr__(self, "finish_reason", _normalize_required_identifier(self.finish_reason, field_name="finish_reason"))
         object.__setattr__(self, "duration_ms", _normalize_optional_int(self.duration_ms))
         object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))

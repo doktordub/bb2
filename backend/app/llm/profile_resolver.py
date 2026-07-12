@@ -80,13 +80,26 @@ class LLMProfileResolver:
             if response_format is not None and response_format.type != "text" and not profile.supports_json_schema:
                 raise LLMUnsupportedCapabilityError(
                     f"LLM profile '{profile_name}' does not support structured output.",
-                    metadata={"profile": profile_name, "response_format": response_format.type},
+                    metadata={
+                        "profile": profile_name,
+                        "response_format": response_format.type,
+                        "capability": "structured_output",
+                    },
+                )
+
+            if _requests_tool_calling(request) and not profile.supports_tool_calling:
+                raise LLMUnsupportedCapabilityError(
+                    f"LLM profile '{profile_name}' does not support native tool calling.",
+                    metadata={
+                        "profile": profile_name,
+                        "capability": "tool_calling",
+                    },
                 )
 
             if request.stream and not profile.supports_streaming:
                 raise LLMUnsupportedCapabilityError(
                     f"LLM profile '{profile_name}' does not support streaming.",
-                    metadata={"profile": profile_name},
+                    metadata={"profile": profile_name, "capability": "streaming"},
                 )
 
             return ResolvedLLMRequest(
@@ -172,3 +185,7 @@ def _read_optional_str(value: object) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _requests_tool_calling(request: LLMRequest) -> bool:
+    return bool(request.tools) or request.tool_choice is not None

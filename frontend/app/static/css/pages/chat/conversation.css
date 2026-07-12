@@ -226,6 +226,59 @@
   opacity: 0.8;
 }
 
+.chat-message__artifacts {
+  display: grid;
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.chat-message__artifacts--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chat-message__artifacts--multi {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+}
+
+.chat-message__artifact-item {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.chat-message__artifact-host {
+  width: 100%;
+  margin: 0;
+  min-width: 0;
+}
+
+.chat-message__artifact-toggle {
+  margin-top: 0.55rem;
+  align-self: flex-start;
+}
+
+.chat-message__artifact-summary {
+  margin: 0;
+  padding: 0.72rem 0.86rem;
+  border-radius: 0.8rem;
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.chat-message__artifact-summary--warning {
+  border-color: rgba(255, 211, 123, 0.26);
+  background: rgba(255, 211, 123, 0.08);
+}
+
+.chat-message__artifact-summary--error {
+  border-color: rgba(196, 43, 28, 0.26);
+  background: rgba(196, 43, 28, 0.08);
+  color: #d13438;
+}
+
 .chat-message__meta {
   display: flex;
   flex-wrap: wrap;
@@ -301,5 +354,21 @@
     transform: scale(0.96);
     opacity: 0.78;
     box-shadow: 0 0 0 0 rgba(255, 211, 123, 0);
+  }
+}
+
+@media (max-width: 900px) {
+  .chat-message__artifacts {
+    width: 100%;
+  }
+}
+
+@media print {
+  .chat-message__artifact-toggle {
+    display: none !important;
+  }
+
+  .chat-message__artifacts {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

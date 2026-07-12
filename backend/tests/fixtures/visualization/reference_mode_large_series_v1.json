@@ -1,0 +1,29 @@
+{
+  "artifact_id": "chart_reference_large_series_001",
+  "type": "chart",
+  "chart_type": "line",
+  "title": "Monthly Revenue - Large Series",
+  "description": "Reference-mode delivery for a large monthly revenue series.",
+  "renderer": "echarts",
+  "spec_version": "1.0",
+  "data_mode": "reference",
+  "data": null,
+  "data_ref": "artifact://session_vis_reference_001/chart_reference_large_series_001",
+  "encoding": {
+    "x": "reporting_period",
+    "time": "reporting_period",
+    "y": [
+      "revenue"
+    ]
+  },
+  "options": {
+    "sampling": "lttb"
+  },
+  "warnings": [
+    "Inline delivery was replaced with reference mode because the series exceeds the inline row budget."
+  ],
+  "metadata": {
+    "source": "tool",
+    "dataset_id": "reporting.metric_series.monthly_revenue.large.v1"
+  }
+}

@@ -340,6 +340,111 @@ def test_load_validated_config_rejects_invalid_orchestration_fixture_configurati
     ("override_body", "expected_message"),
     [
         (
+            "visualization:\n"
+            "  allowed_renderers: []\n",
+            "default_renderer must be included in allowed_renderers",
+        ),
+        (
+            "visualization:\n"
+            "  allowed_chart_types:\n"
+            "    - candlestick\n",
+            "allowed_chart_types",
+        ),
+        (
+            "visualization:\n"
+            "  limits:\n"
+            "    max_rows_inline: 6000\n"
+            "    max_rows_artifact_store: 5000\n",
+            "max_rows_inline must be less than or equal to max_rows_artifact_store",
+        ),
+        (
+            "visualization:\n"
+            "  artifact_store:\n"
+            "    enabled: true\n"
+            "    provider: sqlite\n"
+            "    allow_reference_data_mode: true\n",
+            "allow_reference_data_mode requires visualization.artifact_store.retrieval_endpoint",
+        ),
+        (
+            "visualization:\n"
+            "  context_summary:\n"
+            "    allow_full_dataset_in_context: true\n",
+            "allow_full_dataset_in_context must remain false",
+        ),
+        (
+            "visualization:\n"
+            "  history_replay:\n"
+            "    max_inline_artifact_bytes: 65536\n"
+            "    max_total_bytes_per_message: 1024\n",
+            "max_total_bytes_per_message must be greater than or equal to max_inline_artifact_bytes",
+        ),
+    ],
+)
+def test_load_validated_config_rejects_invalid_visualization_configuration(
+    tmp_path: Path,
+    override_body: str,
+    expected_message: str,
+) -> None:
+    override_path = tmp_path / "invalid_visualization.yaml"
+    override_path.write_text(override_body, encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(
+            BASE_FIXTURE_PATH,
+            override_path=override_path,
+            env={},
+        )
+
+    assert expected_message in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("override_body", "expected_message"),
+    [
+        (
+            "policy:\n"
+            "  visualization:\n"
+            "    allow_full_dataset_in_context: true\n",
+            "policy.visualization.allow_full_dataset_in_context must remain false",
+        ),
+        (
+            "policy:\n"
+            "  visualization:\n"
+            "    allowed_chart_types:\n"
+            "      - candlestick\n",
+            "allowed_chart_types",
+        ),
+        (
+            "policy:\n"
+            "  visualization:\n"
+            "    max_rows_inline: 9000\n"
+            "    max_rows_artifact_store: 100\n",
+            "policy.visualization.max_rows_inline must be less than or equal to max_rows_artifact_store",
+        ),
+    ],
+)
+def test_load_validated_config_rejects_invalid_visualization_policy_configuration(
+    tmp_path: Path,
+    override_body: str,
+    expected_message: str,
+) -> None:
+    override_path = tmp_path / "invalid_visualization_policy.yaml"
+    override_path.write_text(override_body, encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_validated_config(
+            BASE_FIXTURE_PATH,
+            override_path=override_path,
+            env={},
+        )
+
+    assert expected_message in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("override_body", "expected_message"),
+    [
+        (
             "orchestration:\n"
             "  defaults:\n"
             "    conversation_context:\n"

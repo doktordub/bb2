@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "trace_id": "trace_vis_unsupported_001",
+  "session_id": "session_vis_unsupported_001",
+  "data": {
+    "answer": "I can't produce that graph type with the current chart renderer. Supported graph types are bar, grouped bar, stacked bar, horizontal bar, line, multi line, area, pie, donut, scatter, bubble, histogram, box plot, heatmap, treemap, waterfall, gantt, radar, and table.",
+    "agent_name": "chart_agent",
+    "strategy_name": "direct_agent",
+    "llm_profile": "local_reasoning",
+    "tool_calls": [],
+    "memory_updates": [],
+    "artifacts": []
+  },
+  "metadata": {
+    "context_summary_added": false,
+    "context_summary_ids": [],
+    "artifact_delivery_mode": "none"
+  }
+}

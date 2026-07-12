@@ -1,0 +1,29 @@
+visualization:
+  enabled: true
+  artifact_store:
+    enabled: true
+    provider: sqlite
+    ttl_seconds: 7200
+    allow_reference_data_mode: true
+    public_retrieval_enabled: true
+    retrieval_endpoint: /artifacts/{artifact_id}
+    exact_followup_retrieval_enabled: true
+    sqlite:
+      path: visualization_artifacts.db
+      create_parent_dirs: true
+      initialize_schema: true
+      journal_mode: WAL
+      synchronous: NORMAL
+      busy_timeout_ms: 5000
+      foreign_keys: true
+
+policy:
+  visualization:
+    enabled: true
+    allow_reference_data_mode: true
+    allow_exact_followup_retrieval: true
+    allow_data_export: true
+    allowed_chart_types:
+      - bar
+    allowed_renderers:
+      - echarts

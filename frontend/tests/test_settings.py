@@ -15,6 +15,10 @@ SETTINGS_ENV_VARS = [
     "BACKEND_BASE_URL",
     "BACKEND_TIMEOUT_SECONDS",
     "BACKEND_STREAM_TIMEOUT_SECONDS",
+    "FRONTEND_VISUALIZATION_MAX_ARTIFACTS_PER_RESPONSE",
+    "FRONTEND_VISUALIZATION_MAX_ROWS_INLINE",
+    "FRONTEND_VISUALIZATION_MAX_SERIES",
+    "FRONTEND_VISUALIZATION_MAX_CATEGORIES",
     "FRONTEND_ADMIN_ENABLED",
     "FRONTEND_DEBUG_TRACES_ENABLED",
     "FRONTEND_RESTART_ENABLED",
@@ -35,6 +39,10 @@ def test_load_settings_uses_safe_defaults(monkeypatch: pytest.MonkeyPatch) -> No
     assert settings.frontend_admin_enabled is True
     assert settings.frontend_restart_enabled is False
     assert settings.frontend_help_markdown_path == DEFAULT_HELP_MARKDOWN_PATH.resolve()
+    assert settings.frontend_visualization_limits.max_artifacts_per_response == 3
+    assert settings.frontend_visualization_limits.max_rows_inline == 5000
+    assert settings.frontend_visualization_limits.max_series == 12
+    assert settings.frontend_visualization_limits.max_categories == 100
 
 
 def test_load_settings_resolves_relative_help_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -59,6 +67,10 @@ def test_load_settings_honors_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("BACKEND_BASE_URL", "http://backend.internal:9000/")
     monkeypatch.setenv("BACKEND_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("BACKEND_STREAM_TIMEOUT_SECONDS", "180")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_ARTIFACTS_PER_RESPONSE", "4")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_ROWS_INLINE", "2500")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_SERIES", "8")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_CATEGORIES", "60")
     monkeypatch.setenv("FRONTEND_ADMIN_ENABLED", "false")
     monkeypatch.setenv("FRONTEND_DEBUG_TRACES_ENABLED", "false")
     monkeypatch.setenv("FRONTEND_RESTART_ENABLED", "true")
@@ -79,6 +91,10 @@ def test_load_settings_honors_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp
     assert settings.frontend_restart_enabled is True
     assert settings.frontend_help_markdown_path == help_path.resolve()
     assert settings.frontend_static_version == "phase-13"
+    assert settings.frontend_visualization_limits.max_artifacts_per_response == 4
+    assert settings.frontend_visualization_limits.max_rows_inline == 2500
+    assert settings.frontend_visualization_limits.max_series == 8
+    assert settings.frontend_visualization_limits.max_categories == 60
 
 
 def test_load_settings_invalid_values_fall_back_to_safe_defaults(
@@ -87,6 +103,10 @@ def test_load_settings_invalid_values_fall_back_to_safe_defaults(
     monkeypatch.setenv("FRONTEND_PORT", "not-a-port")
     monkeypatch.setenv("BACKEND_TIMEOUT_SECONDS", "forever")
     monkeypatch.setenv("BACKEND_STREAM_TIMEOUT_SECONDS", "still-forever")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_ARTIFACTS_PER_RESPONSE", "0")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_ROWS_INLINE", "lots")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_SERIES", "-12")
+    monkeypatch.setenv("FRONTEND_VISUALIZATION_MAX_CATEGORIES", "")
     monkeypatch.setenv("FRONTEND_DEBUG", "sometimes")
     monkeypatch.setenv("FRONTEND_RESTART_ENABLED", "maybe")
 
@@ -97,3 +117,7 @@ def test_load_settings_invalid_values_fall_back_to_safe_defaults(
     assert settings.backend_stream_timeout_seconds == 300
     assert settings.frontend_debug is False
     assert settings.frontend_restart_enabled is False
+    assert settings.frontend_visualization_limits.max_artifacts_per_response == 3
+    assert settings.frontend_visualization_limits.max_rows_inline == 5000
+    assert settings.frontend_visualization_limits.max_series == 12
+    assert settings.frontend_visualization_limits.max_categories == 100

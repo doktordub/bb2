@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "catalog_version": "phase10",
+  "cases": [
+    {
+      "id": "bar_income_expense",
+      "kind": "chart_validation_case",
+      "chart_type": "grouped_bar",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "line_monthly_revenue",
+      "kind": "chart_validation_case",
+      "chart_type": "line",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "pie_revenue_mix",
+      "kind": "chart_validation_case",
+      "chart_type": "pie",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "scatter_ad_spend_revenue",
+      "kind": "chart_validation_case",
+      "chart_type": "scatter",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "histogram_latency",
+      "kind": "chart_validation_case",
+      "chart_type": "histogram",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "heatmap_incident_hour",
+      "kind": "chart_validation_case",
+      "chart_type": "heatmap",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "gantt_project_plan",
+      "kind": "chart_validation_case",
+      "chart_type": "gantt",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "table_operational_summary",
+      "kind": "chart_validation_case",
+      "chart_type": "table",
+      "source": "chart_validation_cases_v1.json"
+    },
+    {
+      "id": "unsupported_chart_type",
+      "kind": "chat_response_fixture",
+      "path": "unsupported_chart_type_response_v1.json"
+    },
+    {
+      "id": "missing_data",
+      "kind": "chat_response_fixture",
+      "path": "missing_data_response_v1.json"
+    },
+    {
+      "id": "reference_mode_large_series",
+      "kind": "artifact_fixture",
+      "path": "reference_mode_large_series_v1.json"
+    },
+    {
+      "id": "expired_artifact",
+      "kind": "api_error_fixture",
+      "path": "expired_artifact_error_v1.json"
+    }
+  ]
+}

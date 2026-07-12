@@ -50,11 +50,38 @@ def test_registry_records_loaded_tool_and_capabilities() -> None:
     assert registered_tool.fastmcp_tool_names == ("example.echo",)
     assert [capability.to_summary() for capability in registry.list_capabilities()] == [
         {
-            "name": "example.echo",
+            "capability_name": "example.echo",
             "type": "tool",
             "tool_name": "example.echo",
             "risk_level": "read_only",
             "enabled": True,
+            "status": "loaded",
+            "health": "ok",
+            "version": "1.0.0",
+            "owner": "platform",
+            "tags": ["echo", "example", "read_only"],
+            "input_schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200,
+                    },
+                    "uppercase": {"type": "boolean"},
+                },
+            },
+            "output_schema": {
+                "type": "object",
+                "properties": {
+                    "ok": {"type": "boolean"},
+                    "tool_name": {"type": "string"},
+                    "summary": {"type": "object"},
+                    "data": {"type": "object"},
+                },
+            },
+            "schema_version": None,
         }
     ]
     assert registry.health_summary().as_counts() == {

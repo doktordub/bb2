@@ -67,6 +67,13 @@ from app.config.view import (
     ToolingSettings,
     UseCaseSettings,
     ValidatedConfigurationView,
+    VisualizationArtifactStoreSqliteSettings,
+    VisualizationArtifactStoreSettings,
+    VisualizationContextSummarySettings,
+    VisualizationHistoryReplaySettings,
+    VisualizationLimitsSettings,
+    VisualizationSampleDataSettings,
+    VisualizationSettings,
     get_api_settings,
     get_agents_settings,
     get_deployment_settings,
@@ -78,6 +85,7 @@ from app.config.view import (
     get_orchestration_settings,
     get_session_settings,
     get_tooling_settings,
+    get_visualization_settings,
 )
 from app.contracts.errors import ConfigurationError
 from app.persistence.settings import (
@@ -1191,6 +1199,140 @@ def test_validated_config_view_session_helpers_return_typed_settings() -> None:
 
     assert get_session_settings(view) == expected
     assert view.session_settings() == expected
+
+
+def test_validated_config_view_visualization_helpers_return_typed_settings() -> None:
+    view = ValidatedConfigurationView(
+        {
+            "visualization": {
+                "enabled": True,
+                "default_renderer": "echarts",
+                "allowed_renderers": ["echarts"],
+                "artifact_spec_version": "1.0",
+                "allowed_chart_types": ["bar", "line", "table"],
+                "aliases": {
+                    "bar graph": "bar",
+                    "trend chart": "line",
+                },
+                "limits": {
+                    "max_rows_inline": 120,
+                    "max_rows_artifact_store": 800,
+                    "max_series": 6,
+                    "max_categories": 24,
+                    "max_artifact_bytes": 65536,
+                },
+                "sample_data": {
+                    "enabled": True,
+                    "require_explicit_opt_in": True,
+                    "max_rows": 12,
+                },
+                "context_summary": {
+                    "enabled": True,
+                    "mode": "summary_only",
+                    "max_tokens_per_chart_summary": 400,
+                    "max_chart_summaries_per_session_context": 4,
+                    "max_total_visualization_context_tokens": 1200,
+                    "include_data_ref": True,
+                    "include_aggregate_stats": True,
+                    "include_extrema": True,
+                    "include_trend_summary": False,
+                    "include_sample_rows": False,
+                    "max_sample_rows": 0,
+                    "eviction_policy": "most_recent_relevant",
+                    "allow_full_dataset_in_context": False,
+                },
+                "artifact_store": {
+                    "enabled": True,
+                    "provider": "sqlite",
+                    "ttl_seconds": 7200,
+                    "allow_reference_data_mode": True,
+                    "public_retrieval_enabled": True,
+                    "retrieval_endpoint": "/artifacts/{artifact_id}",
+                    "exact_followup_retrieval_enabled": True,
+                },
+                "history_replay": {
+                    "enabled": True,
+                    "prefer_inline": True,
+                    "max_artifacts_per_message": 2,
+                    "max_inline_artifact_bytes": 32768,
+                    "max_total_bytes_per_message": 98304,
+                },
+                "safe_metadata_allowlist": ["source", "source_agent"],
+            }
+        }
+    )
+
+    expected = VisualizationSettings(
+        enabled=True,
+        default_renderer="echarts",
+        allowed_renderers=("echarts",),
+        artifact_spec_version="1.0",
+        allowed_chart_types=("bar", "line", "table"),
+        aliases={
+            "bar graph": "bar",
+            "trend chart": "line",
+        },
+        safe_metadata_allowlist=("source", "source_agent"),
+        limits=VisualizationLimitsSettings(
+            max_rows_inline=120,
+            max_rows_artifact_store=800,
+            max_series=6,
+            max_categories=24,
+            max_artifact_bytes=65536,
+        ),
+        sample_data=VisualizationSampleDataSettings(
+            enabled=True,
+            require_explicit_opt_in=True,
+            max_rows=12,
+        ),
+        context_summary=VisualizationContextSummarySettings(
+            enabled=True,
+            mode="summary_only",
+            max_tokens_per_chart_summary=400,
+            max_chart_summaries_per_session_context=4,
+            max_total_visualization_context_tokens=1200,
+            include_data_ref=True,
+            include_aggregate_stats=True,
+            include_extrema=True,
+            include_trend_summary=False,
+            include_sample_rows=False,
+            max_sample_rows=0,
+            eviction_policy="most_recent_relevant",
+            allow_full_dataset_in_context=False,
+        ),
+        artifact_store=VisualizationArtifactStoreSettings(
+            enabled=True,
+            provider="sqlite",
+            ttl_seconds=7200,
+            allow_reference_data_mode=True,
+            public_retrieval_enabled=True,
+            retrieval_endpoint="/artifacts/{artifact_id}",
+            exact_followup_retrieval_enabled=True,
+            sqlite=VisualizationArtifactStoreSqliteSettings(
+                path=resolve_data_path(
+                    "visualization_artifacts.db",
+                    base_dir=resolve_backend_path("data"),
+                ),
+                create_parent_dirs=True,
+                initialize_schema=True,
+                journal_mode="WAL",
+                synchronous="NORMAL",
+                busy_timeout_ms=5000,
+                foreign_keys=True,
+                required=True,
+            ),
+        ),
+        history_replay=VisualizationHistoryReplaySettings(
+            enabled=True,
+            prefer_inline=True,
+            max_artifacts_per_message=2,
+            max_inline_artifact_bytes=32768,
+            max_total_bytes_per_message=98304,
+        ),
+    )
+
+    assert get_visualization_settings(view) == expected
+    assert view.visualization_settings() == expected
 
 
 def test_validated_config_view_llm_helpers_return_typed_settings() -> None:
@@ -2405,6 +2547,14 @@ def test_get_policy_settings_returns_typed_nested_policy_sections() -> None:
                 "default_decision": "deny",
                 "fail_closed": True,
                 "default_profile": "support_policy",
+                "visualization": {
+                    "enabled": True,
+                    "allow_tool_data": True,
+                    "allow_reference_data_mode": True,
+                    "allowed_chart_types": ["bar", "line"],
+                    "max_rows_inline": 250,
+                    "max_context_summary_tokens": 450,
+                },
                 "profiles": {
                     "support_policy": {
                         "mode": "enforce",
@@ -2446,6 +2596,11 @@ def test_get_policy_settings_returns_typed_nested_policy_sections() -> None:
                             "allow_stream_events": True,
                             "expose_raw_deltas": False,
                         },
+                        "visualization": {
+                            "allow_memory_data": True,
+                            "allowed_chart_types": ["line"],
+                            "max_context_summary_tokens": 320,
+                        },
                         "capabilities": {
                             "include_policy_profiles": False,
                         },
@@ -2477,5 +2632,12 @@ def test_get_policy_settings_returns_typed_nested_policy_sections() -> None:
     assert profile.tools.allowed_tools == ("documents.search",)
     assert profile.memory.allowed_read_scopes == ("project",)
     assert profile.fallback.allowed_strategies == ("fallback_answer",)
+    assert profile.visualization.enabled is True
+    assert profile.visualization.allow_tool_data is True
+    assert profile.visualization.allow_memory_data is True
+    assert profile.visualization.allow_reference_data_mode is True
+    assert profile.visualization.allowed_chart_types == ("line",)
+    assert profile.visualization.max_rows_inline == 250
+    assert profile.visualization.max_context_summary_tokens == 320
     assert profile.decision_cache.ttl_seconds == 15
     assert profile.decision_cache.max_entries == 128

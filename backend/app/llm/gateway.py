@@ -231,7 +231,9 @@ class DefaultLLMGateway:
                     if not completed:
                         synthesized = normalize_stream_event(
                             event=ProviderLLMStreamEvent.completed(
+                                tool_calls=assembly.tool_calls,
                                 finish_reason=assembly.finish_reason,
+                                reasoning=assembly.reasoning,
                                 usage=assembly.usage,
                             ),
                             resolved=current_resolved,
@@ -251,7 +253,9 @@ class DefaultLLMGateway:
                         payload=summarize_provider_response(
                             ProviderLLMResponse(
                                 text=assembly.text,
+                                tool_calls=list(assembly.tool_calls),
                                 finish_reason=assembly.finish_reason,
+                                reasoning=dict(assembly.reasoning),
                                 usage=assembly.usage,
                             ),
                             include_text=current_resolved.trace_completions,
@@ -405,7 +409,9 @@ class DefaultLLMGateway:
             profile=resolved.profile_name,
             provider=resolved.provider_name,
             model=resolved.model,
+            tool_calls=list(response.tool_calls),
             finish_reason=response.finish_reason,
+            reasoning=dict(response.reasoning),
             usage=response.usage,
             raw_id=response.raw_id,
             metadata=dict(response.metadata),

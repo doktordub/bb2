@@ -2,6 +2,11 @@ import { bindMobileNavigation } from "../common/navigation.js";
 import { setBackendStatus } from "../common/status.js";
 import { getJson } from "../services/api-client.js";
 import {
+  buildVisualizationCompatibilityWarning,
+  resolveVisualizationCapabilityState,
+  shouldRunVisualizationStartupCheck,
+} from "../visualization/runtime-capabilities.js";
+import {
   dispatchShellEvent,
   getShellState as getTrackedShellState,
   mapHealthStatus,
@@ -9,6 +14,8 @@ import {
 } from "./shell-state.js";
 
 const THEME_STORAGE_KEY = "pluggable-agentic-ai.theme";
+const CAPABILITIES_CACHE_STORAGE_KEY = "pluggable-agentic-ai.capabilities.v1";
+const CAPABILITIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const THEMES = ["auto", "dark", "light"];
 
 let shellReadyPromise = null;
@@ -76,6 +83,84 @@ function whenDocumentReady() {
   return Promise.resolve();
 }
 
+function safeSessionStorage() {
+  try {
+    return window.sessionStorage;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function readCapabilitiesCache({ staticVersion, backendVersion = null } = {}) {
+  const storage = safeSessionStorage();
+  if (!storage) {
+    return null;
+  }
+
+  try {
+    const raw = storage.getItem(CAPABILITIES_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const cached = JSON.parse(raw);
+    if (!cached || typeof cached !== "object") {
+      return null;
+    }
+    if (cached.staticVersion !== staticVersion) {
+      return null;
+    }
+    if (!Number.isFinite(Number(cached.fetchedAt)) || (Date.now() - Number(cached.fetchedAt)) > CAPABILITIES_CACHE_TTL_MS) {
+      return null;
+    }
+    if (backendVersion && cached.backendVersion && cached.backendVersion !== backendVersion) {
+      return null;
+    }
+    return cached.payload ?? null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function writeCapabilitiesCache(payload, { staticVersion, backendVersion = null } = {}) {
+  const storage = safeSessionStorage();
+  if (!storage || !payload) {
+    return;
+  }
+
+  try {
+    storage.setItem(CAPABILITIES_CACHE_STORAGE_KEY, JSON.stringify({
+      staticVersion,
+      backendVersion,
+      fetchedAt: Date.now(),
+      payload,
+    }));
+  } catch (_error) {
+    return;
+  }
+}
+
+async function settle(promise) {
+  try {
+    return { status: "fulfilled", value: await promise };
+  } catch (error) {
+    return { status: "rejected", reason: error };
+  }
+}
+
+function updateVisualizationState(shellState) {
+  shellState.visualization = resolveVisualizationCapabilityState(shellState.capabilities, {
+    clientLimits: shellState.frontendFlags.visualizationLimits,
+  });
+  shellState.visualizationWarning = shouldRunVisualizationStartupCheck(shellState.frontendFlags)
+    ? buildVisualizationCompatibilityWarning(shellState.visualization)
+    : null;
+
+  if (shellState.visualizationWarning) {
+    console.warn(`[frontend-visualization] ${shellState.visualizationWarning}`);
+  }
+}
+
 async function initializeShell() {
   const shellState = getTrackedShellState();
 
@@ -87,10 +172,7 @@ async function initializeShell() {
   bindMobileNavigation();
   setBackendStatus("checking", "Checking");
 
-  const [healthResult, capabilitiesResult] = await Promise.allSettled([
-    getJson("/backend/health"),
-    getJson("/backend/capabilities"),
-  ]);
+  const healthResult = await settle(getJson("/backend/health"));
 
   if (healthResult.status === "fulfilled") {
     const healthPayload = healthResult.value;
@@ -106,16 +188,35 @@ async function initializeShell() {
     setBackendStatus("offline", "Offline");
   }
 
+  const backendVersion = healthResult.status === "fulfilled"
+    ? healthResult.value?.version ?? null
+    : null;
+  const cachedCapabilities = readCapabilitiesCache({
+    staticVersion: shellState.frontendFlags.staticVersion,
+    backendVersion,
+  });
+  const capabilitiesResult = cachedCapabilities
+    ? { status: "fulfilled", value: cachedCapabilities, source: "cache" }
+    : await settle(getJson("/backend/capabilities"));
+
   if (capabilitiesResult.status === "fulfilled") {
     const capabilitiesPayload = capabilitiesResult.value;
     const capabilities = capabilitiesPayload?.data ?? null;
     shellState.capabilitiesPayload = capabilitiesPayload;
     shellState.capabilities = capabilities;
+    updateVisualizationState(shellState);
     shellState.capabilitiesError = null;
     shellState.preferredChatMode = capabilities?.chat?.streaming_enabled ? "stream" : "request";
+    if (!cachedCapabilities) {
+      writeCapabilitiesCache(capabilitiesPayload, {
+        staticVersion: shellState.frontendFlags.staticVersion,
+        backendVersion,
+      });
+    }
   } else {
     shellState.capabilitiesPayload = null;
     shellState.capabilities = null;
+    updateVisualizationState(shellState);
     shellState.capabilitiesError = capabilitiesResult.reason;
     shellState.preferredChatMode = "request";
   }

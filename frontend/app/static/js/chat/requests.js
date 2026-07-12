@@ -3,7 +3,7 @@ import { showToast } from "../common/toast.js";
 import { setActiveSessionId } from "../services/session-store.js";
 import { resolveEventText, streamSseRequest } from "../services/sse-client.js";
 import { postJson } from "../services/api-client.js";
-import { appendMessage, buildMessageMeta, replaceMessageContent, updateMessageMeta } from "./conversation.js";
+import { appendMessage, buildMessageMeta, replaceMessageContent, setMessageContext, updateMessageMeta } from "./conversation.js";
 import { renderInspector, updateInspectorFromResponse, updateInspectorFromStreamFrame } from "./inspector.js";
 import { loadSessions, renderSessionContext } from "./sessions.js";
 import { announceChatStatus, buildUiApiPath, resetInspector, setPending, withTransport } from "./runtime-state.js";
@@ -41,7 +41,7 @@ async function finalizeSuccessfulChat(
   refs,
   assistantCard,
   answer,
-  { statusText, transport, syncFromPayload = null, renderSessionContext, updateActionButtons } = {}
+  { statusText, transport, payload = null, syncFromPayload = null, renderSessionContext, updateActionButtons } = {}
 ) {
   replaceMessageContent(refs, assistantCard, answer, { streaming: false });
   runtimeState.lastAssistantAnswer = answer;
@@ -51,6 +51,14 @@ async function finalizeSuccessfulChat(
   }
 
   const resolvedSessionId = runtimeState.inspector.sessionId || runtimeState.activeSessionId;
+  setMessageContext(assistantCard, {
+    sessionId: resolvedSessionId,
+    traceId: runtimeState.inspector.traceId,
+  });
+  refs.chatVisualization?.renderArtifacts?.(assistantCard, payload?.data?.artifacts, {
+    sessionId: resolvedSessionId,
+  });
+
   if (resolvedSessionId) {
     runtimeState.activeSessionId = resolvedSessionId;
     setActiveSessionId(resolvedSessionId);
@@ -98,6 +106,7 @@ async function runNonStreamingRequest(
     await finalizeSuccessfulChat(runtimeState, refs, assistantCard, answer, {
       statusText: "Response received",
       transport: "request/response",
+      payload,
       renderSessionContext,
       syncFromPayload: () => updateInspectorFromResponse(runtimeState, refs, payload, {
         transport: "request/response",
@@ -143,6 +152,9 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
   setPending(runtimeState, refs, true, "Opening stream", { updateActionButtons });
   announceChatStatus(refs, "Opening streaming response.");
   replaceMessageContent(refs, assistantCard, "", { streaming: true, loadingLabel: "Opening streaming response..." });
+  refs.chatVisualization?.beginStreamingMessage?.(assistantCard, {
+    sessionId: runtimeState.activeSessionId || null,
+  });
 
   try {
     const streamResult = await streamSseRequest(buildUiApiPath("/chat/stream"), {
@@ -151,6 +163,19 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
       onEvent: (frame) => {
         streamState.receivedFrame = true;
         updateInspectorFromStreamFrame(runtimeState, refs, frame, { renderSessionContext });
+
+        const streamedSessionId = runtimeState.inspector.sessionId || runtimeState.activeSessionId || null;
+        setMessageContext(assistantCard, {
+          sessionId: streamedSessionId,
+          traceId: runtimeState.inspector.traceId,
+        });
+
+        if (frame.event === "artifact.started" || frame.event === "artifact.completed" || frame.event === "artifact.failed") {
+          refs.chatVisualization?.handleStreamingArtifact?.(assistantCard, frame, {
+            sessionId: streamedSessionId,
+          });
+          return;
+        }
 
         if (frame.event === "response.delta" || frame.event === "message") {
           const delta = resolveEventText(frame);
@@ -199,6 +224,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
       await finalizeSuccessfulChat(runtimeState, refs, assistantCard, answer, {
         statusText: "Response received",
         transport: "request/response",
+        payload,
         renderSessionContext,
         syncFromPayload: () => updateInspectorFromResponse(runtimeState, refs, payload, {
           transport: "request/response",
@@ -213,6 +239,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
     }
 
     if (streamResult.mode !== "stream" || !streamState.receivedFrame) {
+      refs.chatVisualization?.disposeMessage?.(assistantCard);
       announceChatStatus(refs, "Streaming is unavailable for this request. Falling back to request and response.");
       showToast("Streaming is unavailable for this request. Falling back to request/response.", { tone: "warning" });
       return runNonStreamingRequest(runtimeState, refs, requestBody, assistantCard, {
@@ -223,6 +250,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
     }
 
     if (!streamState.completed && !streamState.contentStarted) {
+      refs.chatVisualization?.disposeMessage?.(assistantCard);
       announceChatStatus(refs, "The stream ended before content arrived. Falling back to request and response.");
       showToast("The stream ended before content arrived. Falling back to request/response.", { tone: "warning" });
       return runNonStreamingRequest(runtimeState, refs, requestBody, assistantCard, {
@@ -231,6 +259,10 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
         updateActionButtons,
       });
     }
+
+    refs.chatVisualization?.finalizeStreamingMessage?.(assistantCard, {
+      reason: streamState.completed ? "completed" : "stopped",
+    });
 
     await finalizeSuccessfulChat(runtimeState, refs, assistantCard, streamState.answer || "No answer returned.", {
       statusText: streamState.completed ? "Streaming complete" : "Streaming stopped",
@@ -254,6 +286,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
     runtimeState.activeAbortController = null;
 
     if (error.name === "AbortError") {
+      refs.chatVisualization?.finalizeStreamingMessage?.(assistantCard, { reason: "aborted" });
       runtimeState.inspector.finishReason = "aborted";
       runtimeState.inspector.lastError = null;
       renderInspector(runtimeState, refs, { renderSessionContext });
@@ -284,6 +317,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
     }
 
     if (!streamState.contentStarted) {
+      refs.chatVisualization?.disposeMessage?.(assistantCard);
       announceChatStatus(refs, "Streaming failed before content started. Falling back to request and response.");
       showToast("Streaming failed before content started. Falling back to request/response.", { tone: "warning" });
       return runNonStreamingRequest(runtimeState, refs, requestBody, assistantCard, {
@@ -293,6 +327,7 @@ async function runStreamingRequest(runtimeState, refs, requestBody, assistantCar
       });
     }
 
+    refs.chatVisualization?.finalizeStreamingMessage?.(assistantCard, { reason: "error" });
     runtimeState.lastFailure = error.message || "Streaming request failed.";
     runtimeState.inspector.lastError = runtimeState.lastFailure;
     renderInspector(runtimeState, refs, { renderSessionContext });

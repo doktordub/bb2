@@ -1,0 +1,25 @@
+{
+  "ok": false,
+  "tool_name": "reporting.query_metric_series",
+  "summary": {
+    "message": "The requested metric is not approved for visualization queries.",
+    "item_count": 0,
+    "truncated": false
+  },
+  "data": {},
+  "errors": [
+    {
+      "code": "unsupported_metric",
+      "message": "Metric 'gross_margin' is not enabled for reporting queries.",
+      "retryable": false,
+      "details": {
+        "field": "metric_names",
+        "value": "gross_margin"
+      }
+    }
+  ],
+  "meta": {
+    "schema_version": "1.0",
+    "output_schema": "structured_dataset_v1"
+  }
+}

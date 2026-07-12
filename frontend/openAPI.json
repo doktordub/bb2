@@ -650,6 +650,9 @@
           },
           "llm": {
             "$ref": "#/components/schemas/LLMCapabilities"
+          },
+          "visualization": {
+            "$ref": "#/components/schemas/VisualizationCapabilities"
           }
         },
         "type": "object",
@@ -659,10 +662,143 @@
           "debug",
           "tools",
           "memory",
-          "llm"
+          "llm",
+          "visualization"
         ],
         "title": "CapabilitiesResponseData",
         "description": "Frontend-safe capabilities response payload."
+      },
+      "ChartArtifact": {
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "title": "Artifact Id"
+          },
+          "type": {
+            "type": "string",
+            "const": "chart",
+            "title": "Type",
+            "default": "chart"
+          },
+          "chart_type": {
+            "type": "string",
+            "enum": [
+              "bar",
+              "grouped_bar",
+              "stacked_bar",
+              "horizontal_bar",
+              "line",
+              "multi_line",
+              "area",
+              "pie",
+              "donut",
+              "scatter",
+              "bubble",
+              "histogram",
+              "box_plot",
+              "heatmap",
+              "treemap",
+              "waterfall",
+              "gantt",
+              "radar",
+              "table"
+            ],
+            "title": "Chart Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "renderer": {
+            "type": "string",
+            "const": "echarts",
+            "title": "Renderer"
+          },
+          "spec_version": {
+            "type": "string",
+            "title": "Spec Version"
+          },
+          "data_mode": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "reference"
+            ],
+            "title": "Data Mode"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "data_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Ref"
+          },
+          "encoding": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Encoding"
+          },
+          "options": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Options"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "chart_type",
+          "title",
+          "renderer",
+          "spec_version",
+          "data_mode",
+          "encoding"
+        ],
+        "title": "ChartArtifact",
+        "description": "Frontend-facing chart artifact contract."
       },
       "ChatCapabilities": {
         "properties": {
@@ -822,6 +958,13 @@
             },
             "type": "array",
             "title": "Memory Updates"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ChartArtifact"
+            },
+            "type": "array",
+            "title": "Artifacts"
           }
         },
         "type": "object",
@@ -922,6 +1065,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Api"
+          },
+          "visualization": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Visualization"
           },
           "workflow_state": {
             "additionalProperties": true,
@@ -1292,6 +1440,13 @@
             ],
             "title": "Created At"
           },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ChartArtifact"
+            },
+            "type": "array",
+            "title": "Artifacts"
+          },
           "metadata": {
             "additionalProperties": true,
             "type": "object",
@@ -1639,6 +1794,86 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VisualizationCapabilities": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "default_renderer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Renderer"
+          },
+          "allowed_renderers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Renderers"
+          },
+          "spec_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec Version"
+          },
+          "context_summary_mode": {
+            "type": "string",
+            "title": "Context Summary Mode",
+            "default": "disabled"
+          },
+          "supported_chart_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Chart Types"
+          },
+          "reference_mode_supported": {
+            "type": "boolean",
+            "title": "Reference Mode Supported",
+            "default": false
+          },
+          "reference_mode_enabled": {
+            "type": "boolean",
+            "title": "Reference Mode Enabled",
+            "default": false
+          },
+          "artifact_store_enabled": {
+            "type": "boolean",
+            "title": "Artifact Store Enabled",
+            "default": false
+          },
+          "exact_followup_retrieval_enabled": {
+            "type": "boolean",
+            "title": "Exact Followup Retrieval Enabled",
+            "default": false
+          },
+          "limits": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Limits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "VisualizationCapabilities",
+        "description": "Frontend-safe visualization capability flags."
       }
     }
   },

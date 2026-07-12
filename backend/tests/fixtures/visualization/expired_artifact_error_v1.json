@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "trace_id": "trace_vis_expired_001",
+  "error": {
+    "code": "artifact_not_found",
+    "message": "The requested artifact is not available.",
+    "retryable": false,
+    "details": {}
+  }
+}

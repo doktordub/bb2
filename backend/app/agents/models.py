@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.contracts.llm import LLMMessage
 from app.orchestration.models import ConversationMessage
 from app.orchestration.memory_intents import MemoryCandidate
 from app.orchestration.models import sanitize_metadata
@@ -15,8 +17,10 @@ if TYPE_CHECKING:
     from app.agents.errors import AgentErrorDetail
 
 AgentType = Literal[
+    "chart_agent",
     "general_assistant",
     "document_qa",
+    "task_execution",
     "tool_using",
     "project_agent",
     "memory_curator",
@@ -204,6 +208,7 @@ class AgentRunRequest:
     conversation_history: tuple[ConversationMessage, ...] = ()
     context_items: tuple[PromptContextItem, ...] = ()
     tool_context: tuple[ToolContextItem, ...] = ()
+    llm_followup_messages: tuple[LLMMessage, ...] = ()
     available_tools: tuple[str, ...] = ()
     task: AgentTask | None = None
     constraints: tuple[str, ...] = ()
@@ -221,6 +226,11 @@ class AgentRunRequest:
         object.__setattr__(self, "strategy_name", _optional_text(self.strategy_name))
         object.__setattr__(self, "session_summary", _optional_text(self.session_summary))
         object.__setattr__(self, "conversation_history", tuple(self.conversation_history))
+        object.__setattr__(
+            self,
+            "llm_followup_messages",
+            _normalize_llm_message_tuple(self.llm_followup_messages),
+        )
         object.__setattr__(self, "available_tools", _normalize_tool_names(self.available_tools))
         object.__setattr__(self, "constraints", _normalize_text_tuple(self.constraints))
         object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))
@@ -240,6 +250,8 @@ class AgentRunResult:
     usage: AgentUsageSummary | None = None
     output_items: tuple[AgentOutputItem, ...] = ()
     warnings: tuple[AgentWarning, ...] = ()
+    artifacts: tuple[dict[str, Any], ...] = ()
+    context_contributions: tuple[dict[str, Any], ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -247,6 +259,8 @@ class AgentRunResult:
         object.__setattr__(self, "answer", _optional_text(self.answer))
         object.__setattr__(self, "agent_name", _optional_text(self.agent_name))
         object.__setattr__(self, "llm_profile", _optional_text(self.llm_profile))
+        object.__setattr__(self, "artifacts", _normalize_mapping_tuple(self.artifacts))
+        object.__setattr__(self, "context_contributions", _normalize_mapping_tuple(self.context_contributions))
         object.__setattr__(self, "metadata", sanitize_metadata(self.metadata))
 
 
@@ -434,6 +448,32 @@ def _normalize_tool_names(values: tuple[str, ...]) -> tuple[str, ...]:
         if " " in tool_name:
             raise ValueError("Tool names must not contain spaces.")
         normalized.append(tool_name)
+    return tuple(normalized)
+
+
+def _normalize_mapping_tuple(
+    values: tuple[object, ...] | list[object],
+) -> tuple[dict[str, Any], ...]:
+    normalized: list[dict[str, Any]] = []
+    for item in values:
+        if not isinstance(item, Mapping):
+            continue
+        normalized.append(dict(item))
+    return tuple(normalized)
+
+
+def _normalize_llm_message_tuple(
+    values: tuple[LLMMessage, ...],
+) -> tuple[LLMMessage, ...]:
+    normalized: list[LLMMessage] = []
+    for item in values:
+        if isinstance(item, LLMMessage):
+            normalized.append(item)
+            continue
+        if isinstance(item, Mapping):
+            normalized.append(LLMMessage(**item))
+            continue
+        raise TypeError("Agent run follow-up messages must be mappings or LLMMessage values.")
     return tuple(normalized)
 
 

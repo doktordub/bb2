@@ -11,6 +11,7 @@ from app.config.view import ApiSseSettings
 from app.contracts.policy import PolicyService
 from app.policy.context import build_readonly_policy_context
 from app.policy.stream_policy import build_stream_policy_request, infer_stream_payload_category
+from app.session.mapping import project_public_artifact, resolve_public_artifact_retrieval_endpoint
 from app.session.models import SessionStreamEvent
 
 _SAFE_METADATA_KEYS = frozenset(
@@ -41,6 +42,7 @@ def encode_session_stream_event(
     event: SessionStreamEvent,
     *,
     settings: ApiSseSettings,
+    artifact_retrieval_endpoint: str | None = None,
 ) -> str | None:
     """Normalize one session stream event into a public SSE frame."""
 
@@ -65,6 +67,39 @@ def encode_session_stream_event(
             if key in _SAFE_METADATA_KEYS and value is not None
         }
         return encode_sse(event.event_type, metadata_payload)
+
+    if event.event_type == "artifact.started":
+        payload = _artifact_started_payload(event)
+        if payload is None:
+            return None
+        return encode_sse(
+            event.event_type,
+            payload,
+            event_id=_artifact_event_id(event),
+        )
+
+    if event.event_type == "artifact.completed":
+        payload = _artifact_completed_payload(
+            event,
+            artifact_retrieval_endpoint=artifact_retrieval_endpoint,
+        )
+        if payload is None:
+            return None
+        return encode_sse(
+            event.event_type,
+            payload,
+            event_id=_artifact_event_id(event),
+        )
+
+    if event.event_type == "artifact.failed":
+        payload = _artifact_failed_payload(event)
+        if payload is None:
+            return None
+        return encode_sse(
+            event.event_type,
+            payload,
+            event_id=_artifact_event_id(event),
+        )
 
     if event.event_type == "response.completed":
         completed_payload: dict[str, Any] = {
@@ -168,7 +203,11 @@ async def encode_session_stream_event_for_api(
     decision = await policy_service.evaluate(request, context)
     if decision.is_denied:
         return None
-    return encode_session_stream_event(event, settings=settings)
+    return encode_session_stream_event(
+        event,
+        settings=settings,
+        artifact_retrieval_endpoint=resolve_public_artifact_retrieval_endpoint(config),
+    )
 
 
 def _started_payload(
@@ -223,3 +262,69 @@ def _as_delta_text(value: object) -> str | None:
     if value == "":
         return None
     return value
+
+
+def _artifact_event_id(event: SessionStreamEvent) -> str | None:
+    artifact_id = _as_text(event.data.get("artifact_id"))
+    if artifact_id is not None:
+        return artifact_id
+    artifact = event.data.get("artifact")
+    if isinstance(artifact, dict):
+        return _as_text(artifact.get("artifact_id"))
+    return None
+
+
+def _artifact_started_payload(event: SessionStreamEvent) -> dict[str, Any] | None:
+    artifact_id = _as_text(event.data.get("artifact_id"))
+    chart_type = _as_text(event.data.get("chart_type"))
+    renderer = _as_text(event.data.get("renderer"))
+    spec_version = _as_text(event.data.get("spec_version"))
+    data_mode = _as_text(event.data.get("data_mode"))
+    artifact_type = _as_text(event.data.get("type")) or "chart"
+    if artifact_id is None or chart_type is None or renderer is None or spec_version is None or data_mode is None:
+        return None
+    return {
+        "artifact_id": artifact_id,
+        "type": artifact_type,
+        "chart_type": chart_type,
+        "renderer": renderer,
+        "spec_version": spec_version,
+        "data_mode": data_mode,
+    }
+
+
+def _artifact_completed_payload(
+    event: SessionStreamEvent,
+    *,
+    artifact_retrieval_endpoint: str | None,
+) -> dict[str, Any] | None:
+    artifact = event.data.get("artifact")
+    if not isinstance(artifact, dict):
+        return None
+    projected_artifact = project_public_artifact(
+        artifact,
+        artifact_retrieval_endpoint=artifact_retrieval_endpoint,
+    )
+    if projected_artifact is None:
+        return None
+    return {"artifact": projected_artifact}
+
+
+def _artifact_failed_payload(event: SessionStreamEvent) -> dict[str, Any] | None:
+    artifact_id = _artifact_event_id(event)
+    if artifact_id is None:
+        return None
+    error = event.data.get("error")
+    if isinstance(error, dict):
+        message = _as_text(error.get("message")) or "The chart artifact could not be delivered."
+        code = _as_text(error.get("code")) or "artifact_delivery_failed"
+    else:
+        message = _as_text(event.data.get("message")) or "The chart artifact could not be delivered."
+        code = _as_text(event.data.get("code")) or "artifact_delivery_failed"
+    return {
+        "artifact_id": artifact_id,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+    }

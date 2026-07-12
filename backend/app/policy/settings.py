@@ -88,6 +88,33 @@ class PolicyStreamSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyVisualizationSettings:
+    """Typed visualization policy settings for one policy profile."""
+
+    enabled: bool = False
+    deny_unknown_chart_types: bool = True
+    deny_unknown_renderers: bool = True
+    require_data_source: bool = True
+    allow_memory_data: bool = False
+    allow_tool_data: bool = False
+    allow_uploaded_file_data: bool = False
+    allow_reference_data_mode: bool = False
+    allow_exact_followup_retrieval: bool = False
+    allow_data_export: bool = False
+    allow_full_dataset_in_context: bool = False
+    allowed_chart_types: tuple[str, ...] = ()
+    allowed_renderers: tuple[str, ...] = ()
+    allowed_data_sources: tuple[str, ...] = ()
+    sensitive_fields: tuple[str, ...] = ()
+    max_rows_inline: int = 500
+    max_rows_artifact_store: int = 5000
+    max_series: int = 12
+    max_categories: int = 100
+    max_context_summary_tokens: int = 600
+    max_artifacts_per_response: int = 1
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyCapabilitySettings:
     """Typed capability exposure policy settings for a single policy profile."""
 
@@ -151,6 +178,7 @@ class PolicyProfileSettings:
     fallback: PolicyFallbackSettings = field(default_factory=PolicyFallbackSettings)
     trace: PolicyTraceSettings = field(default_factory=PolicyTraceSettings)
     stream: PolicyStreamSettings = field(default_factory=PolicyStreamSettings)
+    visualization: PolicyVisualizationSettings = field(default_factory=PolicyVisualizationSettings)
     capabilities: PolicyCapabilitySettings = field(default_factory=PolicyCapabilitySettings)
     health: PolicyHealthSettings = field(default_factory=PolicyHealthSettings)
     audit: PolicyAuditSettings = field(default_factory=PolicyAuditSettings)

@@ -54,6 +54,7 @@ def test_primary_pages_render(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     assert client.get("/chat").status_code == 200
     assert client.get("/admin").status_code == 200
     assert client.get("/help").status_code == 200
+    assert client.get("/visualization-foundation").status_code == 200
 
 
 def test_shared_shell_renders_nav_and_status_chip(
@@ -94,6 +95,10 @@ def test_chat_page_renders_phase_9_workspace_shell(
     assert b"data-session-reset" in response.data
     assert b"data-conversation-thread" in response.data
     assert b"data-chat-loading-state" in response.data
+    assert b"data-visualization-max-artifacts=\"3\"" in response.data
+    assert b"data-visualization-max-rows-inline=\"5000\"" in response.data
+    assert b"data-visualization-max-series=\"12\"" in response.data
+    assert b"data-visualization-max-categories=\"100\"" in response.data
     assert b"loading..." in response.data
     assert b"conversation-header-row" in response.data
     assert b"data-chat-live-region" in response.data
@@ -104,10 +109,29 @@ def test_chat_page_renders_phase_9_workspace_shell(
     assert b"data-inspector-future" in response.data
     assert b"css/pages/chat/index.css" in response.data
     assert b"css/chat.css" not in response.data
+    assert b"vendor/echarts/echarts-5.5.1.min.js" in response.data
     assert b"js/chat/index.js" in response.data
     assert b"js/chat-page.js" not in response.data
     assert b"data-health-banner" not in response.data
     assert b"data-chat-offline-card" not in response.data
+
+
+def test_visualization_foundation_page_renders_phase_1_fixture_harness(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client = build_client(monkeypatch, tmp_path)
+
+    response = client.get("/visualization-foundation")
+
+    assert response.status_code == 200
+    assert b"Visualization foundation" in response.data
+    assert b"data-visualization-demo-grid" in response.data
+    assert b"data-visualization-supported" in response.data
+    assert b"chart_grouped_bar_income_expense" in response.data
+    assert b"chart_table_monthly_status" in response.data
+    assert b"vendor/echarts/echarts-5.5.1.min.js" in response.data
+    assert b"js/visualization/index.js" in response.data
 
 
 def test_admin_page_renders_phase_12_tabbed_console(
@@ -129,6 +153,9 @@ def test_admin_page_renders_phase_12_tabbed_console(
     assert b"data-admin-trace-form" in response.data
     assert b"data-admin-trace-results" in response.data
     assert b"data-admin-health-json" in response.data
+    assert b"data-admin-visualization-enabled" in response.data
+    assert b"data-admin-visualization-backend-types" in response.data
+    assert b"data-admin-visualization-mismatches" in response.data
     assert b"css/pages/admin/index.css" in response.data
     assert b"css/admin.css" not in response.data
     assert b"js/admin/index.js" in response.data

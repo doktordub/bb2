@@ -77,6 +77,7 @@ def test_capabilities_contract_matches_frontend_expectations() -> None:
     capabilities_data = resolve_schema(spec, capabilities_response["properties"]["data"])
     chat_capabilities = resolve_schema(spec, capabilities_data["properties"]["chat"])
     session_capabilities = resolve_schema(spec, capabilities_data["properties"]["sessions"])
+    visualization_capabilities = resolve_schema(spec, capabilities_data["properties"]["visualization"])
 
     assert "data" in capabilities_response["required"]
     assert {"enabled", "streaming_enabled", "max_message_chars"}.issubset(
@@ -85,6 +86,14 @@ def test_capabilities_contract_matches_frontend_expectations() -> None:
     assert {"list_enabled", "history_enabled", "reset_enabled", "delete_enabled"}.issubset(
         set(session_capabilities["properties"].keys())
     )
+    assert {
+        "enabled",
+        "default_renderer",
+        "spec_version",
+        "supported_chart_types",
+        "reference_mode_enabled",
+        "limits",
+    }.issubset(set(visualization_capabilities["properties"].keys()))
 
 
 def test_session_contract_matches_frontend_expectations() -> None:
@@ -102,4 +111,6 @@ def test_session_contract_matches_frontend_expectations() -> None:
         "reset_count",
         "message_count",
     }.issubset(set(session_summary["properties"].keys()))
-    assert {"role", "content"}.issubset(set(history_message["properties"].keys()))
+    assert {"role", "content", "artifacts", "metadata"}.issubset(
+        set(history_message["properties"].keys())
+    )

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from app.config.view import LLMDefaultsSettings, LLMProfileSettings, LLMProviderSettings
-from app.contracts.llm import LLMRequest, LLMResponseFormat, LLMTokenUsage
+from app.contracts.llm import LLMRequest, LLMResponseFormat, LLMTokenUsage, LLMToolCall
 
 ProviderStreamEventType = Literal["started", "delta", "metadata", "completed", "error"]
 
@@ -105,10 +105,29 @@ class ProviderLLMResponse:
     """Provider-native completion data after adapter normalization."""
 
     text: str
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
     finish_reason: str | None = None
+    reasoning: dict[str, Any] = field(default_factory=dict)
     usage: LLMTokenUsage | None = None
     raw_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        normalized_tool_calls: list[LLMToolCall] = []
+        for tool_call in self.tool_calls:
+            if isinstance(tool_call, LLMToolCall):
+                normalized_tool_calls.append(tool_call)
+            elif isinstance(tool_call, Mapping):
+                normalized_tool_calls.append(LLMToolCall.from_mapping(tool_call))
+            else:
+                raise TypeError("Provider LLM responses require LLMToolCall values or mappings.")
+        object.__setattr__(self, "tool_calls", normalized_tool_calls)
+
+        if not isinstance(self.reasoning, dict):
+            object.__setattr__(self, "reasoning", dict(self.reasoning))
+
+        if not isinstance(self.metadata, dict):
+            object.__setattr__(self, "metadata", dict(self.metadata))
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,9 +136,28 @@ class ProviderLLMStreamEvent:
 
     type: ProviderStreamEventType
     text: str | None = None
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
     finish_reason: str | None = None
+    reasoning: dict[str, Any] = field(default_factory=dict)
     usage: LLMTokenUsage | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        normalized_tool_calls: list[LLMToolCall] = []
+        for tool_call in self.tool_calls:
+            if isinstance(tool_call, LLMToolCall):
+                normalized_tool_calls.append(tool_call)
+            elif isinstance(tool_call, Mapping):
+                normalized_tool_calls.append(LLMToolCall.from_mapping(tool_call))
+            else:
+                raise TypeError("Provider LLM stream events require LLMToolCall values or mappings.")
+        object.__setattr__(self, "tool_calls", normalized_tool_calls)
+
+        if not isinstance(self.reasoning, dict):
+            object.__setattr__(self, "reasoning", dict(self.reasoning))
+
+        if not isinstance(self.metadata, dict):
+            object.__setattr__(self, "metadata", dict(self.metadata))
 
     @classmethod
     def started(
@@ -134,9 +172,17 @@ class ProviderLLMStreamEvent:
         cls,
         *,
         text: str,
+        tool_calls: Sequence[LLMToolCall | Mapping[str, Any]] | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> "ProviderLLMStreamEvent":
-        return cls(type="delta", text=text, metadata=dict(metadata or {}))
+        return cls(
+            type="delta",
+            text=text,
+            tool_calls=list(tool_calls or []),
+            reasoning=dict(reasoning or {}),
+            metadata=dict(metadata or {}),
+        )
 
     @classmethod
     def metadata_event(
@@ -150,13 +196,17 @@ class ProviderLLMStreamEvent:
     def completed(
         cls,
         *,
+        tool_calls: Sequence[LLMToolCall | Mapping[str, Any]] | None = None,
         finish_reason: str | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         usage: LLMTokenUsage | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> "ProviderLLMStreamEvent":
         return cls(
             type="completed",
+            tool_calls=list(tool_calls or []),
             finish_reason=finish_reason,
+            reasoning=dict(reasoning or {}),
             usage=usage,
             metadata=dict(metadata or {}),
         )

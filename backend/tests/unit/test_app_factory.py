@@ -64,6 +64,21 @@ def test_create_app(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         assert app.state.container.settings.app_name == settings.app_name
         assert app.state.container.config.require("app.active_usecase") == "default_chat"
         assert app.state.container.config_summary["configured"] is True
+        assert app.state.container.config_summary["visualization"] == {
+            "enabled": True,
+            "default_renderer": "echarts",
+            "allowed_renderers": ["echarts"],
+            "artifact_spec_version": "1.0",
+            "supported_chart_types_count": 19,
+            "artifact_store_enabled": False,
+            "artifact_store_provider": "disabled",
+            "reference_mode_enabled": False,
+            "exact_followup_retrieval_enabled": True,
+            "context_summary_enabled": True,
+            "context_summary_mode": "summary_only",
+            "context_summary_budget_tokens": 1800,
+            "sample_data_enabled": False,
+        }
         assert app.state.container.persistence.workflow_state is app.state.container.workflow_state
         assert app.state.container.persistence.trace_store is app.state.container.trace_store
         assert app.state.container.memory is not None

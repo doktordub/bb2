@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bb2.local/mcp/visualization/structured_dataset_response_v1.schema.json",
+  "title": "StructuredDatasetResponseV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "columns",
+    "rows",
+    "row_count",
+    "truncated",
+    "source",
+    "query_summary",
+    "warnings",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "dataset_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "columns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/datasetColumn"
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/datasetRow"
+      }
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "total_row_count": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "truncated": {
+      "type": "boolean"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "query_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "time_range": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/timeRange"
+        }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "maxProperties": 12,
+      "additionalProperties": {
+        "$ref": "#/$defs/safeScalar"
+      }
+    }
+  },
+  "$defs": {
+    "datasetColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "data_type",
+        "nullable",
+        "semantic_role"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "data_type": {
+          "enum": [
+            "string",
+            "integer",
+            "number",
+            "boolean",
+            "date",
+            "datetime"
+          ]
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "semantic_role": {
+          "enum": [
+            "dimension",
+            "metric",
+            "time",
+            "category",
+            "series",
+            "identifier",
+            "other"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    "datasetRow": {
+      "type": "object",
+      "maxProperties": 20,
+      "additionalProperties": {
+        "$ref": "#/$defs/scalarValue"
+      }
+    },
+    "timeRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+    "scalarValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 500
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "safeScalar": {
+      "oneOf": [
+        {
+          "type": "string",
+          "maxLength": 200
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

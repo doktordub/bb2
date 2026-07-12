@@ -47,6 +47,47 @@ def test_capabilities_route_returns_frontend_safe_flags(
     with TestClient(app) as client:
         response = client.get("/capabilities", headers={"x-trace-id": "trace-cap-1234"})
 
+    expected_visualization = {
+        "enabled": False,
+        "default_renderer": "echarts",
+        "allowed_renderers": ["echarts"],
+        "spec_version": "1.0",
+        "context_summary_mode": "summary_only",
+        "supported_chart_types": [
+            "bar",
+            "grouped_bar",
+            "stacked_bar",
+            "horizontal_bar",
+            "line",
+            "multi_line",
+            "area",
+            "pie",
+            "donut",
+            "scatter",
+            "bubble",
+            "histogram",
+            "box_plot",
+            "heatmap",
+            "treemap",
+            "waterfall",
+            "gantt",
+            "radar",
+            "table",
+        ],
+        "reference_mode_supported": False,
+        "reference_mode_enabled": False,
+        "artifact_store_enabled": False,
+        "exact_followup_retrieval_enabled": True,
+        "limits": {
+            "max_rows_inline": 500,
+            "max_rows_artifact_store": 5000,
+            "max_series": 12,
+            "max_categories": 100,
+            "max_context_summary_tokens": 600,
+            "max_artifacts_per_response": 1,
+        },
+    }
+
     assert response.status_code == 200
     assert response.json() == {
         "schema_version": "1.0",
@@ -135,6 +176,7 @@ def test_capabilities_route_returns_frontend_safe_flags(
                 "streaming_supported": True,
                 "structured_output_supported": False,
             },
+            "visualization": expected_visualization,
         },
         "metadata": {},
     }

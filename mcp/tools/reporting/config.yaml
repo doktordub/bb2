@@ -1,0 +1,21 @@
+provider: fixture
+fixture_dataset: monthly_income_expense
+enabled_metrics:
+  - income
+  - expense
+enabled_dimensions:
+  - reporting_period
+max_date_range_days: 730
+default_granularity: month
+maximum_rows: 24
+maximum_metrics_per_query: 3
+maximum_filters: 5
+max_result_bytes: 262144
+timeout_seconds: 20
+cache_ttl_seconds: 60
+max_concurrency: 4
+retry_attempts: 2
+circuit_breaker_threshold: 3
+circuit_breaker_reset_seconds: 60
+provider_auth_profile: none
+healthcheck_mode: safe

@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-shell page-shell--wide container-xxl workspace-shell chat-workspace-shell" data-chat-workspace>
+<section class="page-shell page-shell--wide container-xxl workspace-shell chat-workspace-shell" data-chat-workspace data-visualization-max-artifacts="{{ frontend_settings.frontend_visualization_limits.max_artifacts_per_response }}" data-visualization-max-rows-inline="{{ frontend_settings.frontend_visualization_limits.max_rows_inline }}" data-visualization-max-series="{{ frontend_settings.frontend_visualization_limits.max_series }}" data-visualization-max-categories="{{ frontend_settings.frontend_visualization_limits.max_categories }}">
   <div class="workspace-status-bar chat-status-bar" data-panels-visible="false" aria-label="Chat runtime status">
     <div class="workspace-status-bar__item">
       <span class="workspace-status-bar__label">Health</span>
@@ -73,7 +73,7 @@
           <div class="conversation-header-row" aria-label="Conversation metadata">
             <p class="conversation-header-row__title">Active conversation</p>
             <div class="conversation-header-row__meta">
-              <button class="btn btn-shell btn-shell--compact chat-layout-toggle" type="button" data-composer-pin-toggle aria-pressed="true">Composer pinned</button>
+              <button class="btn btn-shell-composer-pinned btn-shell--compact chat-layout-toggle" type="button" data-composer-pin-toggle aria-pressed="true">Composer pinned</button>
               <span class="state-pill state-pill--checking" data-streaming-badge>Mode unavailable</span>
               <span class="composer-counter" data-char-counter>0 / --</span>
             </div>
@@ -147,5 +147,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='vendor/echarts/echarts-5.5.1.min.js', v=static_version) }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/chat/index.js', v=static_version) }}"></script>
 {% endblock %}

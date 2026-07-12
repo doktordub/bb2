@@ -11,7 +11,21 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/index.css', v=static_version) }}">
     {% block extra_styles %}{% endblock %}
   </head>
-  <body class="app-shell" data-page="{{ active_page|default('shell') }}" data-ui-shell="operational" data-ui-api-base="/ui-api" data-frontend-admin-enabled="{{ 'true' if frontend_settings.frontend_admin_enabled else 'false' }}" data-frontend-debug-traces-enabled="{{ 'true' if frontend_settings.frontend_debug_traces_enabled else 'false' }}" data-frontend-restart-enabled="{{ 'true' if frontend_settings.frontend_restart_enabled else 'false' }}">
+  <body
+    class="app-shell"
+    data-page="{{ active_page|default('shell') }}"
+    data-ui-shell="operational"
+    data-ui-api-base="/ui-api"
+    data-frontend-admin-enabled="{{ 'true' if frontend_settings.frontend_admin_enabled else 'false' }}"
+    data-frontend-debug-traces-enabled="{{ 'true' if frontend_settings.frontend_debug_traces_enabled else 'false' }}"
+    data-frontend-restart-enabled="{{ 'true' if frontend_settings.frontend_restart_enabled else 'false' }}"
+    data-frontend-env="{{ frontend_settings.frontend_env }}"
+    data-frontend-testing="{{ 'true' if frontend_settings.frontend_testing else 'false' }}"
+    data-frontend-static-version="{{ frontend_settings.frontend_static_version }}"
+    data-frontend-visualization-max-artifacts="{{ frontend_settings.frontend_visualization_limits.max_artifacts_per_response }}"
+    data-frontend-visualization-max-rows-inline="{{ frontend_settings.frontend_visualization_limits.max_rows_inline }}"
+    data-frontend-visualization-max-series="{{ frontend_settings.frontend_visualization_limits.max_series }}"
+    data-frontend-visualization-max-categories="{{ frontend_settings.frontend_visualization_limits.max_categories }}">
     <a class="skip-link" href="#main-content">Skip to content</a>
     {% include "partials/navbar.html" %}
     <noscript>

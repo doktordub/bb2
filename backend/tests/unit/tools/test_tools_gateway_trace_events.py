@@ -79,4 +79,6 @@ async def test_gateway_records_failure_trace_for_policy_denial(
 
     assert getattr(adapter, "call_requests", []) == []
     assert trace_store.events[-1].event_type == TOOL_CALL_FAILED
-    assert "blocked" not in str(trace_store.events[-1].payload)
+    assert "'query': 'blocked'" not in str(trace_store.events[-1].payload)
+    assert trace_store.events[-1].payload["policy_decision"] == "deny"
+    assert trace_store.events[-1].payload["policy_block_summary"] == "Tool 'documents.search' blocked by policy."

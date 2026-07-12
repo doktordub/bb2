@@ -14,6 +14,8 @@ PolicyAction = Literal[
     "agent.invoke",
     "llm.complete",
     "llm.stream",
+    "visualization.build",
+    "visualization.retrieve",
     "memory.search",
     "memory.get",
     "memory.upsert",

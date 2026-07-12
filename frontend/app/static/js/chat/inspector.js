@@ -106,6 +106,7 @@ export function renderInspector(runtimeState, refs, { renderSessionContext } = {
   const llm = capabilities.llm ?? {};
   const chat = capabilities.chat ?? {};
   const sessions = capabilities.sessions ?? {};
+  const visualization = runtimeState.shellState.visualization ?? {};
   const debugEnabled = Boolean(runtimeState.shellState.frontendFlags.debugTracesEnabled)
     && Boolean(capabilities.debug?.trace_routes_enabled);
   const inspector = runtimeState.inspector;
@@ -182,6 +183,7 @@ export function renderInspector(runtimeState, refs, { renderSessionContext } = {
       `Tools: ${tools.enabled ? `${tools.total_tools ?? 0} configured` : "disabled"}; approvals ${tools.approval_required_tools ?? 0}`,
       `Memory: ${memory.enabled ? (memory.provider || "configured") : "disabled"}; search ${memory.search_available ? "on" : "off"}; ingest ${memory.ingest_available ? "on" : "off"}`,
       `LLM: ${llm.enabled ? (llm.default_profile || "configured") : "disabled"}; streaming ${llm.streaming_supported ? "on" : "off"}; structured output ${llm.structured_output_supported ? "on" : "off"}`,
+      `Visualization: ${visualization.backendEnabled === false ? "disabled" : visualization.backendAdvertised ? `${visualization.intersectedChartTypes?.length ?? 0} renderable types` : "local-only"}; reference mode ${visualization.referenceModeEnabled ? "on" : "off"}`,
     ],
   });
 
@@ -328,7 +330,7 @@ export function applyCapabilities(
   setText(
     refs.emptyChatCopy,
     usecases.length > 0
-      ? `Select ${usecases[0].display_name || usecases[0].name || "a use case"} and send a message to start or resume a backend session.`
+      ? `Select ${"one of " + usecases.length + " use cases" || "a use case"} and send a message to start or resume a backend session.`
       : "No backend use cases are currently available, so the chat shell remains read-only."
   );
 

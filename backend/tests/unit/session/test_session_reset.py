@@ -23,6 +23,18 @@ from app.testing.fakes.fake_policy import FakePolicyService
 from app.testing.fakes.fake_state import FakeWorkflowStateStore
 from app.testing.fakes.fake_trace import FakeTraceStore
 from app.testing.fakes.fake_trace_recorder import build_fake_trace_recorder
+from app.visualization.artifact_store import InMemoryVisualizationArtifactStore, build_visualization_artifact_scope
+from app.visualization.errors import ChartArtifactNotFoundError
+from app.visualization.models import ChartArtifact, ChartContextSummary
+from app.visualization.settings import (
+    DEFAULT_VISUALIZATION_ALIASES,
+    DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST,
+    VisualizationArtifactStoreSettings,
+    VisualizationContextSummarySettings,
+    VisualizationLimitsSettings,
+    VisualizationSampleDataSettings,
+    VisualizationSettings,
+)
 
 
 def _build_settings() -> SessionSettings:
@@ -95,6 +107,54 @@ def _build_context():
     )
 
 
+def _build_visualization_settings() -> VisualizationSettings:
+    return VisualizationSettings(
+        enabled=True,
+        default_renderer="echarts",
+        allowed_renderers=("echarts",),
+        artifact_spec_version="1.0",
+        allowed_chart_types=("bar", "line", "grouped_bar"),
+        aliases=dict(DEFAULT_VISUALIZATION_ALIASES),
+        safe_metadata_allowlist=DEFAULT_VISUALIZATION_SAFE_METADATA_ALLOWLIST,
+        limits=VisualizationLimitsSettings(
+            max_rows_inline=500,
+            max_rows_artifact_store=5000,
+            max_series=12,
+            max_categories=100,
+            max_artifact_bytes=262144,
+        ),
+        sample_data=VisualizationSampleDataSettings(
+            enabled=False,
+            require_explicit_opt_in=True,
+            max_rows=25,
+        ),
+        context_summary=VisualizationContextSummarySettings(
+            enabled=True,
+            mode="summary_only",
+            max_tokens_per_chart_summary=600,
+            max_chart_summaries_per_session_context=5,
+            max_total_visualization_context_tokens=1800,
+            include_data_ref=True,
+            include_aggregate_stats=True,
+            include_extrema=True,
+            include_trend_summary=True,
+            include_sample_rows=False,
+            max_sample_rows=0,
+            eviction_policy="most_recent_relevant",
+            allow_full_dataset_in_context=False,
+        ),
+        artifact_store=VisualizationArtifactStoreSettings(
+            enabled=True,
+            provider="memory",
+            ttl_seconds=7200,
+            allow_reference_data_mode=True,
+            public_retrieval_enabled=False,
+            retrieval_endpoint="/artifacts/{artifact_id}",
+            exact_followup_retrieval_enabled=True,
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_reset_session_passes_reason_and_safe_metadata_to_workflow_state() -> None:
     workflow_state = FakeWorkflowStateStore()
@@ -133,3 +193,78 @@ async def test_reset_session_passes_reason_and_safe_metadata_to_workflow_state()
     assert "session_reset_1" not in workflow_state.states
     assert workflow_state.reset_generations["session_reset_1"] == 1
     assert [event.resolved_event_name for event in trace_store.events] == ["session_reset"]
+
+
+@pytest.mark.asyncio
+async def test_reset_session_clears_session_scoped_visualization_artifacts() -> None:
+    workflow_state = FakeWorkflowStateStore()
+    workflow_state.states["session_reset_1"] = {
+        "conversation": {"messages": [{"role": "user", "content": "hello"}]},
+        "workflow": {"current_step": "answered"},
+        "metadata": {"loaded_empty": False},
+    }
+    workflow_state.versions["session_reset_1"] = 2
+    trace_store = FakeTraceStore()
+    visualization_store = InMemoryVisualizationArtifactStore(
+        settings=_build_visualization_settings(),
+        clock=FakeClock([datetime(2026, 6, 27, 17, 0, tzinfo=UTC)] * 4),
+    )
+    scope = build_visualization_artifact_scope(
+        session_id="session_reset_1",
+        user_id="local_user",
+        scope=None,
+    )
+    artifact = ChartArtifact(
+        artifact_id="chart_reset_001",
+        chart_type="bar",
+        title="Income by Month",
+        renderer="echarts",
+        spec_version="1.0",
+        data_mode="inline",
+        data=[{"month": "2026-01", "amount": 500}],
+        encoding={"x": "month", "y": ["amount"]},
+        metadata={"source": "workflow_state"},
+    )
+    summary = ChartContextSummary(
+        artifact_id=artifact.artifact_id,
+        chart_type=artifact.chart_type,
+        title=artifact.title,
+        renderer=artifact.renderer,
+        data_source="workflow_state",
+        x_field="month",
+        y_fields=["amount"],
+        row_count=1,
+        series_count=1,
+        summary_text="Income is 500 in January.",
+        data_ref="artifact://session_reset_1/chart_reset_001",
+    )
+    await visualization_store.save_artifact(
+        scope=scope,
+        artifact=artifact,
+        context_summary=summary,
+        data=artifact.data,
+    )
+
+    service = DefaultSessionService(
+        config=FakeConfigurationView({"usecases": {"default_chat": {"enabled": True}}}),
+        settings=_build_settings(),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=trace_store),
+        orchestrator=FakeOrchestrationRuntime(),
+        policy_service=FakePolicyService(),
+        clock=FakeClock([datetime(2026, 6, 27, 17, 0, tzinfo=UTC)]),
+        visualization_artifact_store=visualization_store,
+    )
+
+    result = await service.reset_session(
+        session_id="session_reset_1",
+        reason="user_requested",
+        context=_build_context(),
+    )
+
+    assert result.metadata == {
+        "reason": "user_requested",
+        "visualization_artifacts_cleared": 1,
+    }
+    with pytest.raises(ChartArtifactNotFoundError):
+        await visualization_store.get_artifact(scope=scope, artifact_id=artifact.artifact_id)

@@ -96,6 +96,29 @@ test("streamSseRequest maps plain-text error events into the standard error payl
   assert.equal(frames[0].data.error.message, "stream exploded");
 });
 
+test("streamSseRequest preserves additive visualization artifact lifecycle frames", async () => {
+  global.fetch = async () =>
+    createStreamResponse([
+      'event: artifact.started\ndata: {"artifact_id":"chart-1","type":"chart"}\n\n',
+      'event: artifact.completed\ndata: {"artifact":{"artifact_id":"chart-1","type":"chart"}}\n\n',
+      'event: artifact.failed\ndata: {"artifact_id":"chart-2","error":{"message":"Delivery failed."}}\n\n',
+    ]);
+
+  const frames = [];
+  await streamSseRequest("/ui-api/chat/stream", {
+    body: { message: "hello" },
+    onEvent: (frame) => frames.push(frame),
+  });
+
+  assert.equal(frames.length, 3);
+  assert.equal(frames[0].event, "artifact.started");
+  assert.equal(frames[0].data.artifact_id, "chart-1");
+  assert.equal(frames[1].event, "artifact.completed");
+  assert.equal(frames[1].data.artifact.artifact_id, "chart-1");
+  assert.equal(frames[2].event, "artifact.failed");
+  assert.equal(frames[2].data.error.message, "Delivery failed.");
+});
+
 test("streamSseRequest falls back to JSON mode when the backend returns application/json", async () => {
   global.fetch = async () =>
     new Response(

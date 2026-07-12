@@ -18,6 +18,8 @@ from app.contracts.state import (
 from app.orchestration.conversation_context import refresh_session_summary_metadata
 from app.orchestration.models import ConversationMessage, OrchestrationResult
 from app.orchestration.state_delta import WorkflowStateDelta, apply_workflow_state_delta
+from app.session.mapping import HistoryReplayPayload, build_history_replay_payload
+from app.visualization.settings import VisualizationHistoryReplaySettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +84,7 @@ def apply_orchestration_result(
     *,
     result: OrchestrationResult,
     conversation_context_settings: ConversationContextSettings,
+    history_replay_settings: VisualizationHistoryReplaySettings,
     request_context: RequestContext,
     trace_id: str,
     request_id: str,
@@ -89,11 +92,17 @@ def apply_orchestration_result(
     client_host: str | None,
     user_agent: str | None,
     completed_at: datetime,
+    artifact_retrieval_endpoint: str | None = None,
 ) -> WorkflowStateDocument:
     """Apply a completed orchestration result to session workflow state."""
 
     state_delta = result.state_delta or _fallback_state_delta(result)
     updated_state = apply_workflow_state_delta(state, state_delta)
+    history_replay = build_history_replay_payload(
+        artifacts=[item.model_dump(mode="python") for item in result.artifacts],
+        artifact_retrieval_endpoint=artifact_retrieval_endpoint,
+        history_replay_settings=history_replay_settings,
+    )
     _annotate_appended_messages(
         updated_state,
         appended_count=len(state_delta.append_messages),
@@ -102,6 +111,7 @@ def apply_orchestration_result(
         trace_id=trace_id,
         request_id=request_id,
         created_at=completed_at,
+        history_replay=history_replay,
     )
     updated_state["workflow"]["current_step"] = "answered"
     updated_state["last_result"] = {
@@ -126,6 +136,13 @@ def apply_orchestration_result(
         metadata["last_client_host"] = client_host
     if user_agent is not None:
         metadata["last_user_agent"] = user_agent
+    _update_task_execution_state_metadata(
+        metadata=metadata,
+        result=result,
+        request_id=request_id,
+        trace_id=trace_id,
+        updated_at=completed_at.isoformat(),
+    )
     refresh_session_summary_metadata(
         updated_state,
         settings=conversation_context_settings,
@@ -272,6 +289,7 @@ def _annotate_appended_messages(
     trace_id: str,
     request_id: str,
     created_at: datetime,
+    history_replay: HistoryReplayPayload | None = None,
 ) -> None:
     if appended_count <= 0:
         return
@@ -297,6 +315,11 @@ def _annotate_appended_messages(
         metadata.setdefault("turn_id", request_id)
         metadata.setdefault("trace_id", trace_id)
         if raw_message.get("role") == "assistant":
+            if history_replay is not None:
+                if history_replay.artifacts and not isinstance(raw_message.get("artifacts"), list):
+                    raw_message["artifacts"] = deepcopy(history_replay.artifacts)
+                for key, value in history_replay.metadata.items():
+                    metadata.setdefault(key, deepcopy(value))
             metadata.setdefault("trace_id", trace_id)
 
 
@@ -349,3 +372,98 @@ def _fallback_state_delta(result: OrchestrationResult) -> WorkflowStateDelta:
             if value is not None
         },
     )
+
+
+def _update_task_execution_state_metadata(
+    *,
+    metadata: dict[str, Any],
+    result: OrchestrationResult,
+    request_id: str,
+    trace_id: str,
+    updated_at: str,
+) -> None:
+    result_metadata = dict(result.metadata)
+    response_mode = _normalize_metadata_text(result_metadata.get("response_mode"))
+    if response_mode is None:
+        metadata.pop("pending_task_flow", None)
+        return
+
+    task_flow_metadata: dict[str, Any] = {
+        "response_mode": response_mode,
+        "needs_user_input": bool(result_metadata.get("needs_user_input")),
+        "pending_task_count": _resolve_pending_task_count(result_metadata),
+        "generated_artifact_count": len(result.artifacts),
+        "request_kind": _normalize_metadata_text(result_metadata.get("request_kind")),
+        "safe_goal": _normalize_metadata_text(result_metadata.get("safe_goal")),
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "updated_at": updated_at,
+    }
+
+    clarification_question = _normalize_metadata_text(result.answer)
+    if task_flow_metadata["needs_user_input"] and clarification_question is not None:
+        task_flow_metadata["clarification_question"] = clarification_question
+
+    missing_inputs = _normalize_text_list(result_metadata.get("missing_required_inputs"))
+    if missing_inputs:
+        task_flow_metadata["missing_required_inputs"] = missing_inputs
+
+    plan_actions = _normalize_text_list(result_metadata.get("plan_actions"))
+    if plan_actions:
+        task_flow_metadata["plan_actions"] = plan_actions
+
+    deterministic_computations = _normalize_text_list(
+        result_metadata.get("required_deterministic_computations")
+    )
+    if deterministic_computations:
+        task_flow_metadata["required_deterministic_computations"] = deterministic_computations
+
+    preferred_agents = _normalize_text_list(result_metadata.get("preferred_agents"))
+    if preferred_agents:
+        task_flow_metadata["preferred_agents"] = preferred_agents
+
+    preferred_tools = _normalize_text_list(result_metadata.get("preferred_tools"))
+    if preferred_tools:
+        task_flow_metadata["preferred_tools"] = preferred_tools
+
+    metadata["pending_task_flow"] = {
+        key: value
+        for key, value in task_flow_metadata.items()
+        if value is not None
+    }
+
+
+def _resolve_pending_task_count(metadata: dict[str, Any]) -> int:
+    executed_step_count = _optional_non_negative_int(metadata.get("executed_step_count")) or 0
+    plan_step_count = _optional_non_negative_int(metadata.get("plan_step_count"))
+    if plan_step_count is None:
+        return 0
+    return max(plan_step_count - executed_step_count, 0)
+
+
+def _normalize_metadata_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_text_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[str] = []
+    for item in value:
+        text = _normalize_metadata_text(item)
+        if text is not None:
+            normalized.append(text)
+    return normalized
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if value < 0:
+        return None
+    return value

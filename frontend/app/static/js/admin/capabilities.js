@@ -4,6 +4,34 @@ import { boolLabel } from "../common/formatters.js";
 import { setStatePill } from "../common/status.js";
 import { createCatalogItem, formatJson, renderList } from "./rendering.js";
 
+function formatVisualizationLimits(limits = {}) {
+  const parts = [];
+
+  if (Number.isFinite(Number(limits.maxArtifactsPerResponse))) {
+    parts.push(`${limits.maxArtifactsPerResponse} artifact${Number(limits.maxArtifactsPerResponse) === 1 ? "" : "s"}`);
+  }
+  if (Number.isFinite(Number(limits.maxRowsInline))) {
+    parts.push(`${limits.maxRowsInline} rows`);
+  }
+  if (Number.isFinite(Number(limits.maxSeries))) {
+    parts.push(`${limits.maxSeries} series`);
+  }
+  if (Number.isFinite(Number(limits.maxCategories))) {
+    parts.push(`${limits.maxCategories} categories`);
+  }
+
+  return parts.join(" · ") || "Unavailable";
+}
+
+function renderVisualizationList(container, items, meta, emptyMessage) {
+  renderList(
+    container,
+    items,
+    (item) => createCatalogItem(item, meta),
+    emptyMessage
+  );
+}
+
 export function renderCapabilities(runtimeState, refs) {
   const shellState = runtimeState.shellState;
   const capabilities = shellState.capabilities;
@@ -19,13 +47,29 @@ export function renderCapabilities(runtimeState, refs) {
     setStatePill(refs.tracePill, "Unavailable", "disabled");
     setText(refs.debugCopy, "Trace routing is unavailable until the capability route can be loaded again.");
     setText(refs.capabilitiesJson, formatJson({}));
+    setText(refs.visualizationEnabled, "Unavailable");
+    setText(refs.visualizationRenderer, "Unavailable");
+    setText(refs.visualizationSpec, "Unavailable");
+    setText(refs.visualizationReference, "Unavailable");
+    setText(refs.visualizationContext, "Unavailable");
+    setText(refs.visualizationLimits, "Unavailable");
     if (refs.restartCard) {
       refs.restartCard.hidden = true;
     }
     return;
   }
 
-  setBannerState(refs.capabilitiesBanner, refs.capabilitiesBannerTitle, refs.capabilitiesBannerBody, { hidden: true });
+  const visualization = shellState.visualization;
+  if (shellState.visualizationWarning) {
+    setBannerState(refs.capabilitiesBanner, refs.capabilitiesBannerTitle, refs.capabilitiesBannerBody, {
+      hidden: false,
+      tone: "warning",
+      title: "Visualization compatibility warning.",
+      body: shellState.visualizationWarning,
+    });
+  } else {
+    setBannerState(refs.capabilitiesBanner, refs.capabilitiesBannerTitle, refs.capabilitiesBannerBody, { hidden: true });
+  }
   setText(refs.capabilitiesJson, formatJson(shellState.capabilitiesPayload));
 
   const chat = capabilities.chat ?? {};
@@ -40,6 +84,27 @@ export function renderCapabilities(runtimeState, refs) {
   setText(refs.chatEnabled, boolLabel(Boolean(chat.enabled)));
   setText(refs.chatStreaming, boolLabel(Boolean(chat.streaming_enabled)));
   setText(refs.chatLimit, chat.max_message_chars ? String(chat.max_message_chars) : "Unavailable");
+  setText(refs.visualizationEnabled, boolLabel(Boolean(visualization?.backendEnabled)));
+  setText(
+    refs.visualizationRenderer,
+    visualization?.backendAdvertised
+      ? `Backend ${visualization.backendRenderer || "unavailable"} · Frontend ${visualization.renderer}`
+      : visualization?.renderer || "Unavailable"
+  );
+  setText(
+    refs.visualizationSpec,
+    visualization?.backendAdvertised
+      ? `Backend ${visualization.backendSpecVersion || "unavailable"} · Frontend ${visualization.specVersion}`
+      : visualization?.specVersion || "Unavailable"
+  );
+  setText(
+    refs.visualizationReference,
+    visualization?.backendAdvertised
+      ? `Backend ${visualization.backendReferenceModeEnabled ? "enabled" : "disabled"} · Frontend ${visualization.referenceModeEnabled ? "enabled" : "disabled"}`
+      : visualization?.referenceModeEnabled ? "Enabled" : "Disabled"
+  );
+  setText(refs.visualizationContext, visualization?.contextSummaryMode || "Unavailable");
+  setText(refs.visualizationLimits, formatVisualizationLimits(visualization?.limits));
 
   setText(refs.sessionList, boolLabel(Boolean(sessions.list_enabled)));
   setText(refs.sessionHistory, boolLabel(Boolean(sessions.history_enabled)));
@@ -65,6 +130,30 @@ export function renderCapabilities(runtimeState, refs) {
     const meta = `${agent.type || "unknown type"} · ${agent.streaming_supported ? "streaming" : "non-streaming"} · ${capabilitySummary}`;
     return createCatalogItem(title, meta);
   });
+  renderVisualizationList(
+    refs.visualizationBackendTypes,
+    visualization?.backendSupportedChartTypes ?? [],
+    "Advertised by backend",
+    "No backend visualization types are advertised."
+  );
+  renderVisualizationList(
+    refs.visualizationFrontendTypes,
+    visualization?.frontendImplementedChartTypes ?? [],
+    "Implemented locally",
+    "No frontend visualization adapters are registered."
+  );
+  renderVisualizationList(
+    refs.visualizationIntersection,
+    visualization?.intersectedChartTypes ?? [],
+    "Renderable now",
+    "No chart types are currently renderable on both sides."
+  );
+  renderVisualizationList(
+    refs.visualizationMismatches,
+    visualization?.mismatches?.length ? visualization.mismatches : ["No compatibility mismatches detected."],
+    visualization?.mismatches?.length ? "Needs attention" : "Aligned",
+    "No compatibility mismatches detected."
+  );
 
   const toolCount = Number.isFinite(Number(tools.total_tools)) ? Number(tools.total_tools) : 0;
   const approvalCount = Number.isFinite(Number(tools.approval_required_tools)) ? Number(tools.approval_required_tools) : 0;

@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 
+from app.agents.errors import AgentPolicyDeniedError
 from app.contracts.errors import LLMGatewayError
 from app.contracts.state import default_workflow_state
 from app.orchestration.models import OrchestrationRequest, OrchestrationRuntimeContext
@@ -211,3 +212,32 @@ async def test_runtime_fallback_succeeds_with_real_policy_service() -> None:
     assert result.answer == "Fallback static message."
     assert result.metadata["fallback_used"] is True
     assert result.metadata["failed_error_code"] == "dependency_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_runtime_returns_explicit_policy_block_answer_for_policy_like_agent_failures() -> None:
+    trace_store = FakeTraceStore()
+    runtime = build_runtime(trace_store)
+    agent = cast(FakeAgent, runtime.agent_registry.require("support_agent"))
+
+    async def fail_run(*, request: object, context: object) -> object:
+        _ = request
+        _ = context
+        raise AgentPolicyDeniedError(
+            "Tool 'documents.search' is not allowed by policy.",
+            metadata={"policy_block_summary": "Tool 'documents.search' is not allowed by policy."},
+        )
+
+    agent.run = fail_run  # type: ignore[method-assign]
+
+    request, context = build_request()
+
+    result = await runtime.run_turn(request=request, context=context)
+
+    assert result.answer == "I couldn't complete that request because tool 'documents.search' is not allowed by policy."
+    assert result.strategy_name == "fallback_answer"
+    assert result.metadata["policy_denied"] is True
+    assert result.metadata["policy_block_summary"] == "Tool 'documents.search' is not allowed by policy."
+    assert trace_store.events[3].resolved_event_name == "strategy_fallback_used"
+    assert trace_store.events[3].payload["policy_denied"] is True
+    assert trace_store.events[3].payload["policy_block_summary"] == "Tool 'documents.search' is not allowed by policy."

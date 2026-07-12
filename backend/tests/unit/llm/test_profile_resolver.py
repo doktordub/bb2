@@ -251,3 +251,30 @@ def test_profile_resolver_rejects_disabled_provider_profile() -> None:
             ),
             context=context,
         )
+
+def test_profile_resolver_rejects_unsupported_tool_calling_requests() -> None:
+    resolver = LLMProfileResolver()
+    context = build_context(base_config())
+
+    with pytest.raises(LLMUnsupportedCapabilityError, match="tool calling"):
+        resolver.resolve(
+            request=LLMRequest(
+                profile="default_profile",
+                messages=[LLMMessage(role="user", content="hello")],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "documents.search",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {"query": {"type": "string"}},
+                                "required": ["query"],
+                            },
+                        },
+                    }
+                ],
+                tool_choice="auto",
+            ),
+            context=context,
+        )

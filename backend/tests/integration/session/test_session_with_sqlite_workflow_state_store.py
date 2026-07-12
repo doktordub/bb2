@@ -24,7 +24,7 @@ from app.testing.fakes.fake_trace import FakeTraceStore
 from app.testing.fakes.fake_trace_recorder import build_fake_trace_recorder
 
 
-def _build_settings() -> SessionSettings:
+def _build_settings(*, history_enabled: bool = False) -> SessionSettings:
     return SessionSettings(
         enabled=True,
         identifiers=SessionIdentifierSettings(
@@ -62,7 +62,7 @@ def _build_settings() -> SessionSettings:
             save_each_stream_delta=False,
         ),
         history=SessionHistorySettings(
-            enabled=False,
+            enabled=history_enabled,
             include_tool_summaries=False,
             include_system_messages=False,
             include_metadata=True,
@@ -79,7 +79,14 @@ def _build_settings() -> SessionSettings:
             record_stream_lifecycle=True,
         ),
     )
-def _build_context(trace_id: str):
+
+
+def _build_context(
+    trace_id: str,
+    *,
+    path: str = "/chat",
+    method: str = "POST",
+):
     return build_session_request_context(
         trace_id=trace_id,
         request_id=trace_id,
@@ -87,8 +94,8 @@ def _build_context(trace_id: str):
         user_id_hash="user_hash_123",
         client_host="127.0.0.1",
         user_agent="pytest",
-        path="/chat",
-        method="POST",
+        path=path,
+        method=method,
         metadata={"auth_mode": "local"},
         headers_safe={"x-trace-id": trace_id},
     )
@@ -136,11 +143,13 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
         "usecase": "default_chat",
         "message_count": 2,
         "message_count_before": 0,
+        "generated_artifact_count": 0,
     }
     assert second.metadata == {
         "usecase": "default_chat",
         "message_count": 4,
         "message_count_before": 2,
+        "generated_artifact_count": 0,
     }
 
     loaded = await workflow_state.load("session_sqlite_1")
@@ -150,7 +159,12 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
             "role": "user",
             "content": "hello sqlite",
             "created_at": "2026-06-27T15:00:00+00:00",
-            "metadata": {"usecase": "default_chat"},
+            "metadata": {
+                "request_id": "trace-sqlite-0001",
+                "trace_id": "trace-sqlite-0001",
+                "turn_id": "trace-sqlite-0001",
+                "usecase": "default_chat",
+            },
         },
         {
             "role": "assistant",
@@ -160,7 +174,9 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "request_id": "trace-sqlite-0001",
                 "trace_id": "trace-sqlite-0001",
+                "turn_id": "trace-sqlite-0001",
                 "usecase": "default_chat",
             },
         },
@@ -168,7 +184,12 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
             "role": "user",
             "content": "second turn",
             "created_at": "2026-06-27T15:05:00+00:00",
-            "metadata": {"usecase": "default_chat"},
+            "metadata": {
+                "request_id": "trace-sqlite-0002",
+                "trace_id": "trace-sqlite-0002",
+                "turn_id": "trace-sqlite-0002",
+                "usecase": "default_chat",
+            },
         },
         {
             "role": "assistant",
@@ -178,9 +199,80 @@ async def test_default_session_service_persists_continuity_through_sqlite_store(
                 "agent_name": "fake_session_agent",
                 "strategy_name": "fake_direct_strategy",
                 "llm_profile": "fake_local_profile",
+                "request_id": "trace-sqlite-0002",
                 "trace_id": "trace-sqlite-0002",
+                "turn_id": "trace-sqlite-0002",
                 "usecase": "default_chat",
             },
         },
     ]
     assert loaded.state["metadata"]["trace_id"] == "trace-sqlite-0002"
+
+
+@pytest.mark.asyncio
+async def test_default_session_service_preserves_legacy_visualization_warning_boundary_in_sqlite_history(
+    tmp_path,
+) -> None:
+    workflow_state = SqliteWorkflowStateStore(tmp_path / "workflow_state.db")
+    await workflow_state.initialize()
+    session_id = "session_sqlite_legacy_viz"
+
+    await workflow_state.save(
+        session_id,
+        {
+            "conversation": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "show revenue chart",
+                        "created_at": "2026-06-27T15:10:00+00:00",
+                        "metadata": {"usecase": "default_chat"},
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Saved chart summary",
+                        "created_at": "2026-06-27T15:10:01+00:00",
+                        "metadata": {
+                            "artifact_count": 1,
+                            "artifact_delivery_mode": "inline",
+                            "trace_id": "trace-legacy-sqlite-0001",
+                            "usecase": "default_chat",
+                        },
+                    },
+                ]
+            },
+            "metadata": {"usecase": "default_chat"},
+        },
+        metadata={"usecase": "default_chat"},
+    )
+
+    service = DefaultSessionService(
+        config=FakeConfigurationView({"usecases": {"default_chat": {"enabled": True}}}),
+        settings=_build_settings(history_enabled=True),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=FakeTraceStore()),
+        orchestrator=FakeOrchestrationRuntime(),
+        clock=FakeClock([datetime(2026, 6, 27, 15, 12, tzinfo=UTC)]),
+    )
+
+    result = await service.get_history(
+        session_id=session_id,
+        limit=10,
+        context=_build_context(
+            "trace-legacy-sqlite-history-0001",
+            path=f"/sessions/{session_id}/history",
+            method="GET",
+        ),
+    )
+
+    assert len(result.messages) == 2
+    legacy_message = result.messages[-1]
+
+    assert legacy_message.role == "assistant"
+    assert legacy_message.artifacts == []
+    assert legacy_message.metadata["artifact_count"] == 1
+    assert legacy_message.metadata["artifact_delivery_mode"] == "inline"
+    assert legacy_message.metadata["trace_id"] == "trace-legacy-sqlite-0001"
+    assert "artifact_replay_status" not in legacy_message.metadata
+    assert "artifact_replay_reason" not in legacy_message.metadata
+    assert "visualizations" not in legacy_message.metadata

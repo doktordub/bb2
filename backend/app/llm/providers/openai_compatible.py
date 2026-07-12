@@ -11,7 +11,14 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.config.view import LLMProviderSettings
-from app.contracts.llm import LLMContentPart, LLMTokenUsage
+from app.contracts.llm import (
+    LLMContentPart,
+    LLMTokenUsage,
+    LLMToolCall,
+    LLMToolCallFunction,
+    LLMToolChoice,
+    LLMToolDefinition,
+)
 from app.llm.errors import (
     LLMAuthenticationError,
     LLMBadRequestError,
@@ -42,6 +49,51 @@ _FINISH_REASON_MAP = {
 class _StreamingState:
     finish_reason: str | None = None
     usage: LLMTokenUsage | None = None
+    tool_calls: list[LLMToolCall] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.tool_calls is None:
+            object.__setattr__(self, "tool_calls", [])
+
+
+@dataclass(slots=True)
+class _ToolCallFragment:
+    index: int
+    id: str | None = None
+    type: str = "function"
+    function_name: str = ""
+    arguments_parts: list[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.arguments_parts is None:
+            self.arguments_parts = []
+
+    def append(
+        self,
+        *,
+        tool_call_id: str | None,
+        tool_type: str | None,
+        function_name: str | None,
+        arguments: str | None,
+    ) -> None:
+        if tool_call_id:
+            self.id = tool_call_id
+        if tool_type:
+            self.type = tool_type
+        if function_name:
+            self.function_name = function_name
+        if arguments:
+            self.arguments_parts.append(arguments)
+
+    def to_tool_call(self) -> LLMToolCall:
+        return LLMToolCall(
+            id=self.id,
+            type=_normalize_tool_type(self.type),
+            function=LLMToolCallFunction(
+                name=self.function_name,
+                arguments="".join(self.arguments_parts),
+            ),
+        )
 
 
 class OpenAICompatibleProviderAdapter:
@@ -91,14 +143,16 @@ class OpenAICompatibleProviderAdapter:
         choice = _first_choice(payload)
         message = _mapping_value(choice, "message")
         text = _extract_text(message.get("content"))
-        if text is None:
+        tool_calls = _extract_tool_calls(message.get("tool_calls"))
+        if text is None and not tool_calls:
             raise LLMMalformedResponseError(
-                "OpenAI-compatible provider returned no message content.",
+                "OpenAI-compatible provider returned no message content or tool calls.",
                 metadata={"provider": self.name},
             )
 
         return ProviderLLMResponse(
-            text=text,
+            text=text or "",
+            tool_calls=tool_calls,
             finish_reason=_normalize_finish_reason(_string_value(choice, "finish_reason")),
             usage=_extract_usage(_mapping_value(payload, "usage")),
             raw_id=_string_value(payload, "id"),
@@ -135,6 +189,7 @@ class OpenAICompatibleProviderAdapter:
         request: ResolvedLLMRequest,
     ) -> AsyncIterator[ProviderLLMStreamEvent]:
         state = _StreamingState()
+        tool_call_fragments: dict[int, _ToolCallFragment] = {}
         completed = False
         try:
             async with client.stream(
@@ -155,7 +210,11 @@ class OpenAICompatibleProviderAdapter:
                     payload = _parse_json_text(payload_text)
                     usage = _extract_usage(_mapping_value(payload, "usage"))
                     if usage is not None:
-                        state = _StreamingState(finish_reason=state.finish_reason, usage=usage)
+                        state = _StreamingState(
+                            finish_reason=state.finish_reason,
+                            usage=usage,
+                            tool_calls=list(state.tool_calls),
+                        )
 
                     choice = _first_choice(payload)
                     delta = _mapping_value(choice, "delta")
@@ -163,11 +222,27 @@ class OpenAICompatibleProviderAdapter:
                     if text:
                         yield ProviderLLMStreamEvent.delta(text=text)
 
+                    tool_calls = _merge_tool_call_fragments(
+                        fragments=tool_call_fragments,
+                        value=delta.get("tool_calls"),
+                    )
+                    if tool_calls:
+                        state = _StreamingState(
+                            finish_reason=state.finish_reason,
+                            usage=state.usage,
+                            tool_calls=tool_calls,
+                        )
+
                     finish_reason = _normalize_finish_reason(_string_value(choice, "finish_reason"))
                     if finish_reason is not None:
-                        state = _StreamingState(finish_reason=finish_reason, usage=state.usage)
+                        state = _StreamingState(
+                            finish_reason=finish_reason,
+                            usage=state.usage,
+                            tool_calls=list(state.tool_calls),
+                        )
                         completed = True
                         yield ProviderLLMStreamEvent.completed(
+                            tool_calls=state.tool_calls,
                             finish_reason=finish_reason,
                             usage=state.usage,
                         )
@@ -184,6 +259,7 @@ class OpenAICompatibleProviderAdapter:
 
         if not completed:
             yield ProviderLLMStreamEvent.completed(
+                tool_calls=state.tool_calls,
                 finish_reason=state.finish_reason,
                 usage=state.usage,
             )
@@ -256,6 +332,12 @@ class OpenAICompatibleProviderAdapter:
             body["top_p"] = request.top_p
         if request.max_output_tokens is not None:
             body["max_tokens"] = request.max_output_tokens
+        tools = _serialize_tools(request)
+        if tools is not None:
+            body["tools"] = tools
+        tool_choice = _serialize_tool_choice(request)
+        if tool_choice is not None:
+            body["tool_choice"] = tool_choice
         response_format = _serialize_response_format(request)
         if response_format is not None:
             body["response_format"] = response_format
@@ -296,6 +378,10 @@ def _serialize_message(message: Any) -> dict[str, Any]:
     if message.name:
         payload["name"] = message.name
     payload["content"] = _serialize_content(message.content)
+    if message.tool_call_id:
+        payload["tool_call_id"] = message.tool_call_id
+    if message.tool_calls:
+        payload["tool_calls"] = [_serialize_tool_call(tool_call) for tool_call in message.tool_calls]
     return payload
 
 
@@ -334,6 +420,56 @@ def _serialize_response_format(request: ResolvedLLMRequest) -> dict[str, Any] | 
             "strict": response_format.strict,
         },
     }
+
+
+def _serialize_tools(request: ResolvedLLMRequest) -> list[dict[str, Any]] | None:
+    if not request.request.tools:
+        return None
+    return [_serialize_tool_definition(tool) for tool in request.request.tools]
+
+
+def _serialize_tool_definition(tool: LLMToolDefinition) -> dict[str, Any]:
+    payload: dict[str, Any] = {"type": tool.type}
+    payload["function"] = _serialize_tool_function(tool.function)
+    return payload
+
+
+def _serialize_tool_function(tool_function: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"name": tool_function.name}
+    if tool_function.description is not None:
+        payload["description"] = tool_function.description
+    if tool_function.parameters is not None:
+        payload["parameters"] = dict(tool_function.parameters)
+    if tool_function.strict is not None:
+        payload["strict"] = tool_function.strict
+    return payload
+
+
+def _serialize_tool_choice(request: ResolvedLLMRequest) -> dict[str, Any] | str | None:
+    tool_choice = request.request.tool_choice
+    if tool_choice is None:
+        return None
+    if tool_choice.type != "function":
+        return tool_choice.type
+    if tool_choice.function is None:
+        return "function"
+    return {
+        "type": "function",
+        "function": {"name": tool_choice.function.name},
+    }
+
+
+def _serialize_tool_call(tool_call: LLMToolCall) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "type": tool_call.type,
+        "function": {
+            "name": tool_call.function.name,
+            "arguments": tool_call.function.arguments,
+        },
+    }
+    if tool_call.id:
+        payload["id"] = tool_call.id
+    return payload
 
 
 def _parse_sse_data_line(line: str) -> str | None:
@@ -417,6 +553,61 @@ def _normalize_finish_reason(value: str | None) -> str | None:
     if value is None:
         return None
     return _FINISH_REASON_MAP.get(value, value)
+
+
+def _extract_tool_calls(value: object) -> list[LLMToolCall]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+
+    tool_calls: list[LLMToolCall] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        function = _mapping_value(item, "function")
+        tool_calls.append(
+            LLMToolCall(
+                id=_string_value(item, "id"),
+                type=_normalize_tool_type(_string_value(item, "type") or "function"),
+                function=LLMToolCallFunction(
+                    name=_string_value(function, "name") or "",
+                    arguments=_string_value(function, "arguments") or "",
+                ),
+            )
+        )
+    return tool_calls
+
+
+def _merge_tool_call_fragments(
+    *,
+    fragments: dict[int, _ToolCallFragment],
+    value: object,
+) -> list[LLMToolCall]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return [fragment.to_tool_call() for _, fragment in sorted(fragments.items())]
+
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        index = _read_optional_int(item.get("index"))
+        if index is None:
+            continue
+        fragment = fragments.get(index)
+        if fragment is None:
+            fragment = _ToolCallFragment(index=index)
+            fragments[index] = fragment
+        function = _mapping_value(item, "function")
+        fragment.append(
+            tool_call_id=_string_value(item, "id"),
+            tool_type=_string_value(item, "type"),
+            function_name=_string_value(function, "name"),
+            arguments=_string_value(function, "arguments"),
+        )
+
+    return [fragment.to_tool_call() for _, fragment in sorted(fragments.items())]
+
+
+def _normalize_tool_type(value: str) -> str:
+    return value if value else "function"
 
 
 def _safe_response_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:

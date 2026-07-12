@@ -113,7 +113,13 @@ async def test_capability_and_tool_summaries_are_safe_and_accurate(tmp_path: Pat
                 "risk_level": "read_only",
                 "enabled": True,
                 "status": "loaded",
+                "health": "ok",
                 "version": "1.0.0",
+                "owner": "tests",
+                "tags": ["fixture", "valid"],
+                "input_schema": {"type": "object", "properties": {}},
+                "output_schema": None,
+                "schema_version": None,
             }
         ],
     }
@@ -128,8 +134,12 @@ async def test_capability_and_tool_summaries_are_safe_and_accurate(tmp_path: Pat
                 "status": "loaded",
                 "health": "ok",
                 "tools": ["valid.echo"],
+                "capabilities": ["valid.echo"],
+                "risk_levels": ["read_only"],
                 "owner": "tests",
                 "tags": ["fixture", "valid"],
+                "health_details": {},
+                "health_reason": None,
                 "last_error": None,
             }
         ],

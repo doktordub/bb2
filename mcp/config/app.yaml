@@ -73,6 +73,11 @@ tools:
     enabled: false
     required: false
     config_file: config.yaml
+  # Development-first visualization dataset tool. Set MCP_REPORTING_ENABLED=false outside dev/test.
+  reporting:
+    enabled: ${env:MCP_REPORTING_ENABLED:true}
+    required: false
+    config_file: config.yaml
   websearch:
     enabled: true
     required: true

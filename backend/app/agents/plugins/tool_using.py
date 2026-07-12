@@ -17,7 +17,17 @@ from app.agents.result_builder import build_run_result, build_usage_summary
 from app.agents.stream_mapping import build_cancelled_event, build_completed_event, build_failed_event, build_started_event
 from app.agents.trace_helpers import build_llm_trace_summary, build_prompt_trace_summary, build_request_trace_summary, build_result_trace_summary
 from app.contracts.context import OrchestrationContext
-from app.contracts.llm import LLMMessage, LLMRequest, LLMResponseFormat
+from app.contracts.llm import (
+    LLMMessage,
+    LLMRequest,
+    LLMResponse,
+    LLMResponseFormat,
+    LLMToolCall,
+    LLMToolCallFunction,
+    LLMToolChoice,
+    LLMToolDefinition,
+    LLMToolFunction,
+)
 from app.orchestration.models import sanitize_metadata
 from app.orchestration.prompt_inputs import PromptSection
 from app.orchestration.tool_intents import ToolIntent, build_default_tool_arguments, choose_allowed_tool_name
@@ -136,6 +146,7 @@ class ToolUsingAgent(BaseLlmAgent):
             )
             llm_request = self._finalize_llm_request(
                 llm_request,
+                request=bounded_request,
                 context=context,
                 llm_profile=llm_profile,
             )
@@ -154,7 +165,7 @@ class ToolUsingAgent(BaseLlmAgent):
             response = await context.llm.complete(llm_request, context)
             llm_duration_ms = int((perf_counter() - llm_started_at) * 1000)
 
-            parsed = self._parse_response(response.text, request=bounded_request)
+            parsed = self._parse_llm_response(response, request=bounded_request)
             response_profile = response.profile or llm_profile
             result_metadata = {
                 **(parsed.metadata or {}),
@@ -255,7 +266,7 @@ class ToolUsingAgent(BaseLlmAgent):
         context: OrchestrationContext,
     ) -> list[LLMMessage]:
         bounded_request = self._bounded_request(request)
-        return build_prompt_messages(
+        messages = build_prompt_messages(
             bounded_request,
             system_prompt=self.build_system_prompt(request=bounded_request, context=context),
             extra_sections=self.build_extra_prompt_sections(
@@ -263,6 +274,9 @@ class ToolUsingAgent(BaseLlmAgent):
                 context=context,
             ),
         )
+        if bounded_request.llm_followup_messages:
+            messages.extend(bounded_request.llm_followup_messages)
+        return messages
 
     def build_extra_prompt_sections(
         self,
@@ -282,23 +296,45 @@ class ToolUsingAgent(BaseLlmAgent):
                 )
             )
 
-        if self._has_tool_context(request):
+        llm_profile = self.resolve_llm_profile(request)
+        native_tool_calling = self._profile_supports_tool_calling(context, llm_profile) is True
+
+        if self._has_native_tool_followup(request):
             contract = resolve_prompt_text(
                 "tool_using",
                 "response_contract_with_tool_context",
                 fallback=(
-                'Return JSON only with {"kind": "final_answer", "answer": "..."}. '
-                "Do not request another tool after tool results have already been provided."
+                    "Use the provided tool result to answer directly in plain text. "
+                    "Do not request another tool after tool results have already been provided."
+                ),
+            )
+        elif self._has_tool_context(request):
+            contract = resolve_prompt_text(
+                "tool_using",
+                "response_contract_with_tool_context_legacy_json",
+                fallback=(
+                    'Return JSON only with {"kind": "final_answer", "answer": "..."}. '
+                    "Do not request another tool after tool results have already been provided."
+                ),
+            )
+        elif allowed_tools and native_tool_calling:
+            contract = resolve_prompt_text(
+                "tool_using",
+                "response_contract_with_tools",
+                fallback=(
+                    "Use the provided logical backend tools when more evidence is needed. "
+                    "Call at most one logical tool from the allowlist for this turn. "
+                    "If no tool is needed, answer directly in plain text."
                 ),
             )
         elif allowed_tools:
             contract = resolve_prompt_text(
                 "tool_using",
-                "response_contract_with_tools",
+                "response_contract_with_tools_legacy_json",
                 fallback=(
-                'Return JSON only with either {"kind": "tool_intent", "tool_name": "...", '
-                '"arguments": {...}, "reason": "..."} or {"kind": "final_answer", '
-                '"answer": "..."}. Use only logical tool names from the provided allowlist.'
+                    'Return JSON only with either {"kind": "tool_intent", "tool_name": "...", '
+                    '"arguments": {...}, "reason": "..."} or {"kind": "final_answer", '
+                    '"answer": "..."}. Use only logical tool names from the provided allowlist.'
                 ),
             )
         else:
@@ -306,8 +342,7 @@ class ToolUsingAgent(BaseLlmAgent):
                 "tool_using",
                 "response_contract_no_tools",
                 fallback=(
-                'Return JSON only with {"kind": "final_answer", "answer": "..."}. '
-                "No tool is available for this request."
+                    "Answer directly in plain text. No tool is available for this request."
                 ),
             )
         sections.append(PromptSection(title="Response contract", body=contract))
@@ -340,10 +375,63 @@ class ToolUsingAgent(BaseLlmAgent):
             llm_profile=llm_profile,
             stream=stream,
         )
-        llm_request.response_format = LLMResponseFormat(
-            type="json_object",
-            schema_name="tool_intent_contract",
-            strict=True,
+        if self._uses_prompt_json_contract(request):
+            llm_request.response_format = LLMResponseFormat(
+                type="json_object",
+                schema_name="tool_intent_contract",
+                strict=True,
+            )
+        return llm_request
+
+    def _finalize_llm_request(
+        self,
+        llm_request: LLMRequest,
+        *,
+        request: AgentRunRequest,
+        context: OrchestrationContext,
+        llm_profile: str,
+    ) -> LLMRequest:
+        llm_request = super()._finalize_llm_request(
+            llm_request,
+            request=request,
+            context=context,
+            llm_profile=llm_profile,
+        )
+
+        if self._has_native_tool_followup(request):
+            llm_request.response_format = None
+            llm_request.tools = []
+            llm_request.tool_choice = None
+            llm_request.metadata = sanitize_metadata(
+                {
+                    **llm_request.metadata,
+                    "tool_calling_mode": "followup",
+                }
+            )
+            return llm_request
+
+        allowed_tools = self._allowed_tool_names(request)
+        if not allowed_tools or self._has_tool_context(request):
+            return llm_request
+
+        if self._profile_supports_tool_calling(context, llm_profile) is True:
+            llm_request.response_format = None
+            llm_request.tools = self._build_native_tool_definitions(allowed_tools)
+            llm_request.tool_choice = LLMToolChoice(type="auto")
+            llm_request.metadata = sanitize_metadata(
+                {
+                    **llm_request.metadata,
+                    "tool_calling_mode": "native",
+                    "tool_count": len(allowed_tools),
+                }
+            )
+            return llm_request
+
+        llm_request.metadata = sanitize_metadata(
+            {
+                **llm_request.metadata,
+                "tool_calling_fallback": "prompt_json",
+            }
         )
         return llm_request
 
@@ -376,6 +464,31 @@ class ToolUsingAgent(BaseLlmAgent):
     def _has_tool_context(self, request: AgentRunRequest) -> bool:
         return bool(request.tool_context)
 
+    def _has_native_tool_followup(self, request: AgentRunRequest) -> bool:
+        return bool(request.llm_followup_messages)
+
+    def _uses_prompt_json_contract(self, request: AgentRunRequest) -> bool:
+        if self._has_native_tool_followup(request):
+            return False
+        if self._has_tool_context(request):
+            return True
+        return bool(self._allowed_tool_names(request))
+
+    def _build_native_tool_definitions(
+        self,
+        allowed_tools: Sequence[str],
+    ) -> list[LLMToolDefinition]:
+        return [
+            LLMToolDefinition(
+                function=LLMToolFunction(
+                    name=tool_name,
+                    description=_native_tool_description(tool_name),
+                    parameters=_native_tool_parameters(tool_name),
+                )
+            )
+            for tool_name in allowed_tools
+        ]
+
     def _parse_response(
         self,
         text: str,
@@ -398,6 +511,32 @@ class ToolUsingAgent(BaseLlmAgent):
             )
 
         parsed = self._parse_payload(payload, request=request)
+        return parsed
+
+    def _parse_llm_response(
+        self,
+        response: LLMResponse,
+        *,
+        request: AgentRunRequest,
+    ) -> _ParsedToolResponse:
+        if response.tool_calls:
+            tool_intents = self._parse_native_tool_calls(response.tool_calls, request=request)
+            return _ParsedToolResponse(
+                tool_intents=tool_intents,
+                metadata={
+                    "response_mode": "tool_intents",
+                    "tool_intent_count": len(tool_intents),
+                    "tool_calling_mode": "native",
+                },
+            )
+        parsed = self._parse_response(response.text, request=request)
+        if self._has_native_tool_followup(request):
+            metadata = {**(parsed.metadata or {}), "tool_calling_mode": "followup"}
+            return _ParsedToolResponse(
+                answer=parsed.answer,
+                tool_intents=parsed.tool_intents,
+                metadata=metadata,
+            )
         return parsed
 
     def _parse_payload(
@@ -455,13 +594,48 @@ class ToolUsingAgent(BaseLlmAgent):
 
         raise AgentOutputParseError("Tool-using agent response did not match the expected contract.")
 
+    def _parse_native_tool_calls(
+        self,
+        tool_calls: Sequence[LLMToolCall],
+        *,
+        request: AgentRunRequest,
+    ) -> tuple[ToolIntent, ...]:
+        payloads: list[dict[str, Any]] = []
+        for tool_call in tool_calls:
+            function = tool_call.function
+            if not isinstance(function, LLMToolCallFunction):
+                function = LLMToolCallFunction.from_mapping(function)
+
+            raw_arguments = function.arguments.strip()
+            arguments: dict[str, Any] = {}
+            if raw_arguments:
+                try:
+                    parsed_arguments = json.loads(raw_arguments)
+                except json.JSONDecodeError as exc:
+                    raise AgentOutputParseError(
+                        "Tool-using agent returned tool-call arguments that were not valid JSON."
+                    ) from exc
+                if not isinstance(parsed_arguments, Mapping):
+                    raise AgentOutputParseError(
+                        "Tool-using agent tool-call arguments must decode to a JSON object."
+                    )
+                arguments = dict(parsed_arguments)
+            payloads.append(
+                {
+                    "tool_name": function.name,
+                    "arguments": arguments,
+                    "tool_call_id": tool_call.id,
+                }
+            )
+        return self._parse_tool_intents(payloads, request=request)
+
     def _parse_tool_intents(
         self,
         payloads: Sequence[object],
         *,
         request: AgentRunRequest,
     ) -> tuple[ToolIntent, ...]:
-        if self._has_tool_context(request):
+        if self._has_tool_context(request) or self._has_native_tool_followup(request):
             raise AgentToolIntentError(
                 "Tool-using agent cannot request another tool after tool results were provided."
             )
@@ -507,6 +681,7 @@ class ToolUsingAgent(BaseLlmAgent):
                     "reason": _read_optional_text(payload.get("reason")),
                     "confidence": _read_optional_number(payload.get("confidence")),
                     "idempotency_key": _read_optional_text(payload.get("idempotency_key")),
+                    "tool_call_id": _read_optional_text(payload.get("tool_call_id")),
                 }
             )
             parsed.append(
@@ -546,6 +721,58 @@ def _read_optional_text(value: object) -> str | None:
 def _read_positive_int_attr(source: object | None, name: str, default: int) -> int:
     value = getattr(source, name, default)
     return value if isinstance(value, int) and value > 0 else default
+
+
+def _native_tool_description(tool_name: str) -> str:
+    if tool_name == "websearch.search":
+        return "Search the public web for current or external information."
+    if "search" in tool_name:
+        return "Search backend-managed context and return the most relevant matching results."
+    if "read" in tool_name:
+        return "Read backend-managed content needed to answer the current request."
+    return "Execute this logical backend tool when extra evidence is needed for the current request."
+
+
+def _native_tool_parameters(tool_name: str) -> dict[str, Any]:
+    if tool_name == "websearch.search":
+        return {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The web search query to run."},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to retrieve.",
+                    "minimum": 1,
+                    "maximum": 10,
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": True,
+        }
+    if "search" in tool_name:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search query to run."},
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of matching items to return.",
+                    "minimum": 1,
+                    "maximum": 10,
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": True,
+        }
+    return {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string", "description": "The input text or request for this tool."},
+            "query": {"type": "string", "description": "Optional query text when a search-style input applies."},
+            "path": {"type": "string", "description": "Optional backend-managed path or identifier when applicable."},
+        },
+        "additionalProperties": True,
+    }
 
 
 __all__ = ["ToolUsingAgent"]

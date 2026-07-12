@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.contracts.results import OrchestrationResult
 from app.deployment.process_control import RestartRequestReceipt
 from app.observability.redaction import SENSITIVE_KEY_PARTS, is_sensitive_key
+from app.session.mapping import build_visualization_response_metadata
 from app.session.models import (
     SessionChatResult,
     SessionDeleteResult,
@@ -17,6 +18,7 @@ from app.session.models import (
     SessionListResult,
     SessionResetResult,
 )
+from app.visualization.models import ChartArtifact, ChartComputedFacts, ChartDataSlice
 
 SCHEMA_VERSION = "1.0"
 _DEFAULT_MAX_MESSAGE_CHARS = 20000
@@ -75,6 +77,7 @@ class ChatResponseData(BaseModel):
     llm_profile: str | None = None
     tool_calls: list[dict[str, Any]] = Field(default_factory=list)
     memory_updates: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts: list[ChartArtifact] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
@@ -98,9 +101,20 @@ class ChatResponse(BaseModel):
                 llm_profile=result.llm_profile,
                 tool_calls=[dict(item) for item in result.tool_calls],
                 memory_updates=[dict(item) for item in result.memory_updates],
+                artifacts=[ChartArtifact.model_validate(dict(item)) for item in result.artifacts],
             ),
             metadata=dict(result.metadata),
         )
+
+
+class ArtifactResponse(BaseModel):
+    """Stable public response envelope for one visualization artifact retrieval."""
+
+    schema_version: str = SCHEMA_VERSION
+    trace_id: str
+    session_id: str
+    data: ChartArtifact | ChartDataSlice | ChartComputedFacts
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResetSessionRequest(BaseModel):
@@ -154,6 +168,7 @@ class SessionHistoryMessageData(BaseModel):
     role: str
     content: str
     created_at: str | None = None
+    artifacts: list[ChartArtifact] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -184,6 +199,7 @@ class SessionHistoryResponse(BaseModel):
                         role=item.role,
                         content=item.content,
                         created_at=item.created_at,
+                        artifacts=[ChartArtifact.model_validate(dict(artifact)) for artifact in item.artifacts],
                         metadata=dict(item.metadata),
                     )
                     for item in result.messages
@@ -323,6 +339,7 @@ class HealthResponse(BaseModel):
     environment: str | None = None
     backend: dict[str, Any] = Field(default_factory=dict)
     api: dict[str, Any] = Field(default_factory=dict)
+    visualization: dict[str, Any] = Field(default_factory=dict)
     workflow_state: dict[str, Any] = Field(default_factory=dict)
     trace: dict[str, Any] = Field(default_factory=dict)
     memory: dict[str, Any] = Field(default_factory=dict)
@@ -404,6 +421,24 @@ class LLMCapabilities(BaseModel):
     structured_output_supported: bool
 
 
+class VisualizationCapabilities(BaseModel):
+    """Frontend-safe visualization capability flags."""
+
+    enabled: bool
+    default_renderer: str | None = None
+    allowed_renderers: list[str] = Field(default_factory=list)
+    spec_version: str | None = None
+    context_summary_mode: str = "disabled"
+    supported_chart_types: list[str] = Field(default_factory=list)
+    reference_mode_supported: bool = False
+    reference_mode_enabled: bool = False
+    artifact_store_enabled: bool = False
+    artifact_store_provider: str | None = None
+    durable_replay_enabled: bool = False
+    exact_followup_retrieval_enabled: bool = False
+    limits: dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentCapabilities(BaseModel):
     """Frontend-safe agent descriptor surfaced through capabilities."""
 
@@ -425,6 +460,7 @@ class CapabilitiesResponseData(BaseModel):
     tools: ToolingCapabilities
     memory: MemoryCapabilities
     llm: LLMCapabilities
+    visualization: VisualizationCapabilities
 
 
 class CapabilitiesResponse(BaseModel):
@@ -460,6 +496,10 @@ def orchestration_result_to_chat_result(
 ) -> SessionChatResult:
     """Map the canonical orchestration result into the API/session boundary model."""
 
+    artifacts = [item.model_dump(mode="python") for item in result.artifacts]
+    context_contributions = [
+        item.model_dump(mode="python") for item in result.context_contributions
+    ]
     return SessionChatResult(
         answer=result.answer,
         session_id=result.session_id,
@@ -469,7 +509,11 @@ def orchestration_result_to_chat_result(
         llm_profile=result.llm_profile,
         tool_calls=[dict(item) for item in result.tool_calls],
         memory_updates=[dict(item) for item in result.memory_updates],
-        metadata=dict(result.metadata),
+        artifacts=artifacts,
+        metadata=build_visualization_response_metadata(
+            artifacts=artifacts,
+            context_contributions=context_contributions,
+        ),
     )
 
 

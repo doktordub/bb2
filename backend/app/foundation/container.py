@@ -28,6 +28,8 @@ from app.session.service import SessionService
 
 if TYPE_CHECKING:
     from app.deployment.process_control import ProcessControlService
+    from app.visualization.artifact_store import VisualizationArtifactStore
+    from app.visualization.gateway import VisualizationGateway
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,8 @@ class FoundationContainer:
     session_service: SessionService | None = None
     debug_trace_service: DebugTraceService | None = None
     process_control_service: ProcessControlService | None = None
+    visualization_gateway: VisualizationGateway | None = None
+    visualization_artifact_store: VisualizationArtifactStore | None = None
 
     async def close(self) -> None:
         """Close runtime services that hold open resources."""

@@ -2,6 +2,8 @@ const DEFAULT_HEADERS = {
 	Accept: "application/json",
 };
 
+const DEFAULT_SESSION_HEADER = "X-Session-Id";
+
 export class BackendApiError extends Error {
 	constructor(message, status, payload) {
 		super(message);
@@ -15,13 +17,33 @@ function resolveUiApiBase() {
 	return document.body?.dataset.uiApiBase || "/ui-api";
 }
 
+function resolveSessionHeaderName() {
+	const configured = document.body?.dataset.sessionIdHeader;
+	return typeof configured === "string" && configured.trim()
+		? configured.trim()
+		: DEFAULT_SESSION_HEADER;
+}
+
 function buildUrl(path) {
 	if (path.startsWith("http://") || path.startsWith("https://")) {
 		return path;
 	}
 
 	const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-	return `${resolveUiApiBase()}${normalizedPath}`;
+	const base = resolveUiApiBase();
+	if (normalizedPath === base || normalizedPath.startsWith(`${base}/`)) {
+		return normalizedPath;
+	}
+	return `${base}${normalizedPath}`;
+}
+
+function buildHeaders({ body, headers = {}, sessionId = null } = {}) {
+	return {
+		...DEFAULT_HEADERS,
+		...(body === undefined ? {} : { "Content-Type": "application/json" }),
+		...(sessionId ? { [resolveSessionHeaderName()]: sessionId } : {}),
+		...headers,
+	};
 }
 
 async function parseResponse(response) {
@@ -44,14 +66,10 @@ function resolveErrorMessage(payload, status) {
 	return `Backend request failed with status ${status}.`;
 }
 
-export async function requestJson(path, { method = "GET", body, headers = {}, signal } = {}) {
+export async function requestJsonDetailed(path, { method = "GET", body, headers = {}, signal, sessionId = null } = {}) {
 	const response = await fetch(buildUrl(path), {
 		method,
-		headers: {
-			...DEFAULT_HEADERS,
-			...(body === undefined ? {} : { "Content-Type": "application/json" }),
-			...headers,
-		},
+		headers: buildHeaders({ body, headers, sessionId }),
 		body: body === undefined ? undefined : JSON.stringify(body),
 		credentials: "same-origin",
 		signal,
@@ -62,11 +80,23 @@ export async function requestJson(path, { method = "GET", body, headers = {}, si
 		throw new BackendApiError(resolveErrorMessage(payload, response.status), response.status, payload);
 	}
 
+	return {
+		payload,
+		response,
+	};
+}
+
+export async function requestJson(path, options = {}) {
+	const { payload } = await requestJsonDetailed(path, options);
 	return payload;
 }
 
 export function getJson(path, options) {
 	return requestJson(path, { ...options, method: "GET" });
+}
+
+export function getJsonDetailed(path, options) {
+	return requestJsonDetailed(path, { ...options, method: "GET" });
 }
 
 export function postJson(path, body, options) {

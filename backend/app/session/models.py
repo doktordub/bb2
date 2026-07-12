@@ -11,6 +11,9 @@ SessionStreamEventType = Literal[
     "response.started",
     "response.delta",
     "response.metadata",
+    "artifact.started",
+    "artifact.completed",
+    "artifact.failed",
     "response.completed",
     "response.error",
     "heartbeat",
@@ -54,6 +57,7 @@ class SessionChatResult:
     llm_profile: str | None = None
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     memory_updates: list[dict[str, Any]] = field(default_factory=list)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -75,6 +79,7 @@ class SessionHistoryMessage:
     role: str
     content: str
     created_at: str | None = None
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

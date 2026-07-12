@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config.view import ApiSettings, get_health_settings, get_observability_settings, get_tooling_settings
+from app.config.view import (
+    ApiSettings,
+    get_health_settings,
+    get_observability_settings,
+    get_policy_settings,
+    get_tooling_settings,
+    get_visualization_settings,
+)
 from app.contracts.config import ConfigurationView
 from app.contracts.health import (
     HEALTH_DEGRADED,
@@ -29,6 +36,9 @@ from app.persistence.health import (
     evaluate_persistence_component,
 )
 from app.tools.health import build_tooling_health_check
+from app.visualization.chart_registry import ChartTypeRegistry
+from app.visualization.health import build_visualization_health_payload
+from app.visualization.settings import build_safe_visualization_summary
 
 HealthRegistry = HealthAggregator
 
@@ -49,6 +59,13 @@ def build_foundation_health_registry(
     registry = HealthRegistry(redactor=redactor)
     observability = get_observability_settings(config)
     health_settings = get_health_settings(config)
+    visualization_settings = get_visualization_settings(config)
+    policy_settings = get_policy_settings(config)
+    default_policy_profile = policy_settings.profiles.get(policy_settings.default_profile)
+    visualization_registry = ChartTypeRegistry(
+        allowed_chart_types=visualization_settings.allowed_chart_types,
+        aliases=visualization_settings.aliases,
+    )
 
     registry.register("settings", lambda: HealthCheckResult(status=HEALTH_OK))
     registry.register("config", lambda: _config_result(config_summary))
@@ -73,6 +90,17 @@ def build_foundation_health_registry(
                     "persistence.trace.provider",
                 ),
             },
+        ),
+    )
+    registry.register(
+        "visualization",
+        lambda: HealthCheckResult(
+            status=HEALTH_OK,
+            details=build_visualization_health_payload(
+                settings=visualization_settings,
+                registry=visualization_registry,
+                policy=(default_policy_profile.visualization if default_policy_profile is not None else None),
+            ),
         ),
     )
     registry.register(
@@ -109,6 +137,7 @@ def build_safe_config_summary(config: ConfigurationView) -> dict[str, Any]:
         return summary
 
     tooling = get_tooling_settings(config)
+    visualization = get_visualization_settings(config)
     llm_profiles = sorted(config.section("llm.profiles").keys())
 
     summary.update(
@@ -119,6 +148,7 @@ def build_safe_config_summary(config: ConfigurationView) -> dict[str, Any]:
             "llm_profiles": llm_profiles,
             "llm_profiles_count": len(llm_profiles),
             "mcp_configured": bool(tooling.mcp_server.endpoint),
+            "visualization": build_safe_visualization_summary(visualization),
         }
     )
 
@@ -165,6 +195,7 @@ def build_api_health_payload(
             "docs_enabled": bool(api_settings is not None and api_settings.docs_enabled),
             "streaming_enabled": streaming_enabled,
         },
+        "visualization": _component_payload(checks, "visualization"),
         "workflow_state": _component_payload(checks, "workflow_state"),
         "trace": _component_payload(checks, "trace"),
         "memory": _component_payload(checks, "memory"),

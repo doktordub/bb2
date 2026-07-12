@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app.agents.errors import AgentPolicyDeniedError
 from app.contracts.errors import ConfigurationError, LLMGatewayError, PolicyDeniedError
 from app.orchestration.errors import (
     AgentExecutionError,
@@ -46,6 +47,21 @@ def test_generic_errors_are_normalized_to_safe_agent_failures() -> None:
 
     assert isinstance(error, AgentExecutionError)
     assert error.message == "The agent could not complete the request."
+
+
+def test_policy_like_agent_errors_preserve_safe_details_for_fallbacks() -> None:
+    error = normalize_orchestration_error(
+        AgentPolicyDeniedError(
+            "Tool 'documents.search' is not allowed by policy.",
+            metadata={"policy_block_summary": "Tool 'documents.search' is not allowed by policy."},
+        )
+    )
+
+    assert isinstance(error, AgentExecutionError)
+    assert error.message == "Tool 'documents.search' is not allowed by policy."
+    assert error.metadata["policy_denied"] is True
+    assert error.metadata["policy_block_summary"] == "Tool 'documents.search' is not allowed by policy."
+    assert error.metadata["source_error_code"] == "agent_policy_denied"
 
 
 def test_error_detail_round_trip_rebuilds_known_error_types() -> None:

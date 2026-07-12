@@ -132,15 +132,24 @@ def register_health_tool(
 def _required_tools_loaded(registry: ToolRegistry | None) -> str:
     if registry is None:
         return "unhealthy"
-    if any(tool.required and tool.load_status != "loaded" for tool in registry.list_tools()):
+    if any(
+        tool.required and (tool.load_status != "loaded" or tool.health_status == "error")
+        for tool in registry.list_tools()
+    ):
         return "unhealthy"
+    if any(tool.required and tool.health_status == "degraded" for tool in registry.list_tools()):
+        return "degraded"
     return "ok"
 
 
 def _optional_failed_tools(registry: ToolRegistry | None) -> str:
     if registry is None:
         return "unhealthy"
-    if any((not tool.required) and tool.load_status == "failed" for tool in registry.list_tools()):
+    if any(
+        (not tool.required)
+        and (tool.load_status == "failed" or tool.health_status in {"degraded", "error"})
+        for tool in registry.list_tools()
+    ):
         return "degraded"
     return "ok"
 

@@ -18,6 +18,7 @@ from app.agents.models import (
     AgentWarning,
 )
 from app.contracts.context import OrchestrationContext
+from app.contracts.llm import LLMMessage
 from app.contracts.results import AgentResult
 from app.memory.redaction import truncate_text
 from app.orchestration.conversation_context import build_conversation_context_window
@@ -37,7 +38,8 @@ def build_run_request_from_context(
     conversation_history: Sequence[ConversationMessage] | None = None,
     context_items: Sequence[PromptContextItem] = (),
     tool_context: Sequence[ToolContextItem] = (),
-    available_tools: Sequence[str] = (),
+    llm_followup_messages: Sequence[LLMMessage] = (),
+    available_tools: Sequence[str] | None = None,
     task: AgentTask | None = None,
     constraints: Sequence[str] = (),
     output_format: AgentOutputFormat | None = None,
@@ -87,7 +89,12 @@ def build_run_request_from_context(
         conversation_history=resolved_conversation_history,
         context_items=tuple(context_items),
         tool_context=tuple(tool_context),
-        available_tools=tuple(available_tools) or _resolve_available_tools(context, agent_name=agent_name),
+        llm_followup_messages=tuple(llm_followup_messages),
+        available_tools=(
+            tuple(available_tools)
+            if available_tools is not None
+            else _resolve_available_tools(context, agent_name=agent_name)
+        ),
         task=task,
         constraints=tuple(item for item in constraints if _optional_text(item) is not None),
         output_format=output_format,
@@ -107,6 +114,8 @@ def build_run_result(
     usage: AgentUsageSummary | None = None,
     output_items: Sequence[AgentOutputItem] = (),
     warnings: Sequence[AgentWarning] = (),
+    artifacts: Sequence[Mapping[str, Any]] = (),
+    context_contributions: Sequence[Mapping[str, Any]] = (),
     metadata: Mapping[str, Any] | None = None,
 ) -> AgentRunResult:
     """Build a structured result with consistent defaults."""
@@ -122,6 +131,10 @@ def build_run_result(
         usage=usage,
         output_items=tuple(output_items),
         warnings=tuple(warnings),
+        artifacts=tuple(dict(item) for item in artifacts if isinstance(item, Mapping)),
+        context_contributions=tuple(
+            dict(item) for item in context_contributions if isinstance(item, Mapping)
+        ),
         metadata=sanitize_metadata(metadata),
     )
 
@@ -224,6 +237,10 @@ def to_legacy_agent_result(
             }
             for item in result.output_items
         ]
+    if result.artifacts:
+        metadata.setdefault("artifact_count", len(result.artifacts))
+    if result.context_contributions:
+        metadata.setdefault("context_contribution_count", len(result.context_contributions))
 
     answer = result.answer
     if answer is None:
@@ -236,6 +253,8 @@ def to_legacy_agent_result(
         tool_calls=[_tool_intent_to_mapping(item) for item in result.tool_intents],
         memory_updates=[_memory_candidate_to_mapping(item) for item in result.memory_candidates],
         citations=[_output_item_to_citation(item) for item in result.output_items if item.source_label],
+        artifacts=[dict(item) for item in result.artifacts],
+        context_contributions=[dict(item) for item in result.context_contributions],
         metadata=metadata,
     )
 
@@ -276,6 +295,11 @@ def from_legacy_agent_result(result: AgentResult) -> AgentRunResult:
             except (TypeError, ValueError):
                 continue
 
+    raw_artifacts = result.artifacts or _mapping_sequence(result.metadata.get("artifacts"))
+    raw_context_contributions = result.context_contributions or _mapping_sequence(
+        result.metadata.get("context_contributions")
+    )
+
     return AgentRunResult(
         status="completed",
         answer=result.answer,
@@ -283,8 +307,21 @@ def from_legacy_agent_result(result: AgentResult) -> AgentRunResult:
         llm_profile=result.llm_profile,
         tool_intents=tuple(tool_intents),
         memory_candidates=tuple(memory_candidates),
+        artifacts=tuple(dict(item) for item in raw_artifacts),
+        context_contributions=tuple(dict(item) for item in raw_context_contributions),
         metadata=sanitize_metadata(result.metadata),
     )
+
+
+def _mapping_sequence(value: object) -> tuple[Mapping[str, Any], ...]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
+        return ()
+
+    normalized: list[Mapping[str, Any]] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            normalized.append(item)
+    return tuple(normalized)
 
 
 def _resolve_llm_profile(

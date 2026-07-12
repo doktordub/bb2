@@ -41,6 +41,10 @@ def _read_optional_text(value: object) -> str | None:
     return normalized or None
 
 
+def _read_optional_bool(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
 class BaseLlmAgent(LegacyCompatibleAgent):
     """Small shared helper for one-shot LLM-backed agent behaviors."""
 
@@ -147,6 +151,7 @@ class BaseLlmAgent(LegacyCompatibleAgent):
             )
             llm_request = self._finalize_llm_request(
                 llm_request,
+                request=request,
                 context=context,
                 llm_profile=llm_profile,
             )
@@ -296,6 +301,7 @@ class BaseLlmAgent(LegacyCompatibleAgent):
             )
             llm_request = self._finalize_llm_request(
                 llm_request,
+                request=request,
                 context=context,
                 llm_profile=llm_profile,
             )
@@ -508,9 +514,11 @@ class BaseLlmAgent(LegacyCompatibleAgent):
         self,
         llm_request: LLMRequest,
         *,
+        request: AgentRunRequest,
         context: "OrchestrationContext",
         llm_profile: str,
     ) -> LLMRequest:
+        _ = request
         response_format = llm_request.response_format
         if response_format is None:
             return llm_request
@@ -523,10 +531,7 @@ class BaseLlmAgent(LegacyCompatibleAgent):
         if response_format_type in {None, "text"}:
             return llm_request
 
-        supports_json_schema = context.config.get(
-            f"llm.profiles.{llm_profile}.supports_json_schema",
-            None,
-        )
+        supports_json_schema = self._profile_supports_json_schema(context, llm_profile)
         if supports_json_schema is not False:
             return llm_request
 
@@ -539,6 +544,30 @@ class BaseLlmAgent(LegacyCompatibleAgent):
             }
         )
         return llm_request
+
+    def _profile_supports_json_schema(
+        self,
+        context: "OrchestrationContext",
+        llm_profile: str,
+    ) -> bool | None:
+        return _read_optional_bool(
+            context.config.get(
+                f"llm.profiles.{llm_profile}.supports_json_schema",
+                None,
+            )
+        )
+
+    def _profile_supports_tool_calling(
+        self,
+        context: "OrchestrationContext",
+        llm_profile: str,
+    ) -> bool | None:
+        return _read_optional_bool(
+            context.config.get(
+                f"llm.profiles.{llm_profile}.supports_tool_calling",
+                None,
+            )
+        )
 
     def normalize_response_text(
         self,

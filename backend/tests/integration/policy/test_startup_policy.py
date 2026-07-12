@@ -54,6 +54,7 @@ def test_startup_wires_policy_into_health_and_capabilities(
     assert policy_health["enabled"] is True
     assert policy_health["mode"] == "enforce"
     assert policy_health["profile_count"] == 1
-    assert policy_health["rule_count"] == 12
+    assert policy_health["rule_count"] == 13
     assert capabilities_response.status_code == 200
     assert "policy" not in capabilities_response.json()["data"]
+    assert capabilities_response.json()["data"]["visualization"]["enabled"] is False

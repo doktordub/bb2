@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "trace_id": "trace_vis_multi_001",
+  "session_id": "session_vis_multi_001",
+  "data": {
+    "answer": "Here are two charts: one compares income and expense, and the second shows the ticket-volume trend.",
+    "agent_name": "chart_agent",
+    "strategy_name": "direct_agent",
+    "llm_profile": "local_reasoning",
+    "tool_calls": [],
+    "memory_updates": [],
+    "artifacts": [
+      {
+        "artifact_id": "chart_income_expense_last_quarter",
+        "type": "chart",
+        "chart_type": "grouped_bar",
+        "title": "Income vs Expense - Last Quarter",
+        "description": "Quarter-end monthly comparison for income and expense.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          {
+            "month": "Apr",
+            "income": 5800,
+            "expense": 4200
+          },
+          {
+            "month": "May",
+            "income": 6100,
+            "expense": 4700
+          },
+          {
+            "month": "Jun",
+            "income": 5900,
+            "expense": 4500
+          }
+        ],
+        "data_ref": null,
+        "encoding": {
+          "x": "month",
+          "y": [
+            "income",
+            "expense"
+          ]
+        },
+        "options": {
+          "currency": "USD",
+          "stacked": false
+        },
+        "warnings": [],
+        "metadata": {
+          "source": "user_provided",
+          "source_agent": "chart_agent"
+        }
+      },
+      {
+        "artifact_id": "chart_ticket_volume_last_quarter",
+        "type": "chart",
+        "chart_type": "line",
+        "title": "Ticket Volume - Last Quarter",
+        "description": "Monthly support ticket volume trend for the last quarter.",
+        "renderer": "echarts",
+        "spec_version": "1.0",
+        "data_mode": "inline",
+        "data": [
+          {
+            "month": "Apr",
+            "tickets": 118
+          },
+          {
+            "month": "May",
+            "tickets": 126
+          },
+          {
+            "month": "Jun",
+            "tickets": 109
+          }
+        ],
+        "data_ref": null,
+        "encoding": {
+          "x": "month",
+          "y": [
+            "tickets"
+          ]
+        },
+        "options": {
+          "smoothed": false
+        },
+        "warnings": [],
+        "metadata": {
+          "source": "user_provided",
+          "source_agent": "chart_agent"
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "context_summary_added": true,
+    "context_summary_ids": [
+      "chart_income_expense_last_quarter",
+      "chart_ticket_volume_last_quarter"
+    ],
+    "artifact_delivery_mode": "inline",
+    "fixture_status": "frontend_phase0_edge",
+    "contract_status": "provisional"
+  }
+}

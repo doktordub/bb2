@@ -7,6 +7,8 @@
 
 Implementation note (2026-07-01): same-session continuity now stays bounded through workflow-state-backed raw turn reuse plus deterministic session-summary compaction during completed, cancelled, and failed stream finalization paths; this remains independent of durable memory retrieval.
 
+Implementation note (2026-07-11): visualization history replay now persists bounded browser-safe chart artifacts directly on assistant workflow-state messages under `message.artifacts`; prompt-context projection continues to ignore that field, and session history keeps a temporary `metadata.visualizations` mirror for current frontend compatibility.
+
 ---
 
 ## 1. Purpose

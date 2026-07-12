@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field, replace
 import logging
 from time import perf_counter
-from typing import Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from app.contracts.agents import AgentPlugin
 from app.config.view import (
@@ -15,6 +15,8 @@ from app.config.view import (
     get_agents_settings,
     get_observability_settings,
     get_orchestration_settings,
+    get_policy_settings,
+    get_visualization_settings,
 )
 from app.contracts.config import ConfigurationView
 from app.contracts.context import OrchestrationContext, RequestContext
@@ -76,7 +78,15 @@ from app.orchestration.trace_helpers import (
     build_started_trace_payload,
 )
 from app.orchestration.usecase_router import ResolvedUseCaseRoute, UseCaseRouter
+
+if TYPE_CHECKING:
+    from app.visualization.gateway import VisualizationGateway
 from app.policy.usecase_policy import build_usecase_policy_request
+from app.visualization.context_selector import (
+    collect_chart_summaries,
+    coerce_context_contribution,
+    merge_visualization_context,
+)
 
 ORCHESTRATION_COMPONENT = "orchestration.runtime"
 ORCHESTRATION_STARTED = "orchestration_started"
@@ -337,6 +347,7 @@ class DefaultOrchestrationRuntime:
     strategy_registry: StrategyRegistry
     usecase_router: UseCaseRouter
     tools: ToolGateway = field(default_factory=lambda: _DisabledToolGateway())
+    visualization_gateway: "VisualizationGateway | None" = None
     settings: OrchestrationSettings = field(init=False)
 
     def __post_init__(self) -> None:
@@ -354,6 +365,7 @@ class DefaultOrchestrationRuntime:
         trace_recorder: TraceRecorder | None = None,
         policy_service: PolicyService,
         tools: ToolGateway | None = None,
+        visualization_gateway: "VisualizationGateway | None" = None,
     ) -> _RuntimeT:
         _ = state
         agent_registry = AgentRegistry.from_config(config)
@@ -377,6 +389,7 @@ class DefaultOrchestrationRuntime:
             strategy_registry=strategy_registry,
             usecase_router=UseCaseRouter(config),
             tools=tools or _DisabledToolGateway(),
+            visualization_gateway=visualization_gateway,
         )
 
     async def run_turn(
@@ -473,6 +486,8 @@ class DefaultOrchestrationRuntime:
                         reason=decision.reason,
                         error_code=decision.error.code,
                         retryable=decision.error.retryable,
+                        policy_denied=bool(decision.error.metadata.get("policy_denied", False)),
+                        policy_block_summary=_read_optional_text(decision.error.metadata.get("policy_block_summary")),
                     ),
                 )
                 await self._record_runtime_event(
@@ -494,7 +509,7 @@ class DefaultOrchestrationRuntime:
                 status="cancelled" if isinstance(normalized, OrchestrationCancelledError) else "failed",
                 severity="warning" if isinstance(normalized, OrchestrationCancelledError) else "error",
                 error=normalized,
-                payload=build_failure_trace_payload(),
+                payload=build_failure_trace_payload(normalized),
             )
             if normalized is exc:
                 raise
@@ -607,7 +622,7 @@ class DefaultOrchestrationRuntime:
                         status="cancelled" if mapped.terminal_cancelled else "failed",
                         severity="warning" if mapped.terminal_cancelled else "error",
                         error=mapped.terminal_error,
-                        payload=build_failure_trace_payload(),
+                        payload=build_failure_trace_payload(mapped.terminal_error),
                     )
                     for event in mapped.emitted_events:
                         limit_tracker.mark_stream_event()
@@ -687,6 +702,8 @@ class DefaultOrchestrationRuntime:
                         reason=decision.reason,
                         error_code=decision.error.code,
                         retryable=decision.error.retryable,
+                        policy_denied=bool(decision.error.metadata.get("policy_denied", False)),
+                        policy_block_summary=_read_optional_text(decision.error.metadata.get("policy_block_summary")),
                     ),
                 )
                 await self._record_runtime_event(
@@ -742,7 +759,7 @@ class DefaultOrchestrationRuntime:
                 status="cancelled" if isinstance(normalized, OrchestrationCancelledError) else "failed",
                 severity="warning" if isinstance(normalized, OrchestrationCancelledError) else "error",
                 error=normalized,
-                payload=build_failure_trace_payload(),
+                payload=build_failure_trace_payload(normalized),
             )
             if isinstance(normalized, OrchestrationCancelledError):
                 yield OrchestrationStreamEvent.cancelled(
@@ -879,14 +896,24 @@ class DefaultOrchestrationRuntime:
                 "strategy_registry": self.strategy_registry,
                 "state_version": None if request.workflow_state is None else request.workflow_state.version,
                 "client": runtime.client,
+                **(
+                    {"visualization_gateway": self.visualization_gateway}
+                    if self.visualization_gateway is not None
+                    else {}
+                ),
             },
         )
 
     def _strategy_agents(self, route: ResolvedUseCaseRoute) -> list[AgentPlugin]:
         ordered_names: list[str] = []
-        if route.agent_name in self.agent_registry.agents:
+        allowed_agent_names = (
+            tuple(name for name in route.usecase.allowed_agents if name in self.agent_registry.agents)
+            if route.usecase.allowed_agents
+            else tuple(sorted(self.agent_registry.agents))
+        )
+        if route.agent_name in self.agent_registry.agents and route.agent_name in allowed_agent_names:
             ordered_names.append(route.agent_name)
-        for agent_name in sorted(self.agent_registry.agents):
+        for agent_name in allowed_agent_names:
             if agent_name not in ordered_names:
                 ordered_names.append(agent_name)
         return [self.agent_registry.require(agent_name) for agent_name in ordered_names]
@@ -908,6 +935,13 @@ class DefaultOrchestrationRuntime:
             duration_ms=duration_ms,
             safe_message="Orchestration turn completed.",
         )
+        artifacts = _read_visualization_artifacts(legacy_result)
+        context_contributions = _read_visualization_context_contributions(legacy_result)
+        artifacts, context_contributions = self._apply_visualization_result_limits(
+            route=route,
+            artifacts=artifacts,
+            context_contributions=context_contributions,
+        )
         strategy_steps = _read_step_summaries(legacy_result.metadata)
         all_steps = [step_summary, *strategy_steps]
         state_delta = self._build_state_delta(
@@ -915,6 +949,7 @@ class DefaultOrchestrationRuntime:
             route=route,
             legacy_result=legacy_result,
             step_summaries=all_steps,
+            context_contributions=context_contributions,
         )
         return build_orchestration_result(
             answer=legacy_result.answer,
@@ -929,6 +964,8 @@ class DefaultOrchestrationRuntime:
             memory_searches=_read_memory_search_summaries(legacy_result.metadata),
             memory_updates=legacy_result.memory_updates,
             citations=legacy_result.citations,
+            artifacts=artifacts,
+            context_contributions=context_contributions,
             state_delta=state_delta,
             finish_reason=finish_reason,
             duration_ms=duration_ms,
@@ -969,6 +1006,8 @@ class DefaultOrchestrationRuntime:
                 memory_searches=runtime_result.memory_searches,
                 memory_updates=runtime_result.memory_updates,
                 citations=runtime_result.citations,
+                artifacts=runtime_result.artifacts,
+                context_contributions=runtime_result.context_contributions,
                 state_delta=runtime_result.state_delta,
                 finish_reason=finish_reason,
                 duration_ms=duration_ms,
@@ -1001,9 +1040,15 @@ class DefaultOrchestrationRuntime:
         route: ResolvedUseCaseRoute,
         legacy_result: LegacyOrchestrationResult,
         step_summaries: list[OrchestrationStepSummary],
+        context_contributions: list[dict[str, Any]],
     ) -> WorkflowStateDelta:
         llm_profile = legacy_result.llm_profile or route.llm_profile
         memory_updates = _read_memory_update_summaries(legacy_result.memory_updates)
+        visualization_context_patch = self._build_visualization_context_patch(
+            request=request,
+            route=route,
+            context_contributions=context_contributions,
+        )
         metadata_patch = {
             key: value
             for key, value in {
@@ -1012,6 +1057,7 @@ class DefaultOrchestrationRuntime:
                 "last_llm_profile": llm_profile,
                 "memory_update_count": len(memory_updates) if memory_updates else None,
                 "last_memory_updates": [item.as_legacy_dict() for item in memory_updates] if memory_updates else None,
+                "visualization_context": visualization_context_patch,
                 **_read_planner_metadata(legacy_result.metadata),
                 **_read_fallback_metadata(legacy_result.metadata),
             }.items()
@@ -1037,6 +1083,65 @@ class DefaultOrchestrationRuntime:
             set_active_agent=legacy_result.agent_name or route.agent_name,
             append_step_summaries=list(step_summaries),
             metadata_patch=metadata_patch,
+        )
+
+    def _apply_visualization_result_limits(
+        self,
+        *,
+        route: ResolvedUseCaseRoute,
+        artifacts: list[dict[str, Any]],
+        context_contributions: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        max_artifacts = self._max_artifacts_per_response(route=route)
+        bounded_artifacts = list(artifacts[:max_artifacts])
+        bounded_contributions = list(context_contributions[:max_artifacts])
+        return bounded_artifacts, bounded_contributions
+
+    def _max_artifacts_per_response(self, *, route: ResolvedUseCaseRoute) -> int:
+        try:
+            policy_settings = get_policy_settings(self.config)
+        except Exception:
+            return 1
+
+        profile_name = route.usecase.policy_profile or policy_settings.default_profile
+        profile = policy_settings.profiles.get(profile_name)
+        if profile is None:
+            profile = policy_settings.profiles.get(policy_settings.default_profile)
+        if profile is None:
+            return 1
+        return max(1, profile.visualization.max_artifacts_per_response)
+
+    def _build_visualization_context_patch(
+        self,
+        *,
+        request: OrchestrationRequest,
+        route: ResolvedUseCaseRoute,
+        context_contributions: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        if not context_contributions:
+            return None
+        try:
+            settings = get_visualization_settings(self.config)
+        except Exception:
+            return None
+        if not settings.enabled or not settings.context_summary.enabled:
+            return None
+
+        existing_summaries = ()
+        if request.workflow_state is not None:
+            existing_summaries = collect_chart_summaries(request.workflow_state.metadata)
+        resolved_contributions = [
+            contribution
+            for item in context_contributions
+            if (contribution := coerce_context_contribution(item)) is not None
+        ]
+        if not resolved_contributions:
+            return None
+        return merge_visualization_context(
+            existing=existing_summaries,
+            contributions=resolved_contributions,
+            active_usecase=route.usecase.name,
+            settings=settings,
         )
 
     def _build_step_summary(
@@ -1176,6 +1281,8 @@ class DefaultOrchestrationRuntime:
                         "failed_retryable": decision.error.retryable,
                         "fallback_answer_source": runtime_result.metadata.get("answer_source"),
                         "fallback_llm_error": runtime_result.metadata.get("fallback_llm_error"),
+                        "policy_denied": runtime_result.metadata.get("policy_denied"),
+                        "policy_block_summary": runtime_result.metadata.get("policy_block_summary"),
                     },
                 },
             )
@@ -1254,6 +1361,9 @@ class DefaultOrchestrationRuntime:
             "fallback_strategy": fallback_route.strategy_name,
             "failed_error_code": decision.error.code,
             "failed_retryable": decision.error.retryable,
+            "failed_error_message": decision.error.message,
+            "policy_denied": bool(decision.error.metadata.get("policy_denied", False)),
+            "policy_block_summary": _read_optional_text(decision.error.metadata.get("policy_block_summary")),
         }
         return replace(request, metadata=metadata)
 
@@ -1296,13 +1406,18 @@ class DefaultOrchestrationRuntime:
 
     @staticmethod
     def _build_legacy_request(request: OrchestrationRequest) -> RequestContext:
+        metadata = {**dict(request.metadata), "request_id": request.metadata.get("request_id")}
+        if request.workflow_state is not None:
+            visualization_context = request.workflow_state.metadata.get("visualization_context")
+            if "visualization_context" not in metadata and isinstance(visualization_context, dict):
+                metadata["visualization_context"] = dict(visualization_context)
         return RequestContext(
             user_id=request.user_id,
             session_id=request.session_id,
             message=request.message,
             usecase=request.usecase,
             trace_id=request.trace_id,
-            metadata={**dict(request.metadata), "request_id": request.metadata.get("request_id")},
+            metadata=metadata,
         )
 
 
@@ -1346,6 +1461,36 @@ def _read_step_summaries(metadata: Mapping[str, Any]) -> list[OrchestrationStepS
     return summaries
 
 
+def _read_visualization_artifacts(
+    result: LegacyOrchestrationResult,
+) -> list[dict[str, Any]]:
+    raw_items = result.artifacts or result.metadata.get("artifacts")
+    if not isinstance(raw_items, list):
+        return []
+
+    artifacts: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, Mapping):
+            continue
+        artifacts.append(dict(item))
+    return artifacts
+
+
+def _read_visualization_context_contributions(
+    result: LegacyOrchestrationResult,
+) -> list[dict[str, Any]]:
+    raw_items = result.context_contributions or result.metadata.get("context_contributions")
+    if not isinstance(raw_items, list):
+        return []
+
+    contributions: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, Mapping):
+            continue
+        contributions.append(dict(item))
+    return contributions
+
+
 def _read_fallback_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: value
@@ -1358,6 +1503,8 @@ def _read_fallback_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
             "failed_error_code",
             "failed_retryable",
             "answer_source",
+            "policy_denied",
+            "policy_block_summary",
         }
     }
 

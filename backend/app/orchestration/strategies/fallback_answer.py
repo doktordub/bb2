@@ -46,12 +46,13 @@ class FallbackAnswerStrategy:
         llm_profile = _resolve_llm_profile(context)
         static_message = _static_message(context)
         failure_metadata = _read_failure_metadata(context)
-        answer = static_message
-        answer_source = "static"
+        policy_answer = _policy_block_answer(failure_metadata)
+        answer = policy_answer or static_message
+        answer_source = "policy_static" if policy_answer is not None else "static"
         llm_error_code: str | None = None
         resolved_profile: str | None = None
 
-        if llm_profile is not None:
+        if llm_profile is not None and policy_answer is None:
             try:
                 response = await run_llm_completion_step(
                     context,
@@ -96,6 +97,8 @@ class FallbackAnswerStrategy:
             safe_message=(
                 "Fallback answer generated through the configured LLM profile."
                 if answer_source == "llm"
+                else "Policy block explanation returned."
+                if answer_source == "policy_static"
                 else "Static fallback answer returned."
             ),
             metadata={
@@ -103,6 +106,8 @@ class FallbackAnswerStrategy:
                 "failed_strategy": failure_metadata.get("failed_strategy"),
                 "fallback_reason": failure_metadata.get("fallback_reason"),
                 "failed_error_code": failure_metadata.get("failed_error_code"),
+                "policy_denied": failure_metadata.get("policy_denied", False),
+                "policy_block_summary": failure_metadata.get("policy_block_summary"),
             },
         )
         metadata = {
@@ -113,6 +118,8 @@ class FallbackAnswerStrategy:
             "failed_error_code": failure_metadata.get("failed_error_code"),
             "failed_retryable": failure_metadata.get("failed_retryable"),
             "answer_source": answer_source,
+            "policy_denied": failure_metadata.get("policy_denied", False),
+            "policy_block_summary": failure_metadata.get("policy_block_summary"),
         }
         if llm_error_code is not None:
             metadata["fallback_llm_error"] = llm_error_code
@@ -216,8 +223,11 @@ def _read_failure_metadata(context: OrchestrationContext) -> dict[str, Any]:
     return {
         "failed_strategy": _read_optional_text(metadata.get("failed_strategy")),
         "failed_error_code": _read_optional_text(metadata.get("failed_error_code")),
+        "failed_error_message": _read_optional_text(metadata.get("failed_error_message")),
         "failed_retryable": bool(metadata.get("failed_retryable", False)),
         "fallback_reason": _read_optional_text(metadata.get("fallback_reason")),
+        "policy_denied": bool(metadata.get("policy_denied", False)),
+        "policy_block_summary": _read_optional_text(metadata.get("policy_block_summary")),
     }
 
 
@@ -249,11 +259,34 @@ def _safe_answer_text(value: object, fallback: str) -> str:
     return normalized
 
 
+def _policy_block_answer(failure_metadata: Mapping[str, Any]) -> str | None:
+    policy_denied = bool(failure_metadata.get("policy_denied", False))
+    summary = _read_optional_text(failure_metadata.get("policy_block_summary"))
+    error_message = _read_optional_text(failure_metadata.get("failed_error_message"))
+    if not policy_denied and summary is None and not _looks_like_policy_denial(error_message):
+        return None
+
+    resolved_summary = summary or error_message
+    if resolved_summary is None:
+        return "I couldn't complete that request because it was blocked by policy."
+    if _mentions_policy(resolved_summary):
+        return f"I couldn't complete that request because {_lowercase_first(resolved_summary)}"
+    return f"I couldn't complete that request because it was blocked by policy. {resolved_summary}"
+
+
 def _fallback_stream_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in metadata.items()
-        if key in {"fallback_used", "fallback_reason", "failed_strategy", "failed_error_code", "answer_source"}
+        if key in {
+            "fallback_used",
+            "fallback_reason",
+            "failed_strategy",
+            "failed_error_code",
+            "answer_source",
+            "policy_denied",
+            "policy_block_summary",
+        }
     }
 
 
@@ -334,3 +367,23 @@ def _read_optional_text(value: object) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _looks_like_policy_denial(message: str | None) -> bool:
+    if message is None:
+        return False
+    lowered = message.casefold()
+    return "policy" in lowered or "not allowed" in lowered or "denied" in lowered
+
+
+def _mentions_policy(message: str) -> bool:
+    return "policy" in message.casefold()
+
+
+def _lowercase_first(message: str) -> str:
+    if not message:
+        return message
+    first = message[0]
+    if first.isalpha():
+        return first.lower() + message[1:]
+    return message

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from time import perf_counter
@@ -15,6 +16,13 @@ from app.contracts.memory import MemoryScope, MemorySearchRequest
 from app.contracts.results import OrchestrationResult as LegacyOrchestrationResult
 from app.contracts.results import StreamEvent
 from app.contracts.tools import ToolExecutionRequest, ToolScopes
+from app.observability.events import (
+    CLARIFICATION_REQUESTED,
+    REQUEST_ASSESSED,
+    TASK_BLOCKED,
+    TASK_COMPLETED,
+    TASK_LIST_GENERATED,
+)
 from app.orchestration.cancellation import raise_if_cancelled
 from app.orchestration.errors import (
     OrchestrationDependencyUnavailableError,
@@ -28,6 +36,7 @@ from app.orchestration.models import (
     MemoryUpdateSummary,
     StrategyPlan,
     StrategyPlanStep,
+    TaskAssessment,
     ToolCallSummary,
     sanitize_metadata,
 )
@@ -38,7 +47,34 @@ if TYPE_CHECKING:
 
 _COMPONENT = "orchestration.strategy.bounded_planner"
 _DEFAULT_FINAL_ANSWER = "I completed the planned steps."
-_ALLOWED_ACTIONS = ("memory_search", "tool_call", "agent_invoke", "llm_call", "finalize")
+_ALLOWED_ACTIONS = (
+    "memory_search",
+    "tool_call",
+    "agent_invoke",
+    "llm_call",
+    "request_user_input",
+    "finalize",
+)
+_VISUALIZATION_REQUEST_MARKERS = (
+    " chart",
+    "graph",
+    "plot",
+    "visualize",
+    "visualization",
+    "histogram",
+    "heatmap",
+    "scatter",
+    "bubble",
+    "pie",
+    "donut",
+    "treemap",
+    "waterfall",
+    "gantt",
+    "radar",
+)
+_EXPLICIT_TABLE_REQUEST_RE = re.compile(
+    r"\b(?:generate|create|draw|render|build|make|show|display)\s+(?:an?\s+)?table\b"
+)
 
 
 @dataclass(slots=True)
@@ -125,6 +161,17 @@ class _ExecutedPlanStep:
     memory_searches: list[MemorySearchSummary] = field(default_factory=list)
     memory_updates: list[MemoryUpdateSummary] = field(default_factory=list)
     citations: list[CitationSummary] = field(default_factory=list)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    context_contributions: list[dict[str, Any]] = field(default_factory=list)
+    terminal: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedTaskAssessment:
+    assessment: TaskAssessment
+    source: str
+    agent_name: str | None
+    llm_profile: str | None
 
 
 async def _run_strategy(
@@ -149,34 +196,200 @@ async def _run_strategy(
     limits = require_limits(context, component=_COMPONENT)
     agent_name = _selected_agent_name(context, agents)
 
-    limits.consume_step()
-    plan_started_at = perf_counter()
-    plan, planner_source, planner_profile = await _build_plan(
-        context,
-        strategy_name=strategy_name,
-        agent_name=agent_name,
-        capabilities=capabilities,
-    )
-    _validate_plan(plan, capabilities=capabilities)
-    plan_step_summary = build_step_summary(
-        step_id=f"{strategy_name}:plan",
-        step_type="plan",
-        status="completed",
-        duration_ms=max(int((perf_counter() - plan_started_at) * 1000), 0),
-        safe_message="Built and validated a bounded execution plan.",
-        metadata={
-            "planner_source": planner_source,
-            "planner_profile": planner_profile,
-            "plan_id": plan.plan_id,
-            "plan_step_count": len(plan.steps),
-            "plan_actions": list(plan.action_types),
-        },
-    )
+    assessment_summary = None
+    planner_source: str
+    planner_profile: str | None
+    finish_reason = "planner_completed"
+    response_metadata: dict[str, Any] = {}
+
+    if _task_first_enabled(context):
+        limits.consume_step()
+        assessment_started_at = perf_counter()
+        assessment_result = await _assess_request(
+            context,
+            agents=agents,
+            strategy_name=strategy_name,
+            capabilities=capabilities,
+        )
+        assessment = assessment_result.assessment
+        assessment_summary = build_step_summary(
+            step_id=f"{strategy_name}:assessment",
+            step_type="assessment",
+            status="completed",
+            duration_ms=max(int((perf_counter() - assessment_started_at) * 1000), 0),
+            safe_message="Assessed the request before bounded execution.",
+            metadata={
+                "assessment_source": assessment_result.source,
+                "assessment_agent": assessment_result.agent_name,
+                "assessment_profile": assessment_result.llm_profile,
+                "response_mode": assessment.response_mode,
+                "request_kind": assessment.request_kind,
+                "missing_input_count": len(assessment.missing_required_inputs),
+                "task_count": len(assessment.suggested_task_list),
+                "visualization_intent": assessment.visualization_intent,
+            },
+        )
+        response_metadata = {
+            "assessment_source": assessment_result.source,
+            "request_kind": assessment.request_kind,
+            "response_mode": assessment.response_mode,
+            "direct_answer_eligible": assessment.direct_answer_eligible,
+            "missing_required_inputs": list(assessment.missing_required_inputs),
+            "required_deterministic_computations": list(assessment.required_deterministic_computations),
+            "preferred_agents": list(assessment.preferred_agents),
+            "preferred_tools": list(assessment.preferred_tools),
+            "visualization_intent": assessment.visualization_intent,
+        }
+        await _record_task_execution_event(
+            context,
+            event_name=REQUEST_ASSESSED,
+            strategy_name=strategy_name,
+            agent_name=assessment_result.agent_name or agent_name,
+            llm_profile=assessment_result.llm_profile,
+            payload={
+                "assessment_source": assessment_result.source,
+                "request_kind": assessment.request_kind,
+                "response_mode": assessment.response_mode,
+                "missing_input_count": len(assessment.missing_required_inputs),
+                "task_count": len(assessment.suggested_task_list),
+                "visualization_intent": assessment.visualization_intent,
+            },
+        )
+
+        if assessment.response_mode == "direct_answer":
+            return finalize_strategy_result(
+                answer=assessment.direct_answer or _DEFAULT_FINAL_ANSWER,
+                agent_name=assessment_result.agent_name or agent_name,
+                llm_profile=assessment_result.llm_profile,
+                finish_reason="direct_answer",
+                steps=[assessment_summary],
+                tool_calls=(),
+                memory_searches=(),
+                memory_updates=(),
+                citations=(),
+                metadata={
+                    **response_metadata,
+                    "duration_ms": max(int((perf_counter() - started_at) * 1000), 0),
+                    "finish_reason": "direct_answer",
+                },
+            )
+        if assessment.response_mode == "request_user_input":
+            await _record_task_execution_event(
+                context,
+                event_name=CLARIFICATION_REQUESTED,
+                strategy_name=strategy_name,
+                agent_name=assessment_result.agent_name or agent_name,
+                llm_profile=assessment_result.llm_profile,
+                payload={
+                    "request_kind": assessment.request_kind,
+                    "missing_required_inputs": list(assessment.missing_required_inputs),
+                    "pending_task_count": 0,
+                },
+            )
+            await _record_task_execution_event(
+                context,
+                event_name=TASK_BLOCKED,
+                strategy_name=strategy_name,
+                agent_name=assessment_result.agent_name or agent_name,
+                llm_profile=assessment_result.llm_profile,
+                payload={
+                    "reason": "needs_user_input",
+                    "missing_required_inputs": list(assessment.missing_required_inputs),
+                    "pending_task_count": 0,
+                },
+                status="blocked",
+            )
+            return finalize_strategy_result(
+                answer=assessment.clarification_question or _DEFAULT_FINAL_ANSWER,
+                agent_name=assessment_result.agent_name or agent_name,
+                llm_profile=assessment_result.llm_profile,
+                finish_reason="needs_user_input",
+                steps=[assessment_summary],
+                tool_calls=(),
+                memory_searches=(),
+                memory_updates=(),
+                citations=(),
+                metadata={
+                    **response_metadata,
+                    "needs_user_input": True,
+                    "duration_ms": max(int((perf_counter() - started_at) * 1000), 0),
+                    "finish_reason": "needs_user_input",
+                },
+            )
+
+        if assessment.suggested_task_list:
+            plan = _plan_from_assessment(assessment)
+            planner_source = "task_assessment"
+            planner_profile = assessment_result.llm_profile
+        else:
+            plan, planner_source, planner_profile = await _build_plan(
+                context,
+                strategy_name=strategy_name,
+                agent_name=agent_name,
+                capabilities=capabilities,
+                assessment=assessment,
+            )
+    else:
+        limits.consume_step()
+        plan_started_at = perf_counter()
+        plan, planner_source, planner_profile = await _build_plan(
+            context,
+            strategy_name=strategy_name,
+            agent_name=agent_name,
+            capabilities=capabilities,
+        )
+        _validate_plan(plan, capabilities=capabilities)
+        plan_step_summary = build_step_summary(
+            step_id=f"{strategy_name}:plan",
+            step_type="plan",
+            status="completed",
+            duration_ms=max(int((perf_counter() - plan_started_at) * 1000), 0),
+            safe_message="Built and validated a bounded execution plan.",
+            metadata={
+                "planner_source": planner_source,
+                "planner_profile": planner_profile,
+                "plan_id": plan.plan_id,
+                "plan_step_count": len(plan.steps),
+                "plan_actions": list(plan.action_types),
+            },
+        )
+    if _task_first_enabled(context):
+        plan_started_at = perf_counter()
+        _validate_plan(plan, capabilities=capabilities)
+        plan_step_summary = build_step_summary(
+            step_id=f"{strategy_name}:plan",
+            step_type="plan",
+            status="completed",
+            duration_ms=max(int((perf_counter() - plan_started_at) * 1000), 0),
+            safe_message="Built and validated a bounded execution plan.",
+            metadata={
+                "planner_source": planner_source,
+                "planner_profile": planner_profile,
+                "plan_id": plan.plan_id,
+                "plan_step_count": len(plan.steps),
+                "plan_actions": list(plan.action_types),
+            },
+        )
+        await _record_task_execution_event(
+            context,
+            event_name=TASK_LIST_GENERATED,
+            strategy_name=strategy_name,
+            agent_name=agent_name,
+            llm_profile=planner_profile,
+            payload={
+                "planner_source": planner_source,
+                "plan_id": plan.plan_id,
+                "plan_step_count": len(plan.steps),
+                "plan_actions": list(plan.action_types),
+            },
+        )
 
     tool_calls: list[ToolCallSummary] = []
     memory_searches: list[MemorySearchSummary] = []
     memory_updates: list[MemoryUpdateSummary] = []
     citations: list[CitationSummary] = []
+    artifacts: list[dict[str, Any]] = []
+    context_contributions: list[dict[str, Any]] = []
     executed_summaries: list[Any] = []
     execution_outputs: dict[str, str] = {}
     last_output_text: str | None = None
@@ -222,6 +435,8 @@ async def _run_strategy(
         memory_searches.extend(executed.memory_searches)
         memory_updates.extend(executed.memory_updates)
         citations.extend(executed.citations)
+        artifacts.extend(executed.artifacts)
+        context_contributions.extend(executed.context_contributions)
         if executed.safe_output_text is not None:
             execution_outputs[plan_step.step_id] = executed.safe_output_text
             last_output_text = executed.safe_output_text
@@ -229,19 +444,69 @@ async def _run_strategy(
             resolved_llm_profile = executed.llm_profile
         if executed.answer is not None:
             answer = executed.answer
+        if executed.terminal:
+            if executed.step_type == "request_user_input":
+                finish_reason = "needs_user_input"
+                response_metadata["needs_user_input"] = True
+                await _record_task_execution_event(
+                    context,
+                    event_name=CLARIFICATION_REQUESTED,
+                    strategy_name=strategy_name,
+                    agent_name=agent_name,
+                    llm_profile=resolved_llm_profile,
+                    payload={
+                        "step_id": plan_step.step_id,
+                        "pending_task_count": max(len(plan.steps) - len(executed_summaries), 0),
+                    },
+                )
+                await _record_task_execution_event(
+                    context,
+                    event_name=TASK_BLOCKED,
+                    strategy_name=strategy_name,
+                    agent_name=agent_name,
+                    llm_profile=resolved_llm_profile,
+                    payload={
+                        "reason": "needs_user_input",
+                        "step_id": plan_step.step_id,
+                        "pending_task_count": max(len(plan.steps) - len(executed_summaries), 0),
+                    },
+                    status="blocked",
+                )
+            break
 
     duration_ms = max(int((perf_counter() - started_at) * 1000), 0)
+    if _task_first_enabled(context) and finish_reason != "needs_user_input":
+        await _record_task_execution_event(
+            context,
+            event_name=TASK_COMPLETED,
+            strategy_name=strategy_name,
+            agent_name=agent_name,
+            llm_profile=resolved_llm_profile,
+            payload={
+                "finish_reason": finish_reason,
+                "plan_id": plan.plan_id,
+                "plan_step_count": len(plan.steps),
+                "executed_step_count": len(executed_summaries),
+                "artifact_count": len(artifacts),
+                "tool_call_count": len(tool_calls),
+                "memory_search_count": len(memory_searches),
+                "memory_update_count": len(memory_updates),
+            },
+        )
     return finalize_strategy_result(
         answer=answer or last_output_text or _DEFAULT_FINAL_ANSWER,
         agent_name=agent_name,
         llm_profile=resolved_llm_profile,
-        finish_reason="planner_completed",
-        steps=[plan_step_summary, *executed_summaries],
+        finish_reason=finish_reason,
+        steps=[item for item in (assessment_summary, plan_step_summary, *executed_summaries) if item is not None],
         tool_calls=tool_calls,
         memory_searches=memory_searches,
         memory_updates=memory_updates,
         citations=citations,
+        artifacts=artifacts,
+        context_contributions=context_contributions,
         metadata={
+            **response_metadata,
             "planner_source": planner_source,
             "plan_id": plan.plan_id,
             "plan_step_count": len(plan.steps),
@@ -250,8 +515,12 @@ async def _run_strategy(
             "tool_call_count": len(tool_calls),
             "memory_search_count": len(memory_searches),
             "memory_update_count": len(memory_updates),
+            "artifact_count": len(artifacts),
+            "context_contribution_count": len(context_contributions),
             "duration_ms": duration_ms,
-            "finish_reason": "planner_completed",
+            "finish_reason": finish_reason,
+            **({"artifacts": artifacts} if artifacts else {}),
+            **({"context_contributions": context_contributions} if context_contributions else {}),
             **({"safe_goal": plan.safe_goal} if plan.safe_goal is not None else {}),
         },
     )
@@ -263,6 +532,7 @@ async def _build_plan(
     strategy_name: str,
     agent_name: str | None,
     capabilities: _PlannerCapabilities,
+    assessment: TaskAssessment | None = None,
 ) -> tuple[StrategyPlan, str, str | None]:
     from app.orchestration.strategy_steps import run_llm_completion_step
 
@@ -281,7 +551,11 @@ async def _build_plan(
         request=LLMRequest(
             component=_COMPONENT,
             profile=capabilities.planner_profile,
-            messages=_build_planner_messages(context, capabilities=capabilities),
+            messages=_build_planner_messages(
+                context,
+                capabilities=capabilities,
+                assessment=assessment,
+            ),
             metadata={
                 "strategy_name": strategy_name,
                 "agent_name": agent_name,
@@ -382,6 +656,8 @@ async def _execute_plan_step(
             agent=agent,
             strategy_name=strategy_name,
         )
+        artifacts = [dict(item) for item in agent_result.artifacts]
+        context_contributions = [dict(item) for item in agent_result.context_contributions]
         return _ExecutedPlanStep(
             step_type="agent_invoke",
             status="completed",
@@ -390,12 +666,16 @@ async def _execute_plan_step(
                 "agent_name": agent_result.agent_name or agent.name,
                 "tool_call_count": len(agent_result.tool_intents),
                 "memory_update_count": len(agent_result.memory_candidates),
+                "artifact_count": len(artifacts),
+                "context_contribution_count": len(context_contributions),
             },
             safe_output_text=_safe_text(agent_result_answer(agent_result)),
             llm_profile=_read_optional_text(agent_result.llm_profile),
             tool_calls=list(build_tool_call_summaries_from_agent_result(agent_result)),
             memory_updates=list(build_memory_update_summaries_from_agent_result(agent_result)),
             citations=list(build_citation_summaries_from_agent_result(agent_result)),
+            artifacts=artifacts,
+            context_contributions=context_contributions,
         )
 
     if plan_step.action_type == "llm_call":
@@ -431,6 +711,30 @@ async def _execute_plan_step(
             llm_profile=response.profile,
         )
 
+    if plan_step.action_type == "request_user_input":
+        question = _required_text(
+            _read_optional_text(
+                plan_step.inputs.get("question")
+                or plan_step.inputs.get("clarification_question")
+                or plan_step.inputs.get("answer")
+            ),
+            message=f"Planner step '{plan_step.step_id}' must include a clarification question.",
+        )
+        missing_inputs = _coerce_identifier_tuple(
+            plan_step.inputs.get("missing_required_inputs") or plan_step.inputs.get("missing_inputs")
+        )
+        return _ExecutedPlanStep(
+            step_type="request_user_input",
+            status="completed",
+            safe_message="Planner paused execution to request one follow-up input.",
+            metadata={
+                "missing_required_inputs": list(missing_inputs),
+            },
+            safe_output_text=question,
+            answer=question,
+            terminal=True,
+        )
+
     answer = _resolve_finalize_answer(
         plan_step,
         execution_outputs=execution_outputs,
@@ -443,6 +747,7 @@ async def _execute_plan_step(
         metadata={"used_last_output": answer == last_output_text},
         safe_output_text=answer,
         answer=answer,
+        terminal=True,
     )
 
 
@@ -461,9 +766,9 @@ def _validate_plan(
         raise OrchestrationPlanValidationError(
             "The bounded planner exceeded the configured max execute step limit."
         )
-    if plan.steps[-1].action_type != "finalize":
+    if plan.steps[-1].action_type not in {"finalize", "request_user_input"}:
         raise OrchestrationPlanValidationError(
-            "The bounded planner must end with a finalize step."
+            "The bounded planner must end with a finalize or request_user_input step."
         )
 
     seen_step_ids: set[str] = set()
@@ -479,6 +784,12 @@ def _validate_plan(
                 )
         seen_step_ids.add(step.step_id)
         _validate_plan_step(step, capabilities=capabilities)
+
+    for index, step in enumerate(plan.steps[:-1]):
+        if step.action_type == "request_user_input":
+            raise OrchestrationPlanValidationError(
+                "The bounded planner may only use request_user_input as the terminal step."
+            )
 
 
 def _validate_plan_step(
@@ -524,6 +835,17 @@ def _validate_plan_step(
                 f"Planner step '{step.step_id}' references unsupported llm profile '{profile}'."
             )
         _required_step_text(step.inputs.get("prompt") or step.inputs.get("message"), step=step)
+        return
+
+    if step.action_type == "request_user_input":
+        _required_text(
+            _read_optional_text(
+                step.inputs.get("question")
+                or step.inputs.get("clarification_question")
+                or step.inputs.get("answer")
+            ),
+            message=f"Planner step '{step.step_id}' must include a clarification question.",
+        )
 
 
 def _resolve_capabilities(
@@ -535,9 +857,11 @@ def _resolve_capabilities(
     if strategy_settings is None:
         raise RuntimeError("Strategy settings are required for bounded-planner capability resolution.")
     defaults = context.settings.defaults if context.settings is not None else None
+    usecase_settings = _usecase_settings(context)
     planner_profile = strategy_settings.planner_llm_profile or _read_optional_text(context.config.get("llm.defaults.profile"))
     executor_profile = (
         strategy_settings.executor_llm_profile
+        or (None if usecase_settings is None else usecase_settings.llm_profile)
         or strategy_settings.llm_profile
         or _read_optional_text(context.runtime_metadata.get("llm_profile"))
         or _read_optional_text(context.config.get("llm.defaults.profile"))
@@ -549,6 +873,7 @@ def _resolve_capabilities(
                 planner_profile,
                 executor_profile,
                 strategy_settings.llm_profile,
+                None if usecase_settings is None else usecase_settings.llm_profile,
                 _read_optional_text(context.runtime_metadata.get("llm_profile")),
                 _read_optional_text(context.config.get("llm.defaults.profile")),
             )
@@ -576,8 +901,10 @@ def _resolve_capabilities(
         ),
         planner_profile=planner_profile,
         executor_profile=executor_profile,
-        memory_enabled=bool(strategy_settings.memory_enabled),
-        tools_enabled=bool(strategy_settings.tools_enabled),
+        memory_enabled=bool(strategy_settings.memory_enabled)
+        and bool(usecase_settings.memory.enabled if usecase_settings is not None else True),
+        tools_enabled=bool(strategy_settings.tools_enabled)
+        and bool(usecase_settings.tools.enabled if usecase_settings is not None else True),
         agent_names=tuple(agent.name for agent in agents),
         allowed_tool_names=_allowed_tool_names(context),
         allowed_llm_profiles=allowed_llm_profiles,
@@ -588,6 +915,7 @@ def _build_planner_messages(
     context: OrchestrationContext,
     *,
     capabilities: _PlannerCapabilities,
+    assessment: TaskAssessment | None = None,
 ) -> list[Any]:
     sections = [
         PromptSection(
@@ -614,6 +942,20 @@ def _build_planner_messages(
             ),
         ),
     ]
+    if assessment is not None:
+        sections.append(
+            PromptSection(
+                title="Assessment summary",
+                body=(
+                    f"Request kind: {assessment.request_kind}\n"
+                    f"Response mode: {assessment.response_mode}\n"
+                    f"Preferred agents: {', '.join(assessment.preferred_agents) or 'none'}\n"
+                    f"Preferred tools: {', '.join(assessment.preferred_tools) or 'none'}\n"
+                    f"Deterministic computations: {', '.join(assessment.required_deterministic_computations) or 'none'}\n"
+                    f"Visualization intent: {'yes' if assessment.visualization_intent else 'no'}"
+                ),
+            )
+        )
     return build_prompt_messages(
         user_request=context.request.message,
         sections=sections,
@@ -783,8 +1125,15 @@ def _build_memory_scope(
 ) -> MemoryScope:
     _ = agent_name
     runtime = context.runtime
+    usecase_settings = _usecase_settings(context)
+    project_id = runtime.project_id if runtime is not None else None
+    if usecase_settings is not None and usecase_settings.memory.allowed_project_ids:
+        if project_id not in usecase_settings.memory.allowed_project_ids:
+            project_id = usecase_settings.memory.default_project_id
+    elif usecase_settings is not None and project_id is None:
+        project_id = usecase_settings.memory.default_project_id
     return MemoryScope(
-        project_id=runtime.project_id if runtime is not None else None,
+        project_id=project_id,
         tenant_id=runtime.tenant_id if runtime is not None else None,
     )
 
@@ -816,6 +1165,237 @@ def _tool_arguments(plan_step: StrategyPlanStep) -> dict[str, Any]:
             if key not in {"tool_name"}
         }
     )
+
+
+async def _assess_request(
+    context: OrchestrationContext,
+    *,
+    agents: Sequence[AgentPlugin],
+    strategy_name: str,
+    capabilities: _PlannerCapabilities,
+) -> _ResolvedTaskAssessment:
+    from app.agents.models import AgentOutputFormat, AgentTask
+    from app.orchestration.strategy_steps import run_agent_step
+
+    raw_assessment = context.request.metadata.get("task_assessment")
+    if raw_assessment is not None:
+        assessment = _apply_visualization_request_fallback(
+            TaskAssessment.from_payload(raw_assessment),
+            message=context.request.message,
+        )
+        return _ResolvedTaskAssessment(
+            assessment=assessment,
+            source="request_metadata",
+            agent_name=None,
+            llm_profile=None,
+        )
+
+    assessment_agent = _resolve_assessment_agent(context, agents=agents)
+    context_items = (
+        PromptSection(
+            title="Allowed execution capabilities",
+            body=(
+                f"Agents: {', '.join(capabilities.agent_names) or 'none'}\n"
+                f"Tools: {', '.join(capabilities.allowed_tool_names) or 'none'}\n"
+                f"Memory enabled: {'yes' if capabilities.memory_enabled else 'no'}\n"
+                "Visualization intent should stay false unless the user explicitly requests a "
+                "chart, graph, plot, or table artifact."
+            ),
+        ),
+    )
+    task = AgentTask(
+        type="task_assessment",
+        instruction=(
+            "Assess the current request and choose exactly one response_mode: direct_answer, "
+            "request_user_input, or planned_execution."
+        ),
+        expected_outputs=(
+            "request_kind",
+            "response_mode",
+            "direct_answer or clarification_question or suggested_task_list",
+        ),
+        safe_goal="Select the smallest safe path before any tool, memory, or chart work runs.",
+    )
+    output_format = AgentOutputFormat(
+        kind="task_assessment",
+        schema_name="task_assessment_contract",
+        require_json=True,
+        max_items=capabilities.max_plan_steps,
+    )
+    try:
+        result = await run_agent_step(
+            context,
+            component=_COMPONENT,
+            agent=assessment_agent,
+            strategy_name=strategy_name,
+            context_items=context_items,
+            available_tools=capabilities.allowed_tool_names,
+            task=task,
+            constraints=(
+                "Return JSON only.",
+                "Choose exactly one response_mode.",
+                "Use only the listed agents and tools in suggested_task_list.",
+                "Do not include chain-of-thought, hidden reasoning, or raw prompt content.",
+            ),
+            output_format=output_format,
+            metadata={"assessment_only": True},
+        )
+    except Exception:
+        if _looks_like_visualization_request_message(context.request.message):
+            return _ResolvedTaskAssessment(
+                assessment=_build_visualization_request_assessment(),
+                source="heuristic",
+                agent_name=assessment_agent.name,
+                llm_profile=None,
+            )
+        raise
+    assessment_payload = result.metadata.get("task_assessment")
+    if assessment_payload is None:
+        assessment_payload = result.answer
+    assessment = _apply_visualization_request_fallback(
+        TaskAssessment.from_payload(assessment_payload),
+        message=context.request.message,
+    )
+    return _ResolvedTaskAssessment(
+        assessment=assessment,
+        source="agent",
+        agent_name=result.agent_name or assessment_agent.name,
+        llm_profile=_read_optional_text(result.llm_profile),
+    )
+
+
+def _apply_visualization_request_fallback(
+    assessment: TaskAssessment,
+    *,
+    message: str,
+) -> TaskAssessment:
+    if assessment.visualization_intent or not _looks_like_visualization_request_message(message):
+        return assessment
+    return _build_visualization_request_assessment(
+        required_deterministic_computations=assessment.required_deterministic_computations,
+        preferred_tools=assessment.preferred_tools,
+        safe_goal=assessment.safe_goal,
+        metadata={
+            **assessment.metadata,
+            "assessment_fallback": "visualization_request_heuristic",
+        },
+    )
+
+
+def _build_visualization_request_assessment(
+    *,
+    required_deterministic_computations: Sequence[str] = (),
+    preferred_tools: Sequence[str] = (),
+    safe_goal: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> TaskAssessment:
+    return TaskAssessment(
+        request_kind="visualization_request",
+        response_mode="planned_execution",
+        direct_answer_eligible=False,
+        direct_answer=None,
+        clarification_question=None,
+        missing_required_inputs=(),
+        required_deterministic_computations=tuple(required_deterministic_computations),
+        suggested_task_list=(
+            StrategyPlanStep(
+                step_id="chart_1",
+                action_type="agent_invoke",
+                name="chart_agent",
+                inputs={},
+            ),
+        ),
+        preferred_agents=("chart_agent",),
+        preferred_tools=tuple(preferred_tools),
+        visualization_intent=True,
+        safe_goal=safe_goal,
+        metadata={} if metadata is None else dict(metadata),
+    )
+
+
+def _looks_like_visualization_request_message(message: str) -> bool:
+    lowered = message.casefold()
+    if any(marker in lowered for marker in _VISUALIZATION_REQUEST_MARKERS):
+        return True
+    return _EXPLICIT_TABLE_REQUEST_RE.search(lowered) is not None
+
+
+def _plan_from_assessment(assessment: TaskAssessment) -> StrategyPlan:
+    steps = list(assessment.suggested_task_list)
+    if not steps:
+        raise OrchestrationPlanValidationError(
+            "Task assessment planned_execution mode requires suggested_task_list."
+        )
+    if steps[-1].action_type not in {"finalize", "request_user_input"}:
+        steps.append(
+            StrategyPlanStep(
+                step_id=_next_generated_step_id(steps, prefix="finalize"),
+                action_type="finalize",
+                name="return_answer",
+                inputs={},
+            )
+        )
+    return StrategyPlan(
+        plan_id=_read_optional_text(assessment.metadata.get("plan_id")) or "task_assessment_plan",
+        steps=tuple(steps),
+        safe_goal=assessment.safe_goal,
+    )
+
+
+def _task_first_enabled(context: OrchestrationContext) -> bool:
+    usecase_settings = _usecase_settings(context)
+    if usecase_settings is None:
+        return False
+    return _read_optional_text(usecase_settings.metadata.get("routing_mode")) == "task_first"
+
+
+def _usecase_settings(context: OrchestrationContext) -> Any:
+    if context.settings is None or context.request.usecase is None:
+        return None
+    return context.settings.usecases.get(context.request.usecase)
+
+
+def _resolve_assessment_agent(
+    context: OrchestrationContext,
+    *,
+    agents: Sequence[AgentPlugin],
+) -> AgentPlugin:
+    usecase_settings = _usecase_settings(context)
+    configured_name = None
+    if usecase_settings is not None:
+        configured_name = _read_optional_text(usecase_settings.metadata.get("assessment_agent"))
+    configured_name = configured_name or "task_execution_agent"
+    for agent in agents:
+        if agent.name == configured_name:
+            return agent
+    raise OrchestrationPlanValidationError(
+        f"Task-first bounded planning requires an assessment agent named '{configured_name}'."
+    )
+
+
+def _next_generated_step_id(
+    steps: Sequence[StrategyPlanStep],
+    *,
+    prefix: str,
+) -> str:
+    existing = {step.step_id for step in steps}
+    index = 1
+    candidate = f"{prefix}_{index}"
+    while candidate in existing:
+        index += 1
+        candidate = f"{prefix}_{index}"
+    return candidate
+
+
+def _coerce_identifier_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes | bytearray):
+        return ()
+    normalized: list[str] = []
+    for item in value:
+        text = _read_optional_text(item)
+        if text is not None:
+            normalized.append(text)
+    return tuple(normalized)
 
 
 def _memory_output_text(result: Any) -> str | None:
@@ -904,6 +1484,36 @@ def _stream_metadata(metadata: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in metadata.items()
         if key in {"planner_source", "plan_id", "plan_step_count", "executed_step_count", "finish_reason"}
     }
+
+
+async def _record_task_execution_event(
+    context: OrchestrationContext,
+    *,
+    event_name: str,
+    strategy_name: str,
+    agent_name: str | None,
+    llm_profile: str | None,
+    payload: Mapping[str, Any],
+    status: str = "completed",
+) -> None:
+    recorder = context.observability
+    if recorder is None:
+        return
+
+    await recorder.record(
+        event_type="orchestration",
+        event_name=event_name,
+        component=_COMPONENT,
+        status=status,
+        trace_id=context.request.trace_id,
+        session_id=context.request.session_id,
+        user_id=context.request.user_id,
+        usecase=context.request.usecase,
+        agent_name=agent_name,
+        strategy_name=strategy_name,
+        llm_profile=llm_profile,
+        payload=sanitize_metadata(payload),
+    )
 
 
 def _safe_text(value: object) -> str | None:

@@ -7,6 +7,7 @@ function collectSubsystemItems(health) {
   return [
     ["Backend", health.backend?.configured ? health.status : "unknown", [health.backend?.service, health.backend?.environment].filter(Boolean).join(" · ") || null],
     ["API", health.api?.configured ? "ok" : "unknown", [health.api?.docs_enabled ? "docs enabled" : "docs hidden", health.api?.streaming_enabled ? "streaming" : null].filter(Boolean).join(" · ") || null],
+    ["Visualization", health.visualization?.configured ? (health.visualization?.enabled ? "ok" : "disabled") : "unknown", [health.visualization?.default_renderer, Number.isFinite(Number(health.visualization?.supported_chart_types_count)) ? `${health.visualization.supported_chart_types_count} chart types` : null, health.visualization?.artifact_store_enabled ? "artifact store" : null].filter(Boolean).join(" · ") || null],
     ["Workflow state", health.workflow_state?.status, [health.workflow_state?.provider, health.workflow_state?.schema_initialized ? "schema ready" : null].filter(Boolean).join(" · ") || null],
     ["Trace store", health.trace?.status, [health.trace?.provider, health.trace?.retention_enabled ? "retention on" : null].filter(Boolean).join(" · ") || null],
     ["Memory", health.memory?.status, [health.memory?.provider, health.memory?.search_available ? "search ready" : null].filter(Boolean).join(" · ") || null],

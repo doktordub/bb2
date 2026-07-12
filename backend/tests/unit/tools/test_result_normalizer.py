@@ -9,10 +9,15 @@ from app.tools.models import ResolvedToolDefinition
 from app.tools.result_normalizer import ToolResultNormalizer
 
 
-def build_definition(*, max_result_bytes: int = 32768) -> ResolvedToolDefinition:
+def build_definition(
+    *,
+    logical_name: str = "documents.search",
+    mcp_tool_name: str | None = None,
+    max_result_bytes: int = 32768,
+) -> ResolvedToolDefinition:
     return ResolvedToolDefinition(
-        logical_name="documents.search",
-        mcp_tool_name="documents.search",
+        logical_name=logical_name,
+        mcp_tool_name=mcp_tool_name or logical_name,
         max_result_bytes=max_result_bytes,
     )
 
@@ -114,3 +119,157 @@ def test_result_normalizer_reduces_payload_to_fit_byte_budget() -> None:
     assert normalized.summary.truncated is True
     assert normalized.summary.bytes_returned is not None
     assert normalized.summary.bytes_returned <= 4096
+
+
+def test_result_normalizer_unwraps_structured_dataset_success_envelope() -> None:
+    normalizer = ToolResultNormalizer(default_max_result_bytes=4096)
+    dataset = {
+        "schema_version": "1.0",
+        "dataset_id": "reporting.metric_series.monthly_income_expense.v1",
+        "columns": [
+            {
+                "name": "reporting_period",
+                "data_type": "date",
+                "nullable": False,
+                "semantic_role": "time",
+                "unit": None,
+            },
+            {
+                "name": "income",
+                "data_type": "number",
+                "nullable": False,
+                "semantic_role": "metric",
+                "unit": "USD",
+            },
+        ],
+        "rows": [{"reporting_period": "2026-01-01", "income": 125000.0}],
+        "row_count": 1,
+        "total_row_count": 1,
+        "truncated": False,
+        "source": "reporting_fixture",
+        "query_summary": "Returned one fixture row.",
+        "time_range": None,
+        "warnings": [],
+        "provenance": {"provider": "fixture"},
+    }
+    raw_result = MCPToolCallResult(
+        mcp_tool_name="reporting.query_metric_series",
+        status="completed",
+        structured_content={
+            "ok": True,
+            "tool_name": "reporting.query_metric_series",
+            "summary": {
+                "message": "Returned one fixture row.",
+                "item_count": 1,
+                "truncated": False,
+            },
+            "data": {"dataset": dataset},
+            "errors": [],
+            "meta": {
+                "schema_version": "1.0",
+                "output_schema": "structured_dataset_v1",
+                "dataset_id": "reporting.metric_series.monthly_income_expense.v1",
+            },
+        },
+    )
+
+    normalized = normalizer.normalize_result(
+        build_definition(logical_name="reporting.query_metric_series"),
+        raw_result,
+        duration_ms=18,
+    )
+
+    assert normalized.status == "completed"
+    assert normalized.structured_content == dataset
+    assert normalized.summary is not None
+    assert normalized.summary.result_count == 1
+    assert normalized.metadata["output_schema"] == "structured_dataset_v1"
+    assert normalized.metadata["dataset_id"] == dataset["dataset_id"]
+
+
+def test_result_normalizer_maps_structured_dataset_error_envelope_to_failed_result() -> None:
+    normalizer = ToolResultNormalizer(default_max_result_bytes=4096)
+    raw_result = MCPToolCallResult(
+        mcp_tool_name="reporting.query_metric_series",
+        status="completed",
+        structured_content={
+            "ok": False,
+            "tool_name": "reporting.query_metric_series",
+            "summary": {
+                "message": "The requested metric is not approved for visualization queries.",
+                "item_count": 0,
+                "truncated": False,
+            },
+            "data": {},
+            "errors": [
+                {
+                    "code": "unsupported_metric",
+                    "message": "Metric 'gross_margin' is not enabled for reporting queries.",
+                    "retryable": False,
+                    "details": {"field": "metric_names", "value": "gross_margin"},
+                }
+            ],
+            "meta": {
+                "schema_version": "1.0",
+                "output_schema": "structured_dataset_v1",
+            },
+        },
+    )
+
+    normalized = normalizer.normalize_result(
+        build_definition(logical_name="reporting.query_metric_series"),
+        raw_result,
+        duration_ms=18,
+    )
+
+    assert normalized.status == "failed"
+    assert normalized.structured_content is None
+    assert normalized.summary is not None
+    assert normalized.summary.safe_message == "The requested metric is not approved for visualization queries."
+    assert normalized.error_detail is not None
+    assert normalized.error_detail.code == "unsupported_metric"
+    assert normalized.error_detail.metadata == {
+        "field": "metric_names",
+        "value": "gross_margin",
+    }
+
+
+def test_result_normalizer_maps_structured_dataset_timeout_envelope_to_timeout_status() -> None:
+    normalizer = ToolResultNormalizer(default_max_result_bytes=4096)
+    raw_result = MCPToolCallResult(
+        mcp_tool_name="reporting.query_metric_series",
+        status="completed",
+        structured_content={
+            "ok": False,
+            "tool_name": "reporting.query_metric_series",
+            "summary": {
+                "message": "The reporting provider timed out before it returned a dataset.",
+                "item_count": 0,
+                "truncated": False,
+            },
+            "data": {},
+            "errors": [
+                {
+                    "code": "timeout",
+                    "message": "Reporting provider timed out.",
+                    "retryable": True,
+                    "details": {},
+                }
+            ],
+            "meta": {
+                "schema_version": "1.0",
+                "output_schema": "structured_dataset_v1",
+            },
+        },
+    )
+
+    normalized = normalizer.normalize_result(
+        build_definition(logical_name="reporting.query_metric_series"),
+        raw_result,
+        duration_ms=18,
+    )
+
+    assert normalized.status == "timeout"
+    assert normalized.error_detail is not None
+    assert normalized.error_detail.code == "timeout"
+    assert normalized.error_detail.retryable is True

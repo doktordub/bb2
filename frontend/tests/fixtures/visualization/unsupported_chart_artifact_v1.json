@@ -1,0 +1,36 @@
+{
+  "artifact_id": "chart_revenue_flow_q2",
+  "type": "chart",
+  "chart_type": "sankey",
+  "title": "Revenue Flow by Team",
+  "description": "Provisional unsupported-type fixture for frontend placeholder UX.",
+  "renderer": "echarts",
+  "spec_version": "1.0",
+  "data_mode": "inline",
+  "data": [
+    {
+      "source": "Marketing",
+      "target": "Sales",
+      "value": 120
+    },
+    {
+      "source": "Sales",
+      "target": "Support",
+      "value": 45
+    }
+  ],
+  "data_ref": null,
+  "encoding": {
+    "source": "source",
+    "target": "target",
+    "value": "value"
+  },
+  "options": {},
+  "warnings": [
+    "unsupported_chart_type"
+  ],
+  "metadata": {
+    "fixture_status": "frontend_phase0_edge",
+    "contract_status": "provisional"
+  }
+}

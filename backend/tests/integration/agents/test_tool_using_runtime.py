@@ -5,7 +5,7 @@ import pytest
 from app.agents.registry import DefaultAgentRegistry
 from app.agents.result_builder import build_run_request_from_context
 from app.contracts.context import OrchestrationContext, RequestContext
-from app.orchestration.prompt_inputs import PromptSection
+from app.contracts.llm import LLMMessage, LLMToolCall
 from app.testing.fakes import (
     FakeConfigurationView,
     FakeLLMGateway,
@@ -53,14 +53,29 @@ def build_config() -> FakeConfigurationView:
                         "allowed_tool_intents": ["documents_search"],
                     }
                 },
-            }
-        }
+            },
+            "llm": {
+                "profiles": {
+                    "tool_profile": {
+                        "supports_tool_calling": True,
+                    }
+                }
+            },
+        },
     )
 
 
-def build_context(*, response_text: str) -> tuple[OrchestrationContext, FakeLLMGateway, FakeToolGateway, FakeTraceStore]:
+def build_context(
+    *,
+    response_text: str,
+    tool_calls: tuple[LLMToolCall | dict[str, object], ...] = (),
+) -> tuple[OrchestrationContext, FakeLLMGateway, FakeToolGateway, FakeTraceStore]:
     trace_store = FakeTraceStore()
-    llm = FakeLLMGateway(response_text=response_text, default_profile="gateway_default")
+    llm = FakeLLMGateway(
+        response_text=response_text,
+        default_profile="gateway_default",
+        tool_calls=tool_calls,
+    )
     tools = FakeToolGateway()
     context = OrchestrationContext(
         request=RequestContext(
@@ -76,7 +91,17 @@ def build_context(*, response_text: str) -> tuple[OrchestrationContext, FakeLLMG
         tools=tools,
         trace=trace_store,
         policy=FakePolicyService(),
-        config=FakeConfigurationView(),
+        config=FakeConfigurationView(
+            {
+                "llm": {
+                    "profiles": {
+                        "tool_profile": {
+                            "supports_tool_calling": True,
+                        }
+                    }
+                }
+            }
+        ),
         runtime_metadata={"strategy_name": "tool_assisted", "llm_profile": "tool_profile"},
         observability=build_fake_trace_recorder(store=trace_store),
     )
@@ -89,10 +114,16 @@ async def test_registry_builds_and_runs_builtin_tool_using_agent_without_executi
     registry = DefaultAgentRegistry.from_config(config)
     agent = registry.resolve("support_agent")
     context, llm, tools, trace_store = build_context(
-        response_text=(
-            '{"kind": "tool_intent", "tool_name": "documents_search", '
-            '"arguments": {"query": "architecture notes", "limit": 3}}'
-        )
+        response_text="",
+        tool_calls=(
+            {
+                "id": "call_documents_search_1",
+                "function": {
+                    "name": "documents_search",
+                    "arguments": '{"query": "architecture notes", "limit": 3}',
+                },
+            },
+        ),
     )
 
     request = build_run_request_from_context(
@@ -105,26 +136,41 @@ async def test_registry_builds_and_runs_builtin_tool_using_agent_without_executi
     assert len(result.tool_intents) == 1
     assert result.tool_intents[0].tool_name == "documents_search"
     assert tools.calls == []
-    assert getattr(llm.requests[0].response_format, "type", None) == "json_object"
+    assert llm.requests[0].response_format is None
+    assert getattr(llm.requests[0].tool_choice, "type", None) == "auto"
+    assert [tool.function.name for tool in llm.requests[0].tools] == ["documents_search"]
     assert "agent_tool_intent_created" in [event.resolved_event_name for event in trace_store.events]
 
 
 @pytest.mark.asyncio
-async def test_builtin_tool_using_agent_returns_final_answer_after_tool_context() -> None:
+async def test_builtin_tool_using_agent_returns_final_answer_after_native_tool_followup() -> None:
     config = build_config()
     agent = DefaultAgentRegistry.from_config(config).resolve("support_agent")
     context, _, tools, _ = build_context(
-        response_text='{"kind": "final_answer", "answer": "Here is the safe tool summary."}'
+        response_text="Here is the safe tool summary."
     )
 
     request = build_run_request_from_context(
         context,
         agent_name="support_agent",
-        available_tools=("documents_search",),
-        tool_context=(
-            PromptSection(
-                title="Tool result",
-                body="The tool found architecture notes.",
+        llm_followup_messages=(
+            LLMMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    LLMToolCall(
+                        id="call_documents_search_1",
+                        function={
+                            "name": "documents_search",
+                            "arguments": '{"query": "architecture notes", "limit": 3}',
+                        },
+                    )
+                ],
+            ),
+            LLMMessage(
+                role="tool",
+                content="The tool found architecture notes.",
+                tool_call_id="call_documents_search_1",
             ),
         ),
     )

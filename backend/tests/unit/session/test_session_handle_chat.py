@@ -16,6 +16,9 @@ from app.config.view import (
 )
 from app.llm.factory import build_llm_runtime
 from app.orchestration.core import DirectAgentOrchestrationRuntime
+from app.orchestration.models import ConversationMessage
+from app.orchestration.result_builder import build_orchestration_result
+from app.orchestration.state_delta import WorkflowStateDelta
 from app.policy.factory import build_policy_runtime
 from app.session.mapping import build_session_chat_request, build_session_request_context
 from app.session.service import DefaultSessionService
@@ -27,6 +30,7 @@ from app.testing.fakes.fake_session_id_provider import FakeSessionIdProvider
 from app.testing.fakes.fake_state import FakeWorkflowStateStore
 from app.testing.fakes.fake_trace import FakeTraceStore
 from app.testing.fakes.fake_trace_recorder import build_fake_trace_recorder
+from app.visualization.models import ChartArtifact
 
 
 def _build_settings() -> SessionSettings:
@@ -144,6 +148,7 @@ async def test_default_session_service_loads_runs_and_saves_once() -> None:
         "usecase": "support_chat",
         "message_count": 2,
         "message_count_before": 0,
+        "generated_artifact_count": 0,
     }
 
     assert workflow_state.load_requests == ["session_abc"]
@@ -200,6 +205,343 @@ async def test_default_session_service_loads_runs_and_saves_once() -> None:
 
 
 @pytest.mark.asyncio
+async def test_default_session_service_persists_history_replay_metadata_for_visualizations() -> None:
+    class ArtifactRuntime:
+        async def run_turn(self, *, request, context):  # type: ignore[no-untyped-def]
+            artifact = ChartArtifact(
+                artifact_id="chart_history_001",
+                chart_type="bar",
+                title="Revenue by Month",
+                description="Monthly revenue totals.",
+                renderer="echarts",
+                spec_version="1.0",
+                data_mode="inline",
+                data=[{"month": "Jan", "revenue": 1200}, {"month": "Feb", "revenue": 1450}],
+                data_ref=None,
+                encoding={"x": "month", "y": ["revenue"]},
+                metadata={"source": "workflow_state"},
+            )
+            answer = "Here is your chart."
+            usecase = request.usecase or "support_chat"
+            return build_orchestration_result(
+                answer=answer,
+                session_id=request.session_id,
+                trace_id=request.trace_id,
+                usecase=usecase,
+                strategy_name="fake_direct_strategy",
+                agent_name="chart_agent",
+                llm_profile="fake_local_profile",
+                artifacts=[artifact],
+                state_delta=WorkflowStateDelta(
+                    append_messages=[
+                        ConversationMessage(
+                            role="assistant",
+                            content=answer,
+                            metadata={
+                                "agent_name": "chart_agent",
+                                "strategy_name": "fake_direct_strategy",
+                                "llm_profile": "fake_local_profile",
+                            },
+                        )
+                    ],
+                    set_active_usecase=usecase,
+                    set_active_agent="chart_agent",
+                ),
+            )
+
+    workflow_state = FakeWorkflowStateStore()
+    trace_store = FakeTraceStore()
+    service = DefaultSessionService(
+        config=FakeConfigurationView(
+            {
+                "usecases": {
+                    "default_chat": {"enabled": True},
+                    "support_chat": {"enabled": True},
+                },
+                "visualization": {
+                    "enabled": True,
+                    "artifact_store": {
+                        "public_retrieval_enabled": True,
+                        "retrieval_endpoint": "/artifacts/{artifact_id}",
+                    },
+                },
+            }
+        ),
+        settings=_build_settings(),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=trace_store),
+        orchestrator=ArtifactRuntime(),
+        id_provider=FakeSessionIdProvider(ids=["session_visualization"]),
+        clock=FakeClock(
+            [
+                datetime(2026, 6, 27, 12, 5, tzinfo=UTC),
+                datetime(2026, 6, 27, 12, 5, 1, tzinfo=UTC),
+            ]
+        ),
+    )
+
+    await service.handle_chat(
+        request=build_session_chat_request(
+            message="show me monthly revenue",
+            session_id="session_visualization",
+            usecase="support_chat",
+            metadata={},
+        ),
+        context=_build_context(),
+    )
+
+    saved_message = workflow_state.states["session_visualization"]["conversation"]["messages"][1]
+    saved_metadata = saved_message["metadata"]
+    assert saved_metadata["artifact_count"] == 1
+    assert saved_metadata["artifact_delivery_mode"] == "inline"
+    assert saved_metadata["artifact_replay_status"] == "available"
+    assert "artifact_replay_reason" not in saved_metadata
+    assert saved_message["artifacts"] == [
+        {
+            "artifact_id": "chart_history_001",
+            "type": "chart",
+            "chart_type": "bar",
+            "title": "Revenue by Month",
+            "description": "Monthly revenue totals.",
+            "renderer": "echarts",
+            "spec_version": "1.0",
+            "data_mode": "inline",
+            "data": [{"month": "Jan", "revenue": 1200}, {"month": "Feb", "revenue": 1450}],
+            "data_ref": None,
+            "encoding": {"x": "month", "y": ["revenue"]},
+            "options": {},
+            "warnings": [],
+            "metadata": {"source": "workflow_state"},
+        }
+    ]
+    assert saved_metadata["visualizations"] == [
+        {
+            "artifact_id": "chart_history_001",
+            "type": "chart",
+            "chart_type": "bar",
+            "title": "Revenue by Month",
+            "description": "Monthly revenue totals.",
+            "renderer": "echarts",
+            "spec_version": "1.0",
+            "data_mode": "inline",
+            "data": [{"month": "Jan", "revenue": 1200}, {"month": "Feb", "revenue": 1450}],
+            "data_ref": None,
+            "encoding": {"x": "month", "y": ["revenue"]},
+            "options": {},
+            "warnings": [],
+            "metadata": {"source": "workflow_state"},
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_default_session_service_does_not_embed_oversized_inline_history_artifacts() -> None:
+    oversized_rows = [
+        {
+            "month": f"Month {index}",
+            "revenue": index * 100,
+            "notes": "x" * 512,
+        }
+        for index in range(180)
+    ]
+
+    class OversizedArtifactRuntime:
+        async def run_turn(self, *, request, context):  # type: ignore[no-untyped-def]
+            del context
+            artifact = ChartArtifact(
+                artifact_id="chart_history_large_001",
+                chart_type="bar",
+                title="Large Revenue by Month",
+                description="Monthly revenue totals.",
+                renderer="echarts",
+                spec_version="1.0",
+                data_mode="inline",
+                data=oversized_rows,
+                data_ref=None,
+                encoding={"x": "month", "y": ["revenue"]},
+                metadata={"source": "workflow_state"},
+            )
+            answer = "Here is your large chart."
+            usecase = request.usecase or "support_chat"
+            return build_orchestration_result(
+                answer=answer,
+                session_id=request.session_id,
+                trace_id=request.trace_id,
+                usecase=usecase,
+                strategy_name="fake_direct_strategy",
+                agent_name="chart_agent",
+                llm_profile="fake_local_profile",
+                artifacts=[artifact],
+                state_delta=WorkflowStateDelta(
+                    append_messages=[
+                        ConversationMessage(
+                            role="assistant",
+                            content=answer,
+                            metadata={
+                                "agent_name": "chart_agent",
+                                "strategy_name": "fake_direct_strategy",
+                                "llm_profile": "fake_local_profile",
+                            },
+                        )
+                    ],
+                    set_active_usecase=usecase,
+                    set_active_agent="chart_agent",
+                ),
+            )
+
+    workflow_state = FakeWorkflowStateStore()
+    service = DefaultSessionService(
+        config=FakeConfigurationView(
+            {
+                "usecases": {
+                    "default_chat": {"enabled": True},
+                    "support_chat": {"enabled": True},
+                },
+                "visualization": {
+                    "enabled": True,
+                    "artifact_store": {
+                        "public_retrieval_enabled": False,
+                    },
+                },
+            }
+        ),
+        settings=_build_settings(),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=FakeTraceStore()),
+        orchestrator=OversizedArtifactRuntime(),
+        id_provider=FakeSessionIdProvider(ids=["session_visualization_large"]),
+        clock=FakeClock(
+            [
+                datetime(2026, 6, 27, 12, 6, tzinfo=UTC),
+                datetime(2026, 6, 27, 12, 6, 1, tzinfo=UTC),
+            ]
+        ),
+    )
+
+    await service.handle_chat(
+        request=build_session_chat_request(
+            message="show me large monthly revenue",
+            session_id="session_visualization_large",
+            usecase="support_chat",
+            metadata={},
+        ),
+        context=_build_context(),
+    )
+
+    saved_message = workflow_state.states["session_visualization_large"]["conversation"]["messages"][1]
+    saved_metadata = saved_message["metadata"]
+    assert saved_metadata["artifact_count"] == 1
+    assert saved_metadata["artifact_delivery_mode"] == "inline"
+    assert saved_metadata["artifact_replay_status"] == "unavailable"
+    assert saved_metadata["artifact_replay_reason"] == "inline_artifact_too_large"
+    assert "artifacts" not in saved_message
+    assert "visualizations" not in saved_metadata
+
+
+@pytest.mark.asyncio
+async def test_default_session_service_persists_pending_task_flow_metadata() -> None:
+    class ClarificationRuntime:
+        async def run_turn(self, *, request, context):  # type: ignore[no-untyped-def]
+            del context
+            usecase = request.usecase or "task_execution_chat"
+            question = "Which date range should I use?"
+            return build_orchestration_result(
+                answer=question,
+                session_id=request.session_id,
+                trace_id=request.trace_id,
+                usecase=usecase,
+                strategy_name="bounded_planner",
+                agent_name="task_execution_agent",
+                llm_profile="executor_profile",
+                metadata={
+                    "response_mode": "request_user_input",
+                    "request_kind": "report_request",
+                    "needs_user_input": True,
+                    "missing_required_inputs": ["date_range"],
+                    "plan_step_count": 3,
+                    "executed_step_count": 1,
+                    "plan_actions": ["tool_call", "request_user_input", "finalize"],
+                    "preferred_agents": ["support_agent"],
+                    "preferred_tools": [],
+                    "required_deterministic_computations": [],
+                    "finish_reason": "needs_user_input",
+                },
+                state_delta=WorkflowStateDelta(
+                    append_messages=[
+                        ConversationMessage(
+                            role="assistant",
+                            content=question,
+                            metadata={
+                                "agent_name": "task_execution_agent",
+                                "strategy_name": "bounded_planner",
+                                "llm_profile": "executor_profile",
+                            },
+                        )
+                    ],
+                    set_active_usecase=usecase,
+                    set_active_agent="task_execution_agent",
+                ),
+                finish_reason="needs_user_input",
+            )
+
+    workflow_state = FakeWorkflowStateStore()
+    trace_store = FakeTraceStore()
+    service = DefaultSessionService(
+        config=FakeConfigurationView(
+            {
+                "usecases": {
+                    "default_chat": {"enabled": True},
+                    "task_execution_chat": {"enabled": True},
+                }
+            }
+        ),
+        settings=_build_settings(),
+        workflow_state=workflow_state,
+        trace_recorder=build_fake_trace_recorder(store=trace_store),
+        orchestrator=ClarificationRuntime(),
+        id_provider=FakeSessionIdProvider(ids=["session_task_flow"]),
+        clock=FakeClock(
+            [
+                datetime(2026, 6, 27, 12, 10, tzinfo=UTC),
+                datetime(2026, 6, 27, 12, 10, 1, tzinfo=UTC),
+            ]
+        ),
+    )
+
+    result = await service.handle_chat(
+        request=build_session_chat_request(
+            message="Build the monthly report.",
+            session_id="session_task_flow",
+            usecase="task_execution_chat",
+            metadata={},
+        ),
+        context=_build_context(),
+    )
+
+    assert result.answer == "Which date range should I use?"
+    assert result.metadata["response_mode"] == "request_user_input"
+    assert result.metadata["needs_user_input"] is True
+    assert result.metadata["pending_task_count"] == 2
+    assert result.metadata["generated_artifact_count"] == 0
+
+    saved_task_flow = workflow_state.states["session_task_flow"]["metadata"]["pending_task_flow"]
+    assert saved_task_flow == {
+        "response_mode": "request_user_input",
+        "needs_user_input": True,
+        "pending_task_count": 2,
+        "generated_artifact_count": 0,
+        "request_kind": "report_request",
+        "request_id": "request-session-handle-0001",
+        "trace_id": "trace-session-handle-0001",
+        "updated_at": "2026-06-27T12:10:01+00:00",
+        "clarification_question": "Which date range should I use?",
+        "missing_required_inputs": ["date_range"],
+        "plan_actions": ["tool_call", "request_user_input", "finalize"],
+        "preferred_agents": ["support_agent"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_default_session_service_uses_loaded_version_for_resumed_session() -> None:
     workflow_state = FakeWorkflowStateStore()
     workflow_state.states["session_resume_1"] = {
@@ -241,6 +583,7 @@ async def test_default_session_service_uses_loaded_version_for_resumed_session()
         "usecase": "default_chat",
         "message_count": 4,
         "message_count_before": 2,
+        "generated_artifact_count": 0,
     }
     assert workflow_state.save_calls[0].expected_version == 4
     assert workflow_state.versions["session_resume_1"] == 5

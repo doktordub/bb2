@@ -1,0 +1,98 @@
+orchestration:
+  strategies:
+    bounded_planner:
+      enabled: true
+      type: bounded_planner
+      default_agent: support_agent
+      allowed_usecases:
+        - task_execution_chat
+      planner_llm_profile: local_reasoning
+      executor_llm_profile: local_reasoning
+      memory_enabled: true
+      tools_enabled: true
+      max_plan_steps: 4
+      max_execute_steps: 4
+      max_tool_loop_iterations: 2
+      max_context_bytes: 32000
+    fallback_answer:
+      enabled: true
+      type: fallback_answer
+      allowed_usecases:
+        - default_chat
+        - task_execution_chat
+      llm_profile: local_reasoning
+  usecases:
+    default_chat:
+      allowed_strategies:
+        - direct_agent
+        - fallback_answer
+    task_execution_chat:
+      enabled: false
+      description: Task-first chat flow kept disabled for rollout fixture validation.
+      strategy: bounded_planner
+      agent: support_agent
+      llm_profile: local_reasoning
+      allowed_agents:
+        - task_execution_agent
+        - support_agent
+        - chart_agent
+      allowed_strategies:
+        - bounded_planner
+        - fallback_answer
+      policy_profile: default
+      memory:
+        enabled: true
+        include_document_chunks: true
+        default_limit: 6
+      tools:
+        enabled: true
+        allowed_tools: []
+      metadata:
+        implementation_status: phase_5_complete
+        routing_mode: task_first
+        assessment_agent: task_execution_agent
+        target_default_agent: task_execution_agent
+        keep_visualization_override_disabled: true
+
+agents:
+  task_execution_agent:
+    enabled: true
+    type: task_execution
+    display_name: Task Execution Agent
+    description: Structured task assessment agent.
+    llm_profile: local_reasoning
+    prompt_profile: task_execution_v1
+  chart_agent:
+    enabled: true
+    type: chart_agent
+    display_name: Chart Agent
+    description: Visualization agent for rollout fixtures.
+    llm_profile: local_reasoning
+    allowed_tool_intents: []
+    allowed_memory_scopes:
+      - session
+
+llm:
+  profiles:
+    local_reasoning:
+      allowed_for:
+        usecases:
+          - default_chat
+          - task_execution_chat
+        agents:
+          - support_agent
+          - task_execution_agent
+          - chart_agent
+        strategies:
+          - direct_agent
+          - bounded_planner
+          - fallback_answer
+
+memory:
+  enabled: true
+
+tooling:
+  enabled: true
+
+visualization:
+  enabled: true

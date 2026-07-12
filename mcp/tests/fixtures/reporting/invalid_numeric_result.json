@@ -1,0 +1,30 @@
+{
+  "dataset_name": "invalid_numeric_result",
+  "source": "reporting_fixture",
+  "default_granularity": "month",
+  "default_aggregation": "sum",
+  "scope": {
+    "business_unit": "core",
+    "currency": "USD"
+  },
+  "dimensions": {
+    "reporting_period": "period_start"
+  },
+  "metrics": {
+    "income": {
+      "field": "income_amount",
+      "unit": "USD"
+    },
+    "expense": {
+      "field": "expense_amount",
+      "unit": "USD"
+    }
+  },
+  "rows": [
+    {
+      "period_start": "2026-01-01",
+      "income_amount": "not-a-number",
+      "expense_amount": 42.0
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "artifact_id": "chart_income_expense_last_6_months",
+  "chart_type": "grouped_bar",
+  "title": "Income vs Expense - Last 6 Months",
+  "description": "Monthly income and expense comparison across the last 6 months.",
+  "renderer": "echarts",
+  "data_source": "user_provided",
+  "x_field": "month",
+  "y_fields": [
+    "income",
+    "expense"
+  ],
+  "series_field": null,
+  "row_count": 6,
+  "series_count": 2,
+  "category_count": 6,
+  "time_range": {
+    "start": "2026-01",
+    "end": "2026-06",
+    "granularity": "month"
+  },
+  "summary_text": "Grouped bar chart comparing monthly income and expense across six months. Income exceeded expense every month. Highest income was May at 6100. Highest expense was May at 4700. Total income was 33100 and total expense was 26400.",
+  "key_insights": [
+    "Income stayed above expense in all six months.",
+    "May contains both the highest income and the highest expense values.",
+    "Net monthly surplus ranged from 500 to 1600."
+  ],
+  "aggregate_stats": {
+    "income_total": 33100,
+    "expense_total": 26400,
+    "net_total": 6700,
+    "average_income": 5516.67,
+    "average_expense": 4400
+  },
+  "extrema": {
+    "highest_income": {
+      "month": "May",
+      "value": 6100
+    },
+    "highest_expense": {
+      "month": "May",
+      "value": 4700
+    },
+    "lowest_surplus": {
+      "month": "Mar",
+      "value": 500
+    }
+  },
+  "trend_summary": {
+    "income": "Overall upward trend with a peak in May.",
+    "expense": "Moderate upward trend with March and May spikes.",
+    "net": "Positive throughout with a temporary dip in March."
+  },
+  "warnings": [],
+  "data_ref": "artifact://session_vis_001/chart_income_expense_last_6_months",
+  "token_estimate": 148,
+  "metadata": {
+    "source_agent": "chart_agent"
+  }
+}

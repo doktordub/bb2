@@ -1,0 +1,55 @@
+{
+  "dataset_name": "monthly_income_expense",
+  "source": "reporting_fixture",
+  "default_granularity": "month",
+  "default_aggregation": "sum",
+  "scope": {
+    "business_unit": "core",
+    "currency": "USD"
+  },
+  "dimensions": {
+    "reporting_period": "period_start"
+  },
+  "metrics": {
+    "income": {
+      "field": "income_amount",
+      "unit": "USD"
+    },
+    "expense": {
+      "field": "expense_amount",
+      "unit": "USD"
+    }
+  },
+  "rows": [
+    {
+      "period_start": "2026-01-01",
+      "income_amount": 125000.0,
+      "expense_amount": 101000.0
+    },
+    {
+      "period_start": "2026-02-01",
+      "income_amount": 131500.0,
+      "expense_amount": 104250.0
+    },
+    {
+      "period_start": "2026-03-01",
+      "income_amount": 128900.0,
+      "expense_amount": 109400.0
+    },
+    {
+      "period_start": "2026-04-01",
+      "income_amount": 136200.0,
+      "expense_amount": 111300.0
+    },
+    {
+      "period_start": "2026-05-01",
+      "income_amount": 140750.0,
+      "expense_amount": 115050.0
+    },
+    {
+      "period_start": "2026-06-01",
+      "income_amount": 143100.0,
+      "expense_amount": 117900.0
+    }
+  ]
+}

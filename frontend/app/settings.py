@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -36,6 +36,11 @@ def _parse_int(value: str | None, default: int) -> int:
         return default
 
 
+def _parse_positive_int(value: str | None, default: int) -> int:
+    parsed = _parse_int(value, default)
+    return parsed if parsed > 0 else default
+
+
 def _resolve_path(value: str | None, default_path: Path) -> Path:
     if not value:
         return default_path.resolve()
@@ -50,6 +55,14 @@ def _normalize_backend_base_url(value: str | None) -> str:
     base_url = (value or "http://127.0.0.1:8000").strip()
     stripped = base_url.rstrip("/")
     return stripped or "http://127.0.0.1:8000"
+
+
+@dataclass(frozen=True, slots=True)
+class FrontendVisualizationLimits:
+    max_artifacts_per_response: int = 3
+    max_rows_inline: int = 5000
+    max_series: int = 12
+    max_categories: int = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +81,9 @@ class Settings:
     frontend_restart_enabled: bool
     frontend_help_markdown_path: Path
     frontend_static_version: str
+    frontend_visualization_limits: FrontendVisualizationLimits = field(
+        default_factory=FrontendVisualizationLimits
+    )
 
     def as_flask_config(self) -> dict[str, object]:
         return {
@@ -114,4 +130,22 @@ def load_settings(
         ),
         frontend_static_version=os.getenv("FRONTEND_STATIC_VERSION", "local-dev").strip()
         or "local-dev",
+        frontend_visualization_limits=FrontendVisualizationLimits(
+            max_artifacts_per_response=_parse_positive_int(
+                os.getenv("FRONTEND_VISUALIZATION_MAX_ARTIFACTS_PER_RESPONSE"),
+                3,
+            ),
+            max_rows_inline=_parse_positive_int(
+                os.getenv("FRONTEND_VISUALIZATION_MAX_ROWS_INLINE"),
+                5000,
+            ),
+            max_series=_parse_positive_int(
+                os.getenv("FRONTEND_VISUALIZATION_MAX_SERIES"),
+                12,
+            ),
+            max_categories=_parse_positive_int(
+                os.getenv("FRONTEND_VISUALIZATION_MAX_CATEGORIES"),
+                100,
+            ),
+        ),
     )

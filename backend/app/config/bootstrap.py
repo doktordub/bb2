@@ -8,6 +8,7 @@ from app.config.view import (
     get_agents_settings,
     get_observability_settings,
     get_session_settings,
+    get_visualization_settings,
 )
 from app.agents.health import build_agent_startup_summary
 from app.contracts.config import ConfigurationView
@@ -32,6 +33,7 @@ from app.policy.factory import build_policy_runtime
 from app.session.identifiers import PrefixedUuidSessionIdProvider
 from app.session.service import DefaultSessionService
 from app.tools.factory import build_tooling_runtime, initialize_tooling_runtime
+from app.visualization.gateway import build_visualization_runtime
 
 
 def build_configuration_loader(settings: Settings) -> YamlConfigurationLoader:
@@ -88,6 +90,20 @@ async def build_container(settings: Settings) -> FoundationContainer:
     )
     tooling_runtime = build_tooling_runtime(config)
     await initialize_tooling_runtime(tooling_runtime)
+    visualization_runtime = (
+        build_visualization_runtime(
+            config,
+            policy_service=policy_runtime.service,
+            metrics=metrics,
+            trace_recorder=trace_recorder,
+        )
+        if get_visualization_settings(config).enabled
+        else None
+    )
+    if visualization_runtime is not None:
+        initialize_artifact_store = getattr(visualization_runtime.artifact_store, "initialize", None)
+        if callable(initialize_artifact_store):
+            await initialize_artifact_store()
     agent_settings = get_agents_settings(config)
     agent_registry = AgentRegistry.from_config(config)
     if bool(config.get("health.expose_config_summary", True)):
@@ -106,6 +122,9 @@ async def build_container(settings: Settings) -> FoundationContainer:
         strategy_registry=strategy_registry,
         usecase_router=UseCaseRouter(config),
         tools=tooling_runtime.gateway,
+        visualization_gateway=(
+            None if visualization_runtime is None else visualization_runtime.gateway
+        ),
     )
     if bool(config.get("health.expose_config_summary", True)):
         orchestration_health = await orchestrator.health()
@@ -141,6 +160,9 @@ async def build_container(settings: Settings) -> FoundationContainer:
         orchestrator=orchestrator,
         policy_service=policy_runtime.service,
         id_provider=PrefixedUuidSessionIdProvider(prefix=session_settings.identifiers.prefix),
+        visualization_artifact_store=(
+            None if visualization_runtime is None else visualization_runtime.artifact_store
+        ),
     )
     capabilities = CapabilitiesService(
         settings=settings,
@@ -183,4 +205,10 @@ async def build_container(settings: Settings) -> FoundationContainer:
         session_service=session_service,
         debug_trace_service=debug_trace_service,
         process_control_service=process_control_service,
+        visualization_gateway=(
+            None if visualization_runtime is None else visualization_runtime.gateway
+        ),
+        visualization_artifact_store=(
+            None if visualization_runtime is None else visualization_runtime.artifact_store
+        ),
     )
