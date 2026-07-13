@@ -23,6 +23,13 @@ def test_persistence_paths_do_not_depend_on_current_working_directory(
     view = ValidatedConfigurationView(
         {
             "app": {"data_dir": "./data"},
+            "memory": {
+                "store": {
+                    "fastembed": {
+                        "cache_dir": "./llm",
+                    }
+                }
+            },
             "observability": {"max_trace_payload_chars": 8000},
             "persistence": {
                 "base_dir": "./data",
@@ -56,3 +63,4 @@ def test_persistence_paths_do_not_depend_on_current_working_directory(
     assert settings.trace.sqlite is not None
     assert settings.trace.sqlite.path == resolve_backend_path("data/trace.db")
     assert settings.memory.memory_store.database_path == resolve_backend_path("data/memory")
+    assert settings.memory.memory_store.fastembed_cache_path == resolve_backend_path("./llm")

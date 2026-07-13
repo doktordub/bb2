@@ -21,6 +21,14 @@ def test_persistence_settings_resolve_typed_runtime_values() -> None:
     view = ValidatedConfigurationView(
         {
             "app": {"data_dir": "./data"},
+            "memory": {
+                "store": {
+                    "fastembed": {
+                        "cache_dir": "./llm",
+                        "local_files_only": True,
+                    }
+                }
+            },
             "observability": {"max_trace_payload_chars": 7000},
             "persistence": {
                 "base_dir": "data/runtime",
@@ -128,6 +136,8 @@ def test_persistence_settings_resolve_typed_runtime_values() -> None:
     assert settings.memory.memory_store.search_limit_default == 8
     assert settings.memory.memory_store.search_limit_max == 20
     assert settings.memory.memory_store.allow_writes is True
+    assert settings.memory.memory_store.fastembed_cache_path == resolve_backend_path("./llm")
+    assert settings.memory.memory_store.fastembed_local_files_only is True
 
 
 def test_persistence_settings_preserve_legacy_path_shape() -> None:

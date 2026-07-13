@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -102,6 +103,7 @@ class MemoryStoreAdapter:
         self._service: Any | None = None
         self._initialization_error: Exception | None = None
         self._initialization_lock = asyncio.Lock()
+        self._fastembed_env_previous: tuple[str | None, str | None] | None = None
 
     async def initialize(self) -> None:
         await self._ensure_service()
@@ -109,12 +111,11 @@ class MemoryStoreAdapter:
     async def close(self) -> None:
         service = self._service
         self._service = None
-        if service is None:
-            return
-
-        close = getattr(service, "close", None)
-        if callable(close):
-            await asyncio.to_thread(close)
+        if service is not None:
+            close = getattr(service, "close", None)
+            if callable(close):
+                await asyncio.to_thread(close)
+        self._restore_fastembed_environment()
 
     async def search(self, request: MemorySearchRequest) -> MemorySearchResult:
         if not isinstance(request.text, str) or request.text.strip() == "":
@@ -581,72 +582,113 @@ class MemoryStoreAdapter:
             return service
 
     def _build_service(self) -> Any:
-        runtime = self._get_runtime()
-        overrides: dict[str, Any] = {
-            "database": {
-                "schema_version": self._settings.schema_version,
-            },
-            "embeddings": {
-                "provider": self._settings.embedding_provider,
-                "model": self._settings.embedding_model,
-                "model_version": self._settings.embedding_model_version,
-                "dim": self._settings.embedding_dimension,
-                "batch_size": self._settings.embedding_batch_size,
-                "normalize": self._settings.embedding_normalize,
-                "dimension_mismatch": self._settings.embedding_dimension_mismatch,
-            },
-            "reranker": {
-                "enabled": self._settings.reranker_enabled,
-                "provider": self._settings.reranker_provider,
-                "model": self._settings.reranker_model,
-                "model_version": self._settings.reranker_model_version,
-                "top_n": self._settings.reranker_top_n,
-            },
-            "retrieval": {
-                "vector_top_n": self._settings.retrieval_vector_top_n,
-                "fts_top_n": self._settings.retrieval_fts_top_n,
-                "rrf_k": self._settings.retrieval_rrf_k,
-                "graph_expansion_enabled": self._settings.retrieval_graph_expansion_enabled,
-                "graph_expansion_hops": self._settings.retrieval_graph_expansion_hops,
-                "final_top_k": self._settings.retrieval_final_top_k,
-                "include_component_scores": self._settings.retrieval_include_component_scores,
-                "include_debug": self._settings.retrieval_include_debug,
-            },
-            "scoring": {
-                "weights": {
-                    "reranker": self._settings.scoring_weight_reranker,
-                    "retrieval_fusion": self._settings.scoring_weight_retrieval_fusion,
-                    "vector": self._settings.scoring_weight_vector,
-                    "full_text": self._settings.scoring_weight_full_text,
-                    "temporal": self._settings.scoring_weight_temporal,
-                    "importance": self._settings.scoring_weight_importance,
-                    "confidence": self._settings.scoring_weight_confidence,
-                    "graph": self._settings.scoring_weight_graph,
-                    "user_rating": self._settings.scoring_weight_user_rating,
-                }
-            },
-            "chunking": {
-                "strategy": self._settings.chunking_strategy,
-                "max_tokens": self._settings.chunking_max_tokens,
-                "overlap_tokens": self._settings.chunking_overlap_tokens,
-                "include_heading_path": self._settings.chunking_include_heading_path,
-                "include_frontmatter_in_embedding": self._settings.chunking_include_frontmatter_in_embedding,
-                "preserve_code_blocks": self._settings.chunking_preserve_code_blocks,
-                "removed_chunk_policy": self._settings.chunking_removed_chunk_policy,
-            },
-            "privacy": {
-                "default_sensitivity": self._settings.privacy_default_sensitivity,
-                "allow_llm_context_default": self._settings.privacy_allow_llm_context_default,
-                "allow_retrieval_default": self._settings.privacy_allow_retrieval_default,
-                "delete_by_scope_requires_confirm": self._settings.privacy_delete_by_scope_requires_confirm,
-            },
-        }
-        if self._settings.database_path is not None:
-            overrides["database"]["path"] = str(self._settings.database_path)
+        self._apply_fastembed_environment()
+        try:
+            runtime = self._get_runtime()
+            overrides: dict[str, Any] = {
+                "database": {
+                    "schema_version": self._settings.schema_version,
+                },
+                "embeddings": {
+                    "provider": self._settings.embedding_provider,
+                    "model": self._settings.embedding_model,
+                    "model_version": self._settings.embedding_model_version,
+                    "dim": self._settings.embedding_dimension,
+                    "batch_size": self._settings.embedding_batch_size,
+                    "normalize": self._settings.embedding_normalize,
+                    "dimension_mismatch": self._settings.embedding_dimension_mismatch,
+                },
+                "reranker": {
+                    "enabled": self._settings.reranker_enabled,
+                    "provider": self._settings.reranker_provider,
+                    "model": self._settings.reranker_model,
+                    "model_version": self._settings.reranker_model_version,
+                    "top_n": self._settings.reranker_top_n,
+                },
+                "retrieval": {
+                    "vector_top_n": self._settings.retrieval_vector_top_n,
+                    "fts_top_n": self._settings.retrieval_fts_top_n,
+                    "rrf_k": self._settings.retrieval_rrf_k,
+                    "graph_expansion_enabled": self._settings.retrieval_graph_expansion_enabled,
+                    "graph_expansion_hops": self._settings.retrieval_graph_expansion_hops,
+                    "final_top_k": self._settings.retrieval_final_top_k,
+                    "include_component_scores": self._settings.retrieval_include_component_scores,
+                    "include_debug": self._settings.retrieval_include_debug,
+                },
+                "scoring": {
+                    "weights": {
+                        "reranker": self._settings.scoring_weight_reranker,
+                        "retrieval_fusion": self._settings.scoring_weight_retrieval_fusion,
+                        "vector": self._settings.scoring_weight_vector,
+                        "full_text": self._settings.scoring_weight_full_text,
+                        "temporal": self._settings.scoring_weight_temporal,
+                        "importance": self._settings.scoring_weight_importance,
+                        "confidence": self._settings.scoring_weight_confidence,
+                        "graph": self._settings.scoring_weight_graph,
+                        "user_rating": self._settings.scoring_weight_user_rating,
+                    }
+                },
+                "chunking": {
+                    "strategy": self._settings.chunking_strategy,
+                    "max_tokens": self._settings.chunking_max_tokens,
+                    "overlap_tokens": self._settings.chunking_overlap_tokens,
+                    "include_heading_path": self._settings.chunking_include_heading_path,
+                    "include_frontmatter_in_embedding": self._settings.chunking_include_frontmatter_in_embedding,
+                    "preserve_code_blocks": self._settings.chunking_preserve_code_blocks,
+                    "removed_chunk_policy": self._settings.chunking_removed_chunk_policy,
+                },
+                "privacy": {
+                    "default_sensitivity": self._settings.privacy_default_sensitivity,
+                    "allow_llm_context_default": self._settings.privacy_allow_llm_context_default,
+                    "allow_retrieval_default": self._settings.privacy_allow_retrieval_default,
+                    "delete_by_scope_requires_confirm": self._settings.privacy_delete_by_scope_requires_confirm,
+                },
+            }
+            if self._settings.database_path is not None:
+                overrides["database"]["path"] = str(self._settings.database_path)
 
-        if self._settings.config_path is not None:
-            return runtime.MemoryService.from_config(self._settings.config_path, **overrides)
-        return runtime.MemoryService.from_config(None, **overrides)
+            if self._settings.config_path is not None:
+                return runtime.MemoryService.from_config(self._settings.config_path, **overrides)
+            return runtime.MemoryService.from_config(None, **overrides)
+        except Exception:
+            self._restore_fastembed_environment()
+            raise
+
+    def _apply_fastembed_environment(self) -> None:
+        if self._fastembed_env_previous is not None:
+            return
+
+        self._fastembed_env_previous = (
+            os.environ.get("FASTEMBED_CACHE_PATH"),
+            os.environ.get("HF_HUB_OFFLINE"),
+        )
+
+        if self._settings.fastembed_cache_path is not None:
+            os.environ["FASTEMBED_CACHE_PATH"] = str(self._settings.fastembed_cache_path)
+
+        if self._settings.fastembed_local_files_only:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+        else:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+
+    def _restore_fastembed_environment(self) -> None:
+        previous = self._fastembed_env_previous
+        if previous is None:
+            return
+
+        previous_cache_path, previous_offline = previous
+        if self._settings.fastembed_cache_path is not None:
+            if previous_cache_path is None:
+                os.environ.pop("FASTEMBED_CACHE_PATH", None)
+            else:
+                os.environ["FASTEMBED_CACHE_PATH"] = previous_cache_path
+
+        if previous_offline is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = previous_offline
+
+        self._fastembed_env_previous = None
 
     async def _run_single_record_lifecycle(
         self,

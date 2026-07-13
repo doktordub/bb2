@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -191,3 +192,59 @@ async def test_memory_store_adapter_health_smoke_uses_installed_package(tmp_path
     assert health["provider"] == "memory_store"
     assert health["dependency_available"] is True
     assert health["service_initialized"] is False
+
+
+@pytest.mark.asyncio
+async def test_memory_store_adapter_applies_fastembed_runtime_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    captured: dict[str, str | None] = {}
+
+    class FakeMemoryService:
+        @classmethod
+        def from_config(cls, config_path: object = None, **overrides: object) -> FakeMemoryService:
+            captured["cache_path"] = os.environ.get("FASTEMBED_CACHE_PATH")
+            captured["offline"] = os.environ.get("HF_HUB_OFFLINE")
+            return cls()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setenv("FASTEMBED_CACHE_PATH", str(tmp_path / "existing-cache"))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")
+    monkeypatch.setattr(
+        "app.persistence.memory_store_adapter._load_memory_store_runtime",
+        lambda: SimpleNamespace(
+            MemoryCreate=object,
+            MemorySearchQuery=object,
+            MemoryService=FakeMemoryService,
+            Scope=object,
+        ),
+    )
+
+    adapter = MemoryStoreAdapter(
+        MemoryStoreSettings(
+            config_path=None,
+            database_path=tmp_path / "memory-store",
+            default_scope="project",
+            search_limit_default=10,
+            search_limit_max=30,
+            allow_writes=False,
+            fastembed_cache_path=tmp_path / "llm-cache",
+            fastembed_local_files_only=True,
+        ),
+        required=False,
+    )
+
+    await adapter.initialize()
+
+    assert captured == {
+        "cache_path": str(tmp_path / "llm-cache"),
+        "offline": "1",
+    }
+
+    await adapter.close()
+
+    assert os.environ.get("FASTEMBED_CACHE_PATH") == str(tmp_path / "existing-cache")
+    assert os.environ.get("HF_HUB_OFFLINE") == "0"

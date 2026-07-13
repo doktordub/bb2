@@ -1356,11 +1356,25 @@ class MemoryRerankerConfig(StrictConfigModel):
         return normalized or None
 
 
+class MemoryFastembedConfig(StrictConfigModel):
+    cache_dir: str | None = None
+    local_files_only: bool = False
+
+    @field_validator("cache_dir")
+    @classmethod
+    def normalize_optional_cache_dir(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class MemoryStoreConfig(StrictConfigModel):
     config_path: str | None = None
     database: MemoryStoreDatabaseConfig = Field(default_factory=MemoryStoreDatabaseConfig)
     embeddings: MemoryEmbeddingsConfig = Field(default_factory=MemoryEmbeddingsConfig)
     reranker: MemoryRerankerConfig = Field(default_factory=MemoryRerankerConfig)
+    fastembed: MemoryFastembedConfig = Field(default_factory=MemoryFastembedConfig)
 
     @field_validator("config_path")
     @classmethod

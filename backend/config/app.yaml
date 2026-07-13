@@ -771,6 +771,9 @@ memory:
       create_if_missing: true
       schema_version: 1
       embedded_single_process: true
+    fastembed:
+      cache_dir: ./llm
+      local_files_only: true
     embeddings:
       provider: fastembed
       model: BAAI/bge-small-en-v1.5

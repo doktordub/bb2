@@ -36,6 +36,7 @@ from app.config.view import (
     MemoryChunkingSettings,
     MemoryDefaultsSettings,
     MemoryEmbeddingsSettings,
+    MemoryFastembedSettings,
     MemoryHealthSettings,
     MemoryLifecycleSettings,
     MemoryPrivacySettings,
@@ -291,6 +292,10 @@ def build_view() -> ValidatedConfigurationView:
                         "create_if_missing": True,
                         "schema_version": 2,
                         "embedded_single_process": True,
+                    },
+                    "fastembed": {
+                        "cache_dir": "./llm",
+                        "local_files_only": True,
                     },
                     "embeddings": {
                         "provider": "fastembed",
@@ -829,6 +834,10 @@ def test_validated_config_view_redacted_dump_masks_secrets() -> None:
                     "create_if_missing": True,
                     "schema_version": 2,
                     "embedded_single_process": True,
+                },
+                "fastembed": {
+                    "cache_dir": "./llm",
+                    "local_files_only": True,
                 },
                 "embeddings": {
                     "provider": "fastembed",
@@ -1520,6 +1529,10 @@ def test_validated_config_view_memory_helpers_return_typed_settings() -> None:
                 schema_version=2,
                 embedded_single_process=True,
             ),
+            fastembed=MemoryFastembedSettings(
+                cache_dir=resolve_backend_path("./llm"),
+                local_files_only=True,
+            ),
             embeddings=MemoryEmbeddingsSettings(
                 provider="fastembed",
                 model="BAAI/bge-small-en-v1.5",
@@ -2004,6 +2017,8 @@ def test_validated_config_view_persistence_helpers_return_typed_settings() -> No
                 scoring_weight_temporal=0.08,
                 scoring_weight_graph=0.04,
                 scoring_weight_user_rating=0.03,
+                fastembed_cache_path=resolve_backend_path("./llm"),
+                fastembed_local_files_only=True,
             ),
         ),
     )

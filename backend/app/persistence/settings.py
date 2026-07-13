@@ -160,6 +160,8 @@ class MemoryStoreSettings:
     scoring_weight_confidence: float = 0.04
     scoring_weight_graph: float = 0.03
     scoring_weight_user_rating: float = 0.02
+    fastembed_cache_path: Path | None = None
+    fastembed_local_files_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -475,6 +477,8 @@ def _read_memory_settings(
             scoring_weight_confidence=memory.scoring.weights.confidence,
             scoring_weight_graph=memory.scoring.weights.graph,
             scoring_weight_user_rating=memory.scoring.weights.user_rating,
+            fastembed_cache_path=memory.store.fastembed.cache_dir,
+            fastembed_local_files_only=memory.store.fastembed.local_files_only,
         ),
     )
 

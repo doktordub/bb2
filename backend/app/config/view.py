@@ -685,6 +685,14 @@ class MemoryRerankerSettings:
 
 
 @dataclass(frozen=True, slots=True)
+class MemoryFastembedSettings:
+    """Typed FastEmbed runtime settings resolved from validated configuration."""
+
+    cache_dir: Path | None = None
+    local_files_only: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class MemoryStoreSettings:
     """Typed memory-store adapter settings resolved from validated configuration."""
 
@@ -692,6 +700,7 @@ class MemoryStoreSettings:
     database: MemoryStoreDatabaseSettings
     embeddings: MemoryEmbeddingsSettings
     reranker: MemoryRerankerSettings
+    fastembed: MemoryFastembedSettings = field(default_factory=MemoryFastembedSettings)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2740,6 +2749,18 @@ def get_memory_settings(config: ConfigurationView) -> MemorySettings:
                     "memory.store.reranker.model_version",
                 ),
                 top_n=_read_int(config, "memory.store.reranker.top_n", 60),
+            ),
+            fastembed=MemoryFastembedSettings(
+                cache_dir=_read_optional_resolved_path(
+                    config,
+                    "memory.store.fastembed.cache_dir",
+                    resolve_with=resolve_backend_path,
+                ),
+                local_files_only=_read_bool(
+                    config,
+                    "memory.store.fastembed.local_files_only",
+                    False,
+                ),
             ),
         ),
         chunking=MemoryChunkingSettings(
